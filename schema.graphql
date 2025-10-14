@@ -1,0 +1,8 @@
+type EndpointV2_PacketDelivered {
+  id: ID!
+  origin_0: BigInt!
+  origin_1: String!
+  origin_2: BigInt!
+  receiver: String!
+}
+
