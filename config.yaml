@@ -5,6 +5,7 @@ contracts:
   handler: src/EventHandlers.ts
   events:
   - event: PacketDelivered((uint32,bytes32,uint64) origin, address receiver)
+  - event: DefaultReceiveLibrarySet(uint32 eid, address newLib)
 networks:
 - id: 1
   start_block: 0
