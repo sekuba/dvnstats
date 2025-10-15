@@ -1,8 +1,24 @@
-type EndpointV2_PacketDelivered {
+type EndpointV2_DefaultReceiveLibrarySet {
   id: ID!
-  origin_0: BigInt!
-  origin_1: String!
-  origin_2: BigInt!
-  receiver: String!
+  eid: BigInt!
+  newLib: String!
 }
 
+type EndpointV2_ReceiveLibrarySet {
+  id: ID!
+  receiver: String!
+  eid: BigInt!
+  newLib: String!
+}
+
+type ReceiveUln302_UlnConfigSet {
+  id: ID!
+  oapp: String!
+  eid: BigInt!
+  config_0: BigInt!
+  config_1: BigInt!
+  config_2: BigInt!
+  config_3: BigInt!
+  config_4: [String!]!
+  config_5: [String!]!
+}

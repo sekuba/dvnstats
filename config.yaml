@@ -6,6 +6,11 @@ contracts:
   events:
   - event: PacketDelivered((uint32,bytes32,uint64) origin, address receiver)
   - event: DefaultReceiveLibrarySet(uint32 eid, address newLib)
+  - event: ReceiveLibrarySet(address receiver, uint32 eid, address newLib)
+- name: ReceiveUln302
+  handler: src/EventHandlers.ts
+  events:
+  - event: UlnConfigSet(address oapp, uint32 eid, (uint64,uint8,uint8,uint8,address[],address[]) config)
 networks:
 - id: 1
   start_block: 0

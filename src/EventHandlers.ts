@@ -3,23 +3,57 @@
  */
 import {
   EndpointV2,
-  EndpointV2_PacketDelivered,
+  EndpointV2_DefaultReceiveLibrarySet,
+  EndpointV2_ReceiveLibrarySet,
+  ReceiveUln302,
+  ReceiveUln302_UlnConfigSet,
 } from "generated";
 
-EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
-  const entity: EndpointV2_PacketDelivered = {
+EndpointV2.DefaultReceiveLibrarySet.handler(async ({ event, context }) => {
+  const entity: EndpointV2_DefaultReceiveLibrarySet = {
     id: `${event.chainId}_${event.block.number}_${event.logIndex}`,
-    origin_0: event.params.origin
-        [0]
-    ,
-    origin_1: event.params.origin
-        [1]
-    ,
-    origin_2: event.params.origin
-        [2]
-    ,
-    receiver: event.params.receiver,
+    eid: event.params.eid,
+    newLib: event.params.newLib,
   };
 
-  context.EndpointV2_PacketDelivered.set(entity);
+  context.EndpointV2_DefaultReceiveLibrarySet.set(entity);
+});
+
+EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
+  const entity: EndpointV2_ReceiveLibrarySet = {
+    id: `${event.chainId}_${event.block.number}_${event.logIndex}`,
+    receiver: event.params.receiver,
+    eid: event.params.eid,
+    newLib: event.params.newLib,
+  };
+
+  context.EndpointV2_ReceiveLibrarySet.set(entity);
+});
+
+ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
+  const entity: ReceiveUln302_UlnConfigSet = {
+    id: `${event.chainId}_${event.block.number}_${event.logIndex}`,
+    oapp: event.params.oapp,
+    eid: event.params.eid,
+    config_0: event.params.config
+        [0]
+    ,
+    config_1: event.params.config
+        [1]
+    ,
+    config_2: event.params.config
+        [2]
+    ,
+    config_3: event.params.config
+        [3]
+    ,
+    config_4: event.params.config
+        [4]
+    ,
+    config_5: event.params.config
+        [5]
+    ,
+  };
+
+  context.ReceiveUln302_UlnConfigSet.set(entity);
 });
