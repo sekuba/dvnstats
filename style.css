@@ -199,6 +199,12 @@ tbody tr:hover td {
   color: #f0f3ff;
 }
 
+.row-count {
+  font-size: 0.85rem;
+  color: #9aa5bd;
+  margin-bottom: 0.5rem;
+}
+
 pre {
   margin: 0;
   font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;

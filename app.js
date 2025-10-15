@@ -570,13 +570,17 @@ const renderResult = payload => {
     heading.textContent = key;
     section.appendChild(heading);
 
+    let rowCount = undefined;
+
     if (Array.isArray(value) && value.every(item => typeof item === "object")) {
+      rowCount = value.length;
       section.appendChild(toTable(value));
     } else if (
       value &&
       typeof value === "object" &&
       !Array.isArray(value)
     ) {
+      rowCount = 1;
       section.appendChild(toTable([value]));
     } else {
       const pre = document.createElement("pre");
@@ -584,11 +588,18 @@ const renderResult = payload => {
       section.appendChild(pre);
     }
 
+    if (rowCount !== undefined) {
+      const countBadge = document.createElement("div");
+      countBadge.className = "row-count";
+      countBadge.textContent = `${rowCount} row${rowCount === 1 ? "" : "s"}`;
+      section.insertBefore(countBadge, section.childNodes[1]);
+    }
+
     resultsContainer.appendChild(section);
   }
 };
 
-const executeQuery = async ({ description, query, variables }) => {
+const executeQuery = async ({ description, query, variables, transform }) => {
   const endpoint = getEndpoint();
   if (!endpoint) {
     setStatus("Missing endpoint", "error");
@@ -610,16 +621,29 @@ const executeQuery = async ({ description, query, variables }) => {
 
     const elapsed = performance.now() - started;
     const json = await response.json();
+    let data = json.data;
+    let transformError = null;
+
+    if (transform && data) {
+      try {
+        data = transform(data);
+      } catch (error) {
+        transformError = error;
+      }
+    }
+
     renderResult({
       description,
       durationMs: elapsed,
-      data: json.data,
-      errors: json.errors,
+      data,
+      errors: transformError
+        ? [...(json.errors || []), { message: String(transformError) }]
+        : json.errors,
     });
 
     if (!response.ok) {
       setStatus(`HTTP ${response.status}`, "error");
-    } else if (json.errors?.length) {
+    } else if (transformError || json.errors?.length) {
       setStatus("GraphQL errors", "error");
     } else {
       setStatus("OK", "ok");
@@ -811,7 +835,9 @@ const handleMultiDvn = event => {
     ? `
       query ConfigsWithRequired($minRequired: Int!, $limit: Int!) {
         OAppSecurityConfig(
-          where: { configRequiredDVNCount: { _gte: $minRequired } }
+          where: {
+            configRequiredDVNCount: { _gte: $minRequired }
+          }
           order_by: { configRequiredDVNCount: desc, lastUpdatedTimestamp: desc }
           limit: $limit
         ) {
@@ -823,6 +849,7 @@ const handleMultiDvn = event => {
           configRequiredDVNCount
           configOptionalDVNCount
           configOptionalDVNThreshold
+          configRequiredDVNs
           lastUpdatedTimestamp
         }
       }
@@ -830,7 +857,9 @@ const handleMultiDvn = event => {
     : `
       query ConfigsWithRequired($minRequired: Int!) {
         OAppSecurityConfig(
-          where: { configRequiredDVNCount: { _gte: $minRequired } }
+          where: {
+            configRequiredDVNCount: { _gte: $minRequired }
+          }
           order_by: { configRequiredDVNCount: desc, lastUpdatedTimestamp: desc }
         ) {
           oappId
@@ -841,6 +870,7 @@ const handleMultiDvn = event => {
           configRequiredDVNCount
           configOptionalDVNCount
           configOptionalDVNThreshold
+          configRequiredDVNs
           lastUpdatedTimestamp
         }
       }
@@ -859,6 +889,16 @@ const handleMultiDvn = event => {
     description: descriptionParts.join(" · "),
     query,
     variables,
+    transform: data => ({
+      ...data,
+      OAppSecurityConfig: (data.OAppSecurityConfig || []).filter(config => {
+        const required = Number(config?.configRequiredDVNCount ?? 0);
+        const addresses = Array.isArray(config?.configRequiredDVNs)
+          ? config.configRequiredDVNs.length
+          : 0;
+        return required <= 0 || addresses >= required;
+      }),
+    }),
   });
 };
 
