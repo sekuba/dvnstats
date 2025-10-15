@@ -10,6 +10,12 @@ pnpm dev
 
 Visit http://localhost:8080 to see the GraphQL Playground, local password is `testing`.
 
+### Explore data with the dashboard
+
+- Open `dashboard/index.html` directly in your browser, or serve it with `pnpm dlx serve dashboard`.
+- Point the endpoint field at your running GraphQL API (defaults to `http://localhost:9991/graphql`).
+- Use the built-in queries (Top OApps, Security Snapshot, Packet Samples, etc.) or paste custom GraphQL in the ad‑hoc runner.
+
 ### Generate files from `config.yaml` or `schema.graphql`
 
 ```bash

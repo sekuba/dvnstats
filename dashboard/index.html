@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>LayerZero Security Explorer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LayerZero Security Explorer</h1>
+      <div class="endpoint-controls">
+        <label for="endpoint">GraphQL endpoint</label>
+        <input
+          id="endpoint"
+          type="url"
+          placeholder="http://localhost:9991/graphql"
+          spellcheck="false"
+        />
+        <button id="ping-endpoint">Ping</button>
+        <span id="endpoint-status" class="status"></span>
+      </div>
+    </header>
+
+    <main>
+      <section>
+        <h2>Top OApps by Received Packets</h2>
+        <form id="top-oapps-form">
+          <label>
+            Limit (optional)
+            <input name="limit" type="number" min="1" placeholder="e.g. 25" />
+          </label>
+          <label>
+            Chain (optional)
+            <input name="chainId" type="number" min="0" step="1" />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Security Snapshot for OApp + Eid</h2>
+        <form id="security-snapshot-form">
+          <label>
+            OApp ID
+            <input
+              name="oappId"
+              type="text"
+              placeholder="chainId_lowercaseReceiver"
+              required
+              spellcheck="false"
+            />
+          </label>
+          <label>
+            Origin Eid
+            <input name="eid" type="number" required />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Configs with ≥ Required DVNs</h2>
+        <form id="multi-dvn-form">
+          <label>
+            Min required DVNs
+            <input name="minRequired" type="number" min="1" value="2" />
+          </label>
+          <label>
+            Limit (optional)
+            <input name="limit" type="number" min="1" placeholder="e.g. 50" />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Packet Samples for Receiver</h2>
+        <form id="packet-samples-form">
+          <label>
+            Chain ID
+            <input name="chainId" type="number" required />
+          </label>
+          <label>
+            Receiver (lowercase)
+            <input
+              name="receiver"
+              type="text"
+              required
+              placeholder="0x..."
+              spellcheck="false"
+            />
+          </label>
+          <label>
+            Limit (optional)
+            <input name="limit" type="number" min="1" placeholder="e.g. 40" />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Default Security Baselines</h2>
+        <form id="defaults-form">
+          <label>
+            Chain ID
+            <input name="chainId" type="number" required />
+          </label>
+          <label>
+            Limit (optional)
+            <input name="limit" type="number" min="1" placeholder="e.g. 100" />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Ad-hoc Query</h2>
+        <form id="custom-query-form">
+          <textarea
+            name="query"
+            rows="10"
+            spellcheck="false"
+            placeholder="query MyQuery { OApp(limit: 5, order_by: { totalPacketsReceived: desc }) { id address totalPacketsReceived } }"
+          ></textarea>
+          <textarea
+            name="variables"
+            rows="4"
+            spellcheck="false"
+            placeholder='{"limit":5}'
+          ></textarea>
+          <div class="form-actions">
+            <button type="submit">Run</button>
+            <button type="reset" class="secondary">Clear</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="results-section">
+        <div class="results-header">
+          <h2>Results</h2>
+          <button id="copy-results" class="secondary">Copy JSON</button>
+        </div>
+        <div id="results-meta"></div>
+        <div id="results"></div>
+      </section>
+    </main>
+
+    <template id="table-template">
+      <table>
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
