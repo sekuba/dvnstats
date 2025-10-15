@@ -1,3 +1,8 @@
+icecold codex x sekuba present *layerzero security overview thing*
+
+<img width="1697" height="937" alt="image" src="https://github.com/user-attachments/assets/96ceaf15-7bf9-4931-9e2e-206ca633ef7d" />
+
+
 ## Envio Indexer
 
 *Please refer to the [documentation website](https://docs.envio.dev) for a thorough guide on all [Envio](https://envio.dev) indexer features*
