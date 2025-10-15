@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./app.js" defer></script>
   </head>
   <body>
     <header>
@@ -83,6 +84,48 @@
           <label>
             Limit (optional)
             <input name="limit" type="number" min="1" placeholder="e.g. 50" />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Configs Using Default DVNs (required = 0)</h2>
+        <form id="fallback-configs-form">
+          <label>
+            Chain (optional)
+            <input
+              name="chainId"
+              type="text"
+              inputmode="numeric"
+              list="indexed-chains"
+              placeholder="chainId or search"
+            />
+          </label>
+          <label>
+            Limit (optional)
+            <input name="limit" type="number" min="1" placeholder="e.g. 100" />
+          </label>
+          <button type="submit">Run</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Optional-Only Configs (required = 255)</h2>
+        <form id="optional-only-configs-form">
+          <label>
+            Chain (optional)
+            <input
+              name="chainId"
+              type="text"
+              inputmode="numeric"
+              list="indexed-chains"
+              placeholder="chainId or search"
+            />
+          </label>
+          <label>
+            Limit (optional)
+            <input name="limit" type="number" min="1" placeholder="e.g. 100" />
           </label>
           <button type="submit">Run</button>
         </form>
@@ -168,9 +211,17 @@
         <div class="results-header">
           <h2>Results</h2>
           <button id="copy-results" class="secondary">Copy JSON</button>
+          <label class="summary-upload">
+            Load summary JSON
+            <input id="summary-upload" type="file" accept="application/json" />
+          </label>
         </div>
         <div id="results-meta"></div>
         <div id="results"></div>
+        <div id="chart-container">
+          <canvas id="dvn-pie" width="420" height="420"></canvas>
+          <div id="chart-legend"></div>
+        </div>
       </section>
     </main>
 

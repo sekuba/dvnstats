@@ -16,6 +16,14 @@ Visit http://localhost:8080 to see the GraphQL Playground, local password is `te
 - Point the endpoint field at your running GraphQL API (defaults to `http://localhost:8080/v1/graphql`).
 - Use the built-in queries (Top OApps, Security Snapshot, Packet Samples, etc.) or paste custom GraphQL in the ad‑hoc runner.
 
+### Generate a 30-day packet security summary
+
+```bash
+pnpm stats:packets --endpoint=http://localhost:8080/v1/graphql --days=30 --out=packet_security_summary.json
+```
+
+The script scans `PacketDelivered` events from the last N days (30 by default), applies the same fallback logic used in the indexer (default configs when a custom config is missing data), and writes aggregated counts grouped by required DVNs, chain, and DVN address/name. Optional-only configs (required DVN count `255`) and default-based configs (`0`/unset) are tracked separately. If a `layerzero.json` file is present (or provided via `--layerzero=path`), DVN canonical names are included in the rankings. You can also supply the endpoint via the `GRAPHQL_ENDPOINT` environment variable.
+
 ### Generate files from `config.yaml` or `schema.graphql`
 
 ```bash
