@@ -11,6 +11,7 @@ contracts:
   handler: src/EventHandlers.ts
   events:
   - event: UlnConfigSet(address oapp, uint32 eid, (uint64,uint8,uint8,uint8,address[],address[]) config)
+  - event: DefaultUlnConfigsSet((uint32,(uint64,uint8,uint8,uint8,address[],address[]))[] params)
 networks:
 - id: 1
   start_block: 0

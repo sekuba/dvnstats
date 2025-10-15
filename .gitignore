@@ -34,3 +34,5 @@ logs
 *.gen.ts
 build
 .env
+hyperindex-llm-docs.mdx
+hypersync-llm-docs.mdx
