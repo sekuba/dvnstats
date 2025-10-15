@@ -137,6 +137,19 @@ form label {
   align-items: center;
 }
 
+.summary-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: #9aa5bd;
+  cursor: pointer;
+}
+
+.summary-upload input {
+  display: none;
+}
+
 #results-meta {
   font-size: 0.9rem;
   color: #9aa5bd;
@@ -149,6 +162,50 @@ form label {
   background: #0f131b;
   padding: 1rem;
   max-height: 500px;
+}
+
+#chart-container {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+}
+
+#dvn-pie {
+  max-width: 420px;
+  max-height: 420px;
+  background: #121722;
+  border-radius: 50%;
+}
+
+#chart-legend {
+  min-width: 220px;
+  color: #d8dee9;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+#chart-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+#chart-legend .legend-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+}
+
+#chart-legend .legend-label {
+  flex: 1;
+}
+
+#chart-legend .legend-value {
+  color: #9aa5bd;
 }
 
 table {

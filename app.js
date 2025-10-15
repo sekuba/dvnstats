@@ -8,6 +8,9 @@ const resultsContainer = document.getElementById("results");
 const resultsMeta = document.getElementById("results-meta");
 const copyResultsBtn = document.getElementById("copy-results");
 const tableTemplate = document.getElementById("table-template");
+const summaryUploadInput = document.getElementById("summary-upload");
+const chartCanvas = document.getElementById("dvn-pie");
+const chartLegend = document.getElementById("chart-legend");
 
 let latestRawResult = null;
 
@@ -526,6 +529,7 @@ const formatCellValue = value => {
 const renderResult = payload => {
   latestRawResult = payload;
   resultsContainer.innerHTML = "";
+  updatePieChart(null);
 
   if (!payload) {
     resultsMeta.textContent = "";
@@ -597,6 +601,10 @@ const renderResult = payload => {
 
     resultsContainer.appendChild(section);
   }
+
+  if (data.requiredDvnNameRanking) {
+    updatePieChart(data.requiredDvnNameRanking);
+  }
 };
 
 const executeQuery = async ({ description, query, variables, transform }) => {
@@ -657,6 +665,129 @@ const executeQuery = async ({ description, query, variables, transform }) => {
     });
     setStatus("Request failed", "error");
   }
+};
+
+const updatePieChart = ranking => {
+  if (!chartCanvas || !chartLegend) return;
+
+  const ctx = chartCanvas.getContext("2d");
+  if (!ctx) return;
+
+  const width = chartCanvas.width;
+  const height = chartCanvas.height;
+  ctx.clearRect(0, 0, width, height);
+  chartLegend.innerHTML = "";
+
+  if (!ranking || !Array.isArray(ranking) || ranking.length === 0) {
+    ctx.fillStyle = "#65718f";
+    ctx.font = "16px 'Inter', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("No DVN ranking data", width / 2, height / 2);
+    chartLegend.textContent = "Run the summary script or load a JSON file to see DVN usage.";
+    return;
+  }
+
+  const MAX_SLICES = 12;
+  const sorted = ranking
+    .filter(item => item && typeof item.packetCount === "number")
+    .sort((a, b) => b.packetCount - a.packetCount);
+
+  const slices = sorted.slice(0, MAX_SLICES);
+  const others = sorted.slice(MAX_SLICES);
+  const total = sorted.reduce((sum, item) => sum + (item.packetCount ?? 0), 0);
+
+  if (others.length > 0) {
+    slices.push({
+      packetCount: others.reduce((sum, item) => sum + (item.packetCount ?? 0), 0),
+      requiredNames: ["Others"],
+      requiredCount: 0,
+    });
+  }
+
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const outerRadius = Math.min(width, height) / 2 - 16;
+  const innerRadius = outerRadius * 0.55;
+  let startAngle = -Math.PI / 2;
+
+  const colors = slices.map((_, index) => {
+    const hue = (index * 47) % 360;
+    return `hsl(${hue}, 70%, 55%)`;
+  });
+
+  slices.forEach((slice, index) => {
+    const value = slice.packetCount ?? 0;
+    const angle = total ? (value / total) * Math.PI * 2 : 0;
+    const endAngle = startAngle + angle;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, outerRadius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = colors[index];
+    ctx.fill();
+    startAngle = endAngle;
+  });
+
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, innerRadius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.fillStyle = "#0f131b";
+  ctx.fill();
+
+  startAngle = -Math.PI / 2;
+  ctx.fillStyle = "#e3e7ed";
+  ctx.font = "13px 'Inter', sans-serif";
+  slices.forEach((slice, index) => {
+    const value = slice.packetCount ?? 0;
+    const angle = total ? (value / total) * Math.PI * 2 : 0;
+    const midAngle = startAngle + angle / 2;
+    const labelRadius = innerRadius + (outerRadius - innerRadius) * 0.6;
+    const labelX = centerX + Math.cos(midAngle) * labelRadius;
+    const labelY = centerY + Math.sin(midAngle) * labelRadius;
+    const pct = total ? ((value / total) * 100).toFixed(1) : "0.0";
+    if (angle > 0.1) {
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(`${pct}%`, labelX, labelY);
+    }
+    startAngle += angle;
+  });
+
+  ctx.fillStyle = "#d8dee9";
+  ctx.font = "18px 'Inter', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Packets", centerX, centerY - 10);
+  ctx.font = "16px 'Inter', sans-serif";
+  ctx.fillStyle = "#9aa5bd";
+  ctx.fillText(total.toLocaleString(), centerX, centerY + 12);
+
+  slices.forEach((slice, index) => {
+    const value = slice.packetCount ?? 0;
+    const pct = total ? ((value / total) * 100).toFixed(2) : "0";
+    const item = document.createElement("div");
+    item.className = "legend-item";
+
+    const color = document.createElement("span");
+    color.className = "legend-color";
+    color.style.backgroundColor = colors[index];
+
+    const label = document.createElement("span");
+    label.className = "legend-label";
+    const names = Array.isArray(slice.requiredNames) && slice.requiredNames.length
+      ? slice.requiredNames.join(" + ")
+      : "Others";
+    const count = slice.requiredCount ?? 0;
+    label.textContent = `${names}${count ? ` (${count})` : ""}`;
+
+    const valueEl = document.createElement("span");
+    valueEl.className = "legend-value";
+    valueEl.textContent = `${value.toLocaleString()} (${pct}%)`;
+
+    item.append(color, label, valueEl);
+    chartLegend.appendChild(item);
+  });
 };
 
 const handleTopOApps = event => {
@@ -836,7 +967,10 @@ const handleMultiDvn = event => {
       query ConfigsWithRequired($minRequired: Int!, $limit: Int!) {
         OAppSecurityConfig(
           where: {
-            configRequiredDVNCount: { _gte: $minRequired }
+            _and: [
+              { configRequiredDVNCount: { _gte: $minRequired } },
+              { configRequiredDVNCount: { _neq: 255 } }
+            ]
           }
           order_by: { configRequiredDVNCount: desc, lastUpdatedTimestamp: desc }
           limit: $limit
@@ -850,6 +984,7 @@ const handleMultiDvn = event => {
           configOptionalDVNCount
           configOptionalDVNThreshold
           configRequiredDVNs
+          configOptionalDVNs
           lastUpdatedTimestamp
         }
       }
@@ -858,7 +993,10 @@ const handleMultiDvn = event => {
       query ConfigsWithRequired($minRequired: Int!) {
         OAppSecurityConfig(
           where: {
-            configRequiredDVNCount: { _gte: $minRequired }
+            _and: [
+              { configRequiredDVNCount: { _gte: $minRequired } },
+              { configRequiredDVNCount: { _neq: 255 } }
+            ]
           }
           order_by: { configRequiredDVNCount: desc, lastUpdatedTimestamp: desc }
         ) {
@@ -871,6 +1009,7 @@ const handleMultiDvn = event => {
           configOptionalDVNCount
           configOptionalDVNThreshold
           configRequiredDVNs
+          configOptionalDVNs
           lastUpdatedTimestamp
         }
       }
@@ -893,6 +1032,7 @@ const handleMultiDvn = event => {
       ...data,
       OAppSecurityConfig: (data.OAppSecurityConfig || []).filter(config => {
         const required = Number(config?.configRequiredDVNCount ?? 0);
+        if (required === 255) return false;
         const addresses = Array.isArray(config?.configRequiredDVNs)
           ? config.configRequiredDVNs.length
           : 0;
@@ -1063,6 +1203,285 @@ const handleDefaults = event => {
   });
 };
 
+const fallbackWhereClause = `{
+  _or: [
+    { configRequiredDVNCount: { _is_null: true } },
+    { configRequiredDVNCount: { _eq: 0 } }
+  ]
+}`;
+
+const optionalOnlyWhereClause = `{
+  configRequiredDVNCount: { _eq: 255 }
+}`;
+
+const handleFallbackConfigs = event => {
+  event.preventDefault();
+  const data = new FormData(event.target);
+  const chainIdRaw = data.get("chainId")?.trim() ?? "";
+  const chainId = resolveChainIdValue(chainIdRaw);
+  if (chainIdRaw && !chainId) {
+    setStatus("Unknown chain identifier", "error");
+    return;
+  }
+  const limitRaw = data.get("limit")?.trim();
+  const limit = parseLimit(limitRaw);
+
+  let query;
+  let variables;
+
+  if (chainId) {
+    if (limit !== undefined) {
+      query = `
+        query FallbackConfigsChainLimit($chainId: numeric!, $limit: Int!) {
+          OAppSecurityConfig(
+            where: {
+              _and: [
+                { chainId: { _eq: $chainId } },
+                ${fallbackWhereClause}
+              ]
+            }
+            order_by: { lastUpdatedTimestamp: desc }
+            limit: $limit
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configRequiredDVNs
+            configOptionalDVNCount
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = { chainId, limit };
+    } else {
+      query = `
+        query FallbackConfigsChain($chainId: numeric!) {
+          OAppSecurityConfig(
+            where: {
+              _and: [
+                { chainId: { _eq: $chainId } },
+                ${fallbackWhereClause}
+              ]
+            }
+            order_by: { lastUpdatedTimestamp: desc }
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configRequiredDVNs
+            configOptionalDVNCount
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = { chainId };
+    }
+  } else {
+    if (limit !== undefined) {
+      query = `
+        query FallbackConfigsLimit($limit: Int!) {
+          OAppSecurityConfig(
+            where: ${fallbackWhereClause}
+            order_by: { lastUpdatedTimestamp: desc }
+            limit: $limit
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configRequiredDVNs
+            configOptionalDVNCount
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = { limit };
+    } else {
+      query = `
+        query FallbackConfigs {
+          OAppSecurityConfig(
+            where: ${fallbackWhereClause}
+            order_by: { lastUpdatedTimestamp: desc }
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configRequiredDVNs
+            configOptionalDVNCount
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = {};
+    }
+  }
+
+  const descriptionParts = [
+    "Configs using default DVNs",
+    chainId ? formatChainLabel(chainId) : "all chains",
+    limit !== undefined ? `limit ${limit}` : "no limit",
+  ];
+
+  executeQuery({
+    description: descriptionParts.join(" · "),
+    query,
+    variables,
+  });
+};
+
+const handleOptionalOnlyConfigs = event => {
+  event.preventDefault();
+  const data = new FormData(event.target);
+  const chainIdRaw = data.get("chainId")?.trim() ?? "";
+  const chainId = resolveChainIdValue(chainIdRaw);
+  if (chainIdRaw && !chainId) {
+    setStatus("Unknown chain identifier", "error");
+    return;
+  }
+  const limitRaw = data.get("limit")?.trim();
+  const limit = parseLimit(limitRaw);
+
+  let query;
+  let variables;
+
+  if (chainId) {
+    if (limit !== undefined) {
+      query = `
+        query OptionalOnlyConfigsChainLimit($chainId: numeric!, $limit: Int!) {
+          OAppSecurityConfig(
+            where: {
+              _and: [
+                { chainId: { _eq: $chainId } },
+                ${optionalOnlyWhereClause}
+              ]
+            }
+            order_by: { lastUpdatedTimestamp: desc }
+            limit: $limit
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configOptionalDVNCount
+            configOptionalDVNThreshold
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = { chainId, limit };
+    } else {
+      query = `
+        query OptionalOnlyConfigsChain($chainId: numeric!) {
+          OAppSecurityConfig(
+            where: {
+              _and: [
+                { chainId: { _eq: $chainId } },
+                ${optionalOnlyWhereClause}
+              ]
+            }
+            order_by: { lastUpdatedTimestamp: desc }
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configOptionalDVNCount
+            configOptionalDVNThreshold
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = { chainId };
+    }
+  } else {
+    if (limit !== undefined) {
+      query = `
+        query OptionalOnlyConfigsLimit($limit: Int!) {
+          OAppSecurityConfig(
+            where: ${optionalOnlyWhereClause}
+            order_by: { lastUpdatedTimestamp: desc }
+            limit: $limit
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configOptionalDVNCount
+            configOptionalDVNThreshold
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = { limit };
+    } else {
+      query = `
+        query OptionalOnlyConfigs {
+          OAppSecurityConfig(
+            where: ${optionalOnlyWhereClause}
+            order_by: { lastUpdatedTimestamp: desc }
+          ) {
+            id
+            chainId
+            oappId
+            eid
+            receiveLibrary
+            configRequiredDVNCount
+            configOptionalDVNCount
+            configOptionalDVNThreshold
+            configOptionalDVNs
+            lastUpdatedTimestamp
+            lastUpdatedByEventId
+          }
+        }
+      `;
+      variables = {};
+    }
+  }
+
+  const descriptionParts = [
+    "Optional-only configs (required=255)",
+    chainId ? formatChainLabel(chainId) : "all chains",
+    limit !== undefined ? `limit ${limit}` : "no limit",
+  ];
+
+  executeQuery({
+    description: descriptionParts.join(" · "),
+    query,
+    variables,
+  });
+};
+
 const handleCustomQuery = event => {
   event.preventDefault();
   const data = new FormData(event.target);
@@ -1138,6 +1557,12 @@ const registerEventHandlers = () => {
     .getElementById("multi-dvn-form")
     .addEventListener("submit", handleMultiDvn);
   document
+    .getElementById("fallback-configs-form")
+    .addEventListener("submit", handleFallbackConfigs);
+  document
+    .getElementById("optional-only-configs-form")
+    .addEventListener("submit", handleOptionalOnlyConfigs);
+  document
     .getElementById("packet-samples-form")
     .addEventListener("submit", handlePacketSamples);
   document
@@ -1148,6 +1573,25 @@ const registerEventHandlers = () => {
     .addEventListener("submit", handleCustomQuery);
   pingEndpointBtn.addEventListener("click", pingEndpoint);
   copyResultsBtn.addEventListener("click", copyResults);
+  summaryUploadInput?.addEventListener("change", async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+      renderResult({
+        description: `Loaded summary from ${file.name}`,
+        durationMs: 0,
+        data: json,
+        errors: [],
+      });
+      setStatus("Summary loaded", "ok");
+    } catch (error) {
+      setStatus("Invalid summary", "error");
+    } finally {
+      event.target.value = "";
+    }
+  });
 };
 
 loadStoredEndpoint();
