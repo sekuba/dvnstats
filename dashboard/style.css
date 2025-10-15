@@ -214,7 +214,9 @@ pre {
   font-size: 0.85rem;
 }
 
-.timestamp-value {
+.timestamp-value,
+.chain-value,
+.eid-value {
   cursor: help;
   text-decoration: underline dotted rgba(255, 255, 255, 0.25);
 }

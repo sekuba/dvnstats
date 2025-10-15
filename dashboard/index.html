@@ -15,7 +15,7 @@
         <input
           id="endpoint"
           type="url"
-          placeholder="http://localhost:9991/graphql"
+          placeholder="http://localhost:8080/v1/graphql"
           spellcheck="false"
         />
         <button id="ping-endpoint">Ping</button>
@@ -33,7 +33,13 @@
           </label>
           <label>
             Chain (optional)
-            <input name="chainId" type="number" min="0" step="1" />
+            <input
+              name="chainId"
+              type="text"
+              inputmode="numeric"
+              list="indexed-chains"
+              placeholder="chainId or search"
+            />
           </label>
           <button type="submit">Run</button>
         </form>
@@ -54,7 +60,14 @@
           </label>
           <label>
             Origin Eid
-            <input name="eid" type="number" required />
+            <input
+              name="eid"
+              type="text"
+              inputmode="numeric"
+              list="all-eids"
+              placeholder="eid or search"
+              required
+            />
           </label>
           <button type="submit">Run</button>
         </form>
@@ -80,7 +93,14 @@
         <form id="packet-samples-form">
           <label>
             Chain ID
-            <input name="chainId" type="number" required />
+            <input
+              name="chainId"
+              type="text"
+              inputmode="numeric"
+              list="indexed-chains"
+              placeholder="chainId or search"
+              required
+            />
           </label>
           <label>
             Receiver (lowercase)
@@ -105,7 +125,14 @@
         <form id="defaults-form">
           <label>
             Chain ID
-            <input name="chainId" type="number" required />
+            <input
+              name="chainId"
+              type="text"
+              inputmode="numeric"
+              list="indexed-chains"
+              placeholder="chainId or search"
+              required
+            />
           </label>
           <label>
             Limit (optional)
@@ -146,6 +173,9 @@
         <div id="results"></div>
       </section>
     </main>
+
+    <datalist id="indexed-chains"></datalist>
+    <datalist id="all-eids"></datalist>
 
     <template id="table-template">
       <table>
