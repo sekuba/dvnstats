@@ -36,5 +36,4 @@ build
 .env
 hyperindex-llm-docs.mdx
 hypersync-llm-docs.mdx
-layerzero.json
 packet_security_summary.json

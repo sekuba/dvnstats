@@ -1,12 +1,11 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `config.yaml` defines all chains and blockchain events we are indexing
-- `src/` holds TypeScript event handlers (see `EventHandlers.ts`) orchestrating indexer persistence.
+- `config.yaml` defines all chains and blockchain events we are indexing.
+- `src/` holds TypeScript event handlers and CLI utilities (see `EventHandlers.ts` and `dashboard/index.ts`) orchestrating indexer persistence and reporting.
 - `generated/` stores Envio codegen outputs; treat as read-only and refresh with `pnpm codegen`.
-- `scripts/` contains operational tooling such as `packetSecuritySummary.js` for security config (DVN) stats exports.
-- `dashboard/` hosts the static explorer; open `index.html` locally or serve it with `pnpm dlx serve`.
-- `test/` mirrors handler behavior with ts-mocha specs; align filenames with the contracts under test.
+- `scripts/` reserved for ad-hoc operational tooling; prefer adding new utilities under `src/dashboard/` when they require the compiled runtime.
+- `test/` mirrors handler behaviour with ts-mocha specs; align filenames with the contracts under test.
 - Config assets sit at the repo root (`config.yaml`, `schema.graphql`, `layerzero.json`); `build/` and `generated/` artifacts may be recreated freely.
 
 ## Build, Test, and Development Commands
@@ -14,8 +13,8 @@
 - `pnpm start` runs the compiled indexer against configured endpoints for production-style verification.
 - `pnpm codegen` rebuilds TypeScript types from `config.yaml` and `schema.graphql`.
 - `pnpm build` compiles TypeScript; `pnpm clean` resets project references.
-- `pnpm stats:packets` writes `packet_security_summary.json`; override `--days` as needed.
 - `pnpm test` executes the mocha suite (alias of `pnpm mocha`); append `--watch` when iterating.
+- `pnpm dashboard` launches the TUI security dashboard against the configured GraphQL endpoint. Override `--endpoint`, `--recent-hours`, `--history-days`, `--config-limit`, `--packet-limit`, `--history-sample-limit`, etc., or tweak them in-app via the settings panel (also honouring `DASH_*` env vars).
 
 ## Coding Style & Naming Conventions
 - Use TypeScript with 2-space indentation, trailing commas, and `const`; prefer arrow functions for handlers.
@@ -49,4 +48,4 @@
   - Optional DVNs may exceed the threshold, but at least `optionalDVNThreshold` of them must sign any packet validated with optional-only configs.
 - **Reference Data**:
   - `layerzero.json` supplies DVN metadata (names, chain/address mappings) and ancillary protocol information.
-  - `scripts/packetSecuritySummary.js` exposes `LAYERZERO_CHAINS_V2`, mapping chain names to chain IDs and endpoint IDs (EIDs); mirror or supersede this mapping in indexer code as needed.
+  - The TUI dashboard reads DVN clear-names from the indexed `DvnMetadata` table; regenerate metadata by replaying events (`pnpm dashboard` relies on the live index).
