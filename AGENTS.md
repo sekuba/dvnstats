@@ -36,3 +36,17 @@
 
 ## Data & Configuration Notes
 - Maintain parity between `config.yaml` and `schema.graphql`; rerun `pnpm codegen` after edits.
+
+## LayerZero Security Config Indexing Spec
+- **Scope**: Track only incoming packets delivered through EndpointV2 contracts.
+- **Security Config Definition**: A packet's security posture is determined by its `receiveLibrary` address and that library's configuration tuple (`confirmations`, DVN counts, DVN thresholds, DVN address arrays).
+- **Receive Library Coverage**: Persist full configuration history for the `ReceiveUln302` library. For packets delivered through other libraries, capture the library address and flag that detailed config data is unavailable.
+- **Configuration Scoping**: Security configs are owned by OApp deployers and keyed by the tuple `(chainId of the OApp, oappAddress, originEid)`. Each origin EID can point to a distinct config for a given OApp on a given chain.
+- **Fallback Semantics**: Resolve effective configs by overlaying custom settings onto per-chain/per-origin defaults. Any zero or empty field (`requiredDVNCount`, `optionalDVNCount`, `optionalDVNThreshold`, `requiredDVNs`, `optionalDVNs`) inherits from the corresponding default. Defaults also supply the receive library address when none is set.
+- **Special Cases**:
+  - `requiredDVNCount = 255` signals that no required DVNs are enforced; validation falls back to optional DVNs governed by `optionalDVNThreshold`.
+  - For non-255 values, `requiredDVNCount` must equal the length of `requiredDVNs`, and all listed required addresses must sign a packet.
+  - Optional DVNs may exceed the threshold, but at least `optionalDVNThreshold` of them must sign any packet validated with optional-only configs.
+- **Reference Data**:
+  - `layerzero.json` supplies DVN metadata (names, chain/address mappings) and ancillary protocol information.
+  - `scripts/packetSecuritySummary.js` exposes `LAYERZERO_CHAINS_V2`, mapping chain names to chain IDs and endpoint IDs (EIDs); mirror or supersede this mapping in indexer code as needed.
