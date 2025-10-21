@@ -5,9 +5,21 @@ const chainLookup = {
   byEid: new Map(),
 };
 const copyFeedbackTimers = new WeakMap();
+const oappChainOptionsState = {
+  list: [],
+  map: new Map(),
+};
 const chainMetadataPromise = loadChainMetadata();
 chainMetadataPromise.catch(() => {});
 chainMetadataPromise.then(() => {
+  if (resultsState.lastRender) {
+    const { rows, payload, meta } = resultsState.lastRender;
+    updateResultsPane(rows, payload, meta);
+  }
+});
+const oappChainOptionsPromise = loadOAppChainOptions();
+oappChainOptionsPromise.catch(() => {});
+oappChainOptionsPromise.then(() => {
   if (resultsState.lastRender) {
     const { rows, payload, meta } = resultsState.lastRender;
     updateResultsPane(rows, payload, meta);
@@ -65,6 +77,166 @@ const queryRegistry = {
     },
     extractRows: (data) => data?.OApp ?? [],
   },
+  "oapp-security-config": {
+    label: "OApp Security Config",
+    description: "Resolve the current security posture for a single OApp",
+    query: `
+      query CurrentSecurityConfig($oappId: String!) {
+        OApp(where: { id: { _eq: $oappId } }) {
+          id
+          chainId
+          address
+          totalPacketsReceived
+          lastPacketBlock
+          lastPacketTimestamp
+        }
+        OAppSecurityConfig(
+          where: { oappId: { _eq: $oappId } }
+          order_by: { eid: asc }
+        ) {
+          id
+          eid
+          chainId
+          oapp
+          effectiveReceiveLibrary
+          effectiveConfirmations
+          effectiveRequiredDVNCount
+          effectiveOptionalDVNCount
+          effectiveOptionalDVNThreshold
+          effectiveRequiredDVNs
+          effectiveOptionalDVNs
+          isConfigTracked
+          usesDefaultLibrary
+          usesDefaultConfig
+          usesRequiredDVNSentinel
+          fallbackFields
+          defaultLibraryVersionId
+          defaultConfigVersionId
+          libraryOverrideVersionId
+          configOverrideVersionId
+          lastComputedBlock
+          lastComputedTimestamp
+          lastComputedByEventId
+        }
+      }
+    `,
+    initialize: ({ card }) => {
+      const chainInput = card.querySelector('[data-chain-input]');
+      const chainLabel = card.querySelector('[data-chain-label]');
+      const datalist = card.querySelector('[data-chain-datalist]');
+
+      if (datalist) {
+        oappChainOptionsPromise.then((options) => {
+          populateChainDatalist(datalist, options);
+        });
+      }
+
+      if (chainInput && chainLabel) {
+        const updateLabel = () => {
+          const chainId = chainInput.value.trim();
+          const display = getChainDisplayLabel(chainId);
+          chainLabel.textContent = display
+            ? `Chain: ${display}`
+            : "Chain not selected.";
+        };
+        chainInput.addEventListener("input", updateLabel);
+        oappChainOptionsPromise.then(() => updateLabel());
+      }
+
+      const idInput = card.querySelector('input[name="oappId"]');
+      if (idInput) {
+        idInput.addEventListener("blur", () => {
+          if (!idInput.value) return;
+          try {
+            const normalized = normalizeOAppId(idInput.value);
+            if (normalized !== idInput.value) {
+              idInput.value = normalized;
+            }
+          } catch (error) {
+            // ignore invalid input on blur
+          }
+        });
+      }
+    },
+    buildVariables: (card) => {
+      const idInput = card.querySelector('input[name="oappId"]');
+      const chainInput = card.querySelector('input[name="chainId"]');
+      const addressInput = card.querySelector('input[name="oappAddress"]');
+
+      const rawId = idInput?.value?.trim() ?? "";
+      let oappId = "";
+      let chainId = "";
+      let address = "";
+
+      if (rawId) {
+        const normalizedId = normalizeOAppId(rawId);
+        const parts = normalizedId.split("_");
+        chainId = parts[0];
+        address = parts[1];
+        oappId = normalizedId;
+        if (chainInput) {
+          chainInput.value = chainId;
+          chainInput.dispatchEvent(new Event("input"));
+        }
+        if (addressInput) {
+          addressInput.value = address;
+        }
+        if (idInput) {
+          idInput.value = oappId;
+        }
+      } else {
+        chainId = chainInput?.value?.trim() ?? "";
+        address = addressInput?.value?.trim() ?? "";
+        if (!chainId || !address) {
+          throw new Error("Provide an OApp ID or destination chain plus address.");
+        }
+        address = normalizeAddress(address);
+        oappId = `${chainId}_${address}`;
+        if (idInput) {
+          idInput.value = oappId;
+        }
+        if (addressInput) {
+          addressInput.value = address;
+        }
+        if (chainInput) {
+          chainInput.dispatchEvent(new Event("input"));
+        }
+      }
+
+      const chainDisplay = getChainDisplayLabel(chainId) || chainId;
+      const summary = chainId ? `${chainDisplay} • ${address}` : `${address}`;
+
+      return {
+        variables: { oappId },
+        meta: {
+          limitLabel: `oappId=${oappId}`,
+          summary,
+          chainId,
+          chainLabel: chainDisplay,
+          oappAddress: address,
+          resultLabel: chainId
+            ? `OApp Security Config – ${chainDisplay}`
+            : "OApp Security Config",
+        },
+      };
+    },
+    processResponse: (payload, meta) => {
+      const oapp = payload?.data?.OApp?.[0] ?? null;
+      const rows = payload?.data?.OAppSecurityConfig ?? [];
+      const enrichedMeta = { ...meta };
+
+      if (oapp) {
+        const chainId = String(oapp.chainId ?? "");
+        const chainDisplay = getChainDisplayLabel(chainId) || enrichedMeta.chainLabel || chainId;
+        enrichedMeta.oappInfo = oapp;
+        enrichedMeta.chainLabel = chainDisplay;
+        enrichedMeta.summary = enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
+        enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
+      }
+
+      return { rows, meta: enrichedMeta };
+    },
+  },
 };
 
 const resultsTitle = document.getElementById("results-title");
@@ -109,6 +281,14 @@ document.querySelectorAll("[data-query-key]").forEach((card) => {
   if (!resultsState.bootstrapTriggered) {
     resultsState.bootstrapTriggered = true;
     queueMicrotask(run);
+  }
+
+  if (typeof config.initialize === "function") {
+    try {
+      config.initialize({ card, run });
+    } catch (error) {
+      console.warn(`initialize hook failed for ${key}`, error);
+    }
   }
 });
 
@@ -159,6 +339,10 @@ async function runQuery(key, card, config, statusEl) {
       ? buildResult.meta
       : {};
 
+  if (!variables || Object.keys(variables).length === 0) {
+    throw new Error("Missing query input.");
+  }
+
   const requestBody = JSON.stringify({
     query: config.query,
     variables,
@@ -190,15 +374,30 @@ async function runQuery(key, card, config, statusEl) {
       throw new Error(message);
     }
 
-    const rows = config.extractRows(payload.data);
     const elapsed = performance.now() - startedAt;
-    const meta = {
+    const baseMeta = {
       elapsed,
       variables,
       requestId,
-      label: config.label,
+      label: extraMeta.resultLabel || config.label,
       limitLabel: extraMeta.limitLabel,
+      summary: extraMeta.summary,
+      chainLabel: extraMeta.chainLabel,
+      oappAddress: extraMeta.oappAddress,
     };
+
+    let rows = [];
+    let finalMeta = { ...baseMeta };
+
+    if (typeof config.processResponse === "function") {
+      const result = config.processResponse(payload, baseMeta) || {};
+      rows = Array.isArray(result.rows) ? result.rows : [];
+      if (result.meta && typeof result.meta === "object") {
+        finalMeta = { ...baseMeta, ...result.meta };
+      }
+    } else if (typeof config.extractRows === "function") {
+      rows = config.extractRows(payload.data) ?? [];
+    }
 
     setStatus(
       statusEl,
@@ -209,7 +408,7 @@ async function runQuery(key, card, config, statusEl) {
     );
 
     if (requestId === resultsState.latestRequest) {
-      updateResultsPane(rows, payload, meta);
+      updateResultsPane(rows, payload, finalMeta);
     }
 
     return rows;
@@ -220,9 +419,10 @@ async function runQuery(key, card, config, statusEl) {
     if (requestId === resultsState.latestRequest) {
       showErrorInResults(
         {
-          label: config.label,
+          label: extraMeta.resultLabel || config.label,
           variables,
           limitLabel: extraMeta.limitLabel,
+          summary: extraMeta.summary,
         },
         error,
       );
@@ -232,38 +432,51 @@ async function runQuery(key, card, config, statusEl) {
 }
 
 function updateResultsPane(rows, payload, meta) {
+  const metaSnapshot = { ...meta };
   resultsState.lastRows = rows;
   resultsState.lastPayload = payload;
-  resultsState.lastQueryLabel = meta.label;
-  resultsState.lastRender = { rows, payload, meta };
+  resultsState.lastQueryLabel = metaSnapshot.label;
+  resultsState.lastRender = { rows, payload, meta: metaSnapshot };
 
   copyJsonButton.disabled = rows.length === 0;
 
-  const variableHints = buildVariableSummary(meta.variables);
+  const variableHints = buildVariableSummary(metaSnapshot.variables);
   const metaParts = [
     `${rows.length} row${rows.length === 1 ? "" : "s"}`,
-    `${Math.round(meta.elapsed)} ms`,
-    meta.limitLabel,
+    metaSnapshot.summary,
+    `${Math.round(metaSnapshot.elapsed)} ms`,
+    metaSnapshot.limitLabel,
     variableHints,
     new Date().toLocaleTimeString(),
   ].filter(Boolean);
 
-  resultsTitle.textContent = meta.label;
+  resultsTitle.textContent = metaSnapshot.label;
   resultsMeta.textContent = metaParts.join(" • ");
+
+  const summaryPanel = renderOAppSummary(metaSnapshot);
 
   if (!rows.length) {
     resultsBody.classList.add("empty");
-    resultsBody.innerHTML = `
-      <div class="placeholder">
-        <p class="placeholder-title">No rows returned</p>
-        <p>Adjust filters or try again.</p>
-      </div>
+    resultsBody.innerHTML = "";
+    if (summaryPanel) {
+      resultsBody.appendChild(summaryPanel);
+    }
+    const placeholder = document.createElement("div");
+    placeholder.className = "placeholder";
+    placeholder.innerHTML = `
+      <p class="placeholder-title">No rows returned</p>
+      <p>Adjust filters or try again.</p>
     `;
+    resultsBody.appendChild(placeholder);
     return;
   }
 
   resultsBody.classList.remove("empty");
   resultsBody.innerHTML = "";
+
+  if (summaryPanel) {
+    resultsBody.appendChild(summaryPanel);
+  }
 
   const table = buildTable(rows);
   const payloadDetails = buildPayloadDetails(payload);
@@ -276,6 +489,7 @@ function showErrorInResults(meta, error) {
   copyJsonButton.disabled = true;
   resultsTitle.textContent = `${meta.label} (failed)`;
   const metaParts = [
+    meta.summary,
     meta.limitLabel,
     buildVariableSummary(meta.variables),
     new Date().toLocaleTimeString(),
@@ -666,6 +880,151 @@ function flipButtonTemporarily(button, label, timeoutMs) {
   }, timeoutMs);
 }
 
+async function loadOAppChainOptions() {
+  try {
+    const response = await fetch("./oapp-chains.json", { cache: "no-store" });
+    if (!response.ok) {
+      return [];
+    }
+    const list = await response.json();
+    if (Array.isArray(list)) {
+      oappChainOptionsState.list = list.map((item) => ({
+        id: String(item.id ?? item.chainId ?? ""),
+        label: String(item.label ?? item.name ?? item.id ?? ""),
+      }));
+      oappChainOptionsState.map = new Map(
+        oappChainOptionsState.list.map((item) => [item.id, item.label]),
+      );
+    }
+  } catch (error) {
+    console.warn("[chains] failed to load oapp chain options", error);
+  }
+  return oappChainOptionsState.list;
+}
+
+function populateChainDatalist(datalist, options) {
+  if (!datalist) {
+    return;
+  }
+  datalist.innerHTML = "";
+  options.forEach((option) => {
+    if (!option || !option.id) {
+      return;
+    }
+    const node = document.createElement("option");
+    const display = composeChainDisplay(option.label, option.id);
+    node.value = option.id;
+    node.label = display;
+    node.textContent = display;
+    datalist.appendChild(node);
+  });
+}
+
+function getChainDisplayLabel(chainId) {
+  if (!chainId && chainId !== 0) {
+    return "";
+  }
+  const key = String(chainId);
+  if (oappChainOptionsState.map.has(key)) {
+    const label = oappChainOptionsState.map.get(key);
+    return composeChainDisplay(label, key);
+  }
+  const chainInfo = resolveChainLabel(key, "native");
+  if (chainInfo) {
+    return composeChainDisplay(chainInfo.primary, key);
+  }
+  return key;
+}
+
+function composeChainDisplay(label, chainId) {
+  if (label) {
+    return `${label} (${chainId})`;
+  }
+  return String(chainId ?? "");
+}
+
+function normalizeAddress(value) {
+  if (!value) {
+    throw new Error("Address is required.");
+  }
+  let trimmed = String(value).trim();
+  if (!trimmed) {
+    throw new Error("Address is required.");
+  }
+  if (!trimmed.startsWith("0x")) {
+    trimmed = `0x${trimmed}`;
+  }
+  if (!/^0x[0-9a-fA-F]{40}$/.test(trimmed)) {
+    throw new Error("Invalid address format.");
+  }
+  return trimmed.toLowerCase();
+}
+
+function normalizeOAppId(value) {
+  if (!value) {
+    throw new Error("OApp ID is required.");
+  }
+  const trimmed = String(value).trim();
+  const parts = trimmed.split("_");
+  if (parts.length !== 2) {
+    throw new Error("OApp ID must follow 'chainId_address'.");
+  }
+  const chainId = parts[0]?.trim();
+  const address = normalizeAddress(parts[1]);
+  if (!chainId) {
+    throw new Error("OApp ID must include a chainId.");
+  }
+  return `${chainId}_${address}`;
+}
+
+function renderOAppSummary(meta) {
+  const info = meta?.oappInfo;
+  if (!info) {
+    return null;
+  }
+
+  const panel = document.createElement("div");
+  panel.className = "summary-panel";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "OApp Overview";
+  panel.appendChild(heading);
+
+  const list = document.createElement("dl");
+  panel.appendChild(list);
+
+  appendSummaryRow(list, "OApp ID", info.id ?? "");
+  appendSummaryRow(list, "Chain", meta.chainLabel || String(info.chainId ?? ""));
+  appendSummaryRow(list, "Address", info.address ?? "");
+  if (info.totalPacketsReceived !== undefined && info.totalPacketsReceived !== null) {
+    appendSummaryRow(list, "Total Packets", String(info.totalPacketsReceived));
+  }
+  if (info.lastPacketBlock !== undefined && info.lastPacketBlock !== null) {
+    appendSummaryRow(list, "Last Packet Block", String(info.lastPacketBlock));
+  }
+  if (info.lastPacketTimestamp !== undefined && info.lastPacketTimestamp !== null) {
+    const ts = formatTimestampValue(info.lastPacketTimestamp);
+    if (ts) {
+      appendSummaryRow(list, "Last Packet Time", ts.primary);
+    }
+  }
+
+  return panel;
+}
+
+function appendSummaryRow(list, label, value) {
+  if (value === undefined || value === null || value === "") {
+    return;
+  }
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+  list.appendChild(dt);
+
+  const dd = document.createElement("dd");
+  dd.textContent = String(value);
+  list.appendChild(dd);
+}
+
 function buildVariableSummary(variables = {}) {
   const parts = [];
   if (!variables) {
@@ -676,6 +1035,9 @@ function buildVariableSummary(variables = {}) {
       continue;
     }
     if (key === "minPackets" && (value === "0" || value === 0)) {
+      continue;
+    }
+    if (key === "oappId") {
       continue;
     }
     parts.push(`${key}=${value}`);

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "1",
+    "label": "Ethereum"
+  },
+  {
+    "id": "10",
+    "label": "Optimism"
+  },
+  {
+    "id": "56",
+    "label": "BNB"
+  },
+  {
+    "id": "130",
+    "label": "unichain"
+  },
+  {
+    "id": "137",
+    "label": "Polygon"
+  },
+  {
+    "id": "324",
+    "label": "zkSync"
+  },
+  {
+    "id": "480",
+    "label": "worldchain"
+  },
+  {
+    "id": "999",
+    "label": "hyperliquid"
+  },
+  {
+    "id": "1135",
+    "label": "lisk"
+  },
+  {
+    "id": "1868",
+    "label": "soneium"
+  },
+  {
+    "id": "8453",
+    "label": "Base"
+  },
+  {
+    "id": "34443",
+    "label": "Mode"
+  },
+  {
+    "id": "42161",
+    "label": "Arbitrum"
+  },
+  {
+    "id": "57073",
+    "label": "ink"
+  },
+  {
+    "id": "59144",
+    "label": "Linea"
+  },
+  {
+    "id": "81457",
+    "label": "Blast"
+  },
+  {
+    "id": "534352",
+    "label": "Scroll"
+  },
+  {
+    "id": "7777777",
+    "label": "zora"
+  }
+]

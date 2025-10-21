@@ -146,6 +146,14 @@ main {
   width: 100%;
 }
 
+.card-body .field-hint {
+  margin: -0.2rem 0 0.8rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #444;
+}
+
 .card-query {
   border: 3px solid var(--ink);
   background: #fff;
@@ -359,6 +367,37 @@ td {
   color: #4a4a4a;
   letter-spacing: normal;
   text-transform: none;
+}
+
+.summary-panel {
+  border-bottom: 4px solid var(--ink);
+  padding: 1.1rem 1.25rem;
+  background: var(--accent);
+}
+
+.summary-panel h3 {
+  margin: 0 0 0.8rem;
+  text-transform: uppercase;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+}
+
+.summary-panel dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.45rem 1.2rem;
+  font-size: 0.8rem;
+}
+
+.summary-panel dt {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.summary-panel dd {
+  margin: 0;
+  word-break: break-all;
 }
 
 .error-banner {
