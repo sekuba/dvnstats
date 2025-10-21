@@ -268,26 +268,97 @@ th {
   letter-spacing: 0.1em;
 }
 
-td .cell-copy {
+td {
+  position: relative;
+}
+
+.copyable {
   display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  cursor: copy;
+  user-select: text;
+  padding: 0.2rem 0.3rem;
+  border: 2px solid transparent;
+  position: relative;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
-.copy-btn {
-  padding: 0.2rem 0.45rem;
-  font-size: 0.7rem;
-  border-width: 2px;
-  box-shadow: 3px 3px 0 var(--ink);
+.copyable:hover {
+  border-color: var(--muted);
+  background: rgba(13, 13, 13, 0.05);
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.1rem 0.35rem;
+.copyable::after {
+  position: absolute;
+  top: -0.75rem;
+  right: 0.35rem;
+  padding: 0.15rem 0.35rem;
   border: 2px solid var(--ink);
   background: var(--paper);
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+  content: "";
+}
+
+.copyable.copied {
+  border-color: var(--success);
+  background: rgba(27, 156, 133, 0.18);
+}
+
+.copyable.copied::after {
+  content: "copied";
+  border-color: var(--success);
+  color: var(--success);
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.copyable.copy-failed {
+  border-color: var(--danger);
+  background: rgba(255, 79, 79, 0.18);
+}
+
+.copyable.copy-failed::after {
+  content: "copy failed";
+  border-color: var(--danger);
+  color: var(--danger);
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.copyable code {
+  background: rgba(13, 13, 13, 0.08);
+  padding: 0.15rem 0.25rem;
+  border-radius: 2px;
+  word-break: break-all;
+}
+
+.copyable pre {
+  margin: 0;
+  width: 100%;
+  max-height: 12rem;
+  overflow: auto;
+  background: rgba(13, 13, 13, 0.04);
+  padding: 0.45rem;
+  border: 2px solid rgba(13, 13, 13, 0.2);
+  box-sizing: border-box;
   font-size: 0.75rem;
+}
+
+.cell-secondary {
+  font-size: 0.75rem;
+  color: #4a4a4a;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .error-banner {
@@ -318,6 +389,45 @@ td .cell-copy {
   white-space: pre;
 }
 
+.copy-toast-container {
+  position: fixed;
+  top: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  z-index: 999;
+  pointer-events: none;
+}
+
+.copy-toast {
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 6px 6px 0 var(--ink);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.copy-toast.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.copy-toast-success {
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.copy-toast-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 @media (max-width: 720px) {
   .page-header,
   main {
@@ -330,5 +440,11 @@ td .cell-copy {
 
   table {
     min-width: 100%;
+  }
+
+  .copy-toast-container {
+    top: auto;
+    bottom: 1.5rem;
+    right: 1.25rem;
   }
 }

@@ -1,5 +1,19 @@
 const GRAPHQL_ENDPOINT = "http://localhost:8080/v1/graphql";
 
+const chainLookup = {
+  byNativeId: new Map(),
+  byEid: new Map(),
+};
+const copyFeedbackTimers = new WeakMap();
+const chainMetadataPromise = loadChainMetadata();
+chainMetadataPromise.catch(() => {});
+chainMetadataPromise.then(() => {
+  if (resultsState.lastRender) {
+    const { rows, payload, meta } = resultsState.lastRender;
+    updateResultsPane(rows, payload, meta);
+  }
+});
+
 const queryRegistry = {
   "top-oapps": {
     label: "Top OApps",
@@ -65,6 +79,7 @@ const resultsState = {
   lastRows: [],
   lastPayload: null,
   lastQueryLabel: "Awaiting query",
+  lastRender: null,
 };
 
 document.querySelectorAll("[data-query-key]").forEach((card) => {
@@ -91,7 +106,6 @@ document.querySelectorAll("[data-query-key]").forEach((card) => {
     run();
   });
 
-  // Auto-run the first registered query on load
   if (!resultsState.bootstrapTriggered) {
     resultsState.bootstrapTriggered = true;
     queueMicrotask(run);
@@ -125,15 +139,26 @@ copyJsonButton?.addEventListener("click", async () => {
   }
 });
 
+resultsBody?.addEventListener("click", handleCopyableClick);
+
 async function runQuery(key, card, config, statusEl) {
   const requestId = ++resultsState.requestSeq;
   resultsState.latestRequest = requestId;
 
   setStatus(statusEl, "Loading…", "loading");
 
-  const buildResult = config.buildVariables(card) ?? {};
-  const variables = buildResult.variables ?? {};
-  const extraMeta = buildResult.meta ?? {};
+  const buildResult = config.buildVariables?.(card) ?? {};
+  const variables =
+    Object.prototype.hasOwnProperty.call(buildResult, "variables") && buildResult.variables
+      ? buildResult.variables
+      : buildResult.variables === null
+        ? {}
+        : buildResult;
+  const extraMeta =
+    Object.prototype.hasOwnProperty.call(buildResult, "meta") && buildResult.meta
+      ? buildResult.meta
+      : {};
+
   const requestBody = JSON.stringify({
     query: config.query,
     variables,
@@ -177,14 +202,13 @@ async function runQuery(key, card, config, statusEl) {
 
     setStatus(
       statusEl,
-      `Fetched ${rows.length} rows in ${elapsed.toFixed(0)} ms`,
+      `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(
+        0,
+      )} ms`,
       "success",
     );
 
     if (requestId === resultsState.latestRequest) {
-      resultsState.lastRows = rows;
-      resultsState.lastPayload = payload;
-      resultsState.lastQueryLabel = config.label;
       updateResultsPane(rows, payload, meta);
     }
 
@@ -208,6 +232,11 @@ async function runQuery(key, card, config, statusEl) {
 }
 
 function updateResultsPane(rows, payload, meta) {
+  resultsState.lastRows = rows;
+  resultsState.lastPayload = payload;
+  resultsState.lastQueryLabel = meta.label;
+  resultsState.lastRender = { rows, payload, meta };
+
   copyJsonButton.disabled = rows.length === 0;
 
   const variableHints = buildVariableSummary(meta.variables);
@@ -252,6 +281,11 @@ function showErrorInResults(meta, error) {
     new Date().toLocaleTimeString(),
   ].filter(Boolean);
   resultsMeta.textContent = metaParts.join(" • ") || "Request failed.";
+
+  resultsState.lastRows = [];
+  resultsState.lastPayload = null;
+  resultsState.lastQueryLabel = meta.label;
+  resultsState.lastRender = null;
 
   resultsBody.classList.remove("empty");
   resultsBody.innerHTML = "";
@@ -298,42 +332,99 @@ function buildTable(rows) {
 }
 
 function renderCell(column, value) {
-  if (value === null || value === undefined) {
-    return document.createTextNode("—");
+  const { nodes, copyValue, isCopyable } = interpretValue(column, value);
+  if (!isCopyable) {
+    const fragment = document.createDocumentFragment();
+    nodes.forEach((node) => fragment.append(node));
+    return fragment;
   }
 
-  if (Array.isArray(value) || typeof value === "object") {
+  const container = document.createElement("div");
+  container.className = "copyable";
+
+  const content = copyValue ?? nodes.map((node) => node.textContent ?? "").join(" ").trim();
+  if (content) {
+    container.dataset.copyValue = content;
+  }
+
+  nodes.forEach((node) => container.append(node));
+  return container;
+}
+
+function interpretValue(column, value) {
+  const nodes = [];
+
+  if (value === null || value === undefined) {
+    nodes.push(document.createTextNode("—"));
+    return {
+      nodes,
+      copyValue: "null",
+      isCopyable: true,
+    };
+  }
+
+  if (Array.isArray(value) || (typeof value === "object" && value)) {
     const pre = document.createElement("pre");
     pre.textContent = JSON.stringify(value, null, 2);
-    return pre;
+    nodes.push(pre);
+    return {
+      nodes,
+      copyValue: JSON.stringify(value, null, 2),
+      isCopyable: true,
+    };
+  }
+
+  const chainPreference = chainPreferenceFromColumn(column);
+  if (chainPreference) {
+    const chainInfo = resolveChainLabel(value, chainPreference);
+    if (chainInfo) {
+      nodes.push(document.createTextNode(chainInfo.primary));
+      const secondary = document.createElement("span");
+      secondary.className = "cell-secondary";
+      secondary.textContent = chainInfo.secondary;
+      nodes.push(secondary);
+      return {
+        nodes,
+        copyValue: chainInfo.copyValue,
+        isCopyable: true,
+      };
+    }
+  }
+
+  if (looksLikeTimestampColumn(column)) {
+    const tsInfo = formatTimestampValue(value);
+    if (tsInfo) {
+      nodes.push(document.createTextNode(tsInfo.primary));
+      const secondary = document.createElement("span");
+      secondary.className = "cell-secondary";
+      secondary.textContent = tsInfo.secondary;
+      nodes.push(secondary);
+      return {
+        nodes,
+        copyValue: tsInfo.copyValue,
+        isCopyable: true,
+      };
+    }
   }
 
   if (typeof value === "string" && looksLikeHash(column, value)) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "cell-copy";
-
     const code = document.createElement("code");
     code.textContent = value;
-
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "copy-btn";
-    button.textContent = "Copy";
-    button.addEventListener("click", async () => {
-      try {
-        await navigator.clipboard.writeText(value);
-        flipButtonTemporarily(button, "Copied", 1500);
-      } catch (err) {
-        console.error("Hash copy failed", err);
-        flipButtonTemporarily(button, "Failed", 1500);
-      }
-    });
-
-    wrapper.append(code, button);
-    return wrapper;
+    nodes.push(code);
+    return {
+      nodes,
+      copyValue: value,
+      isCopyable: true,
+    };
   }
 
-  return document.createTextNode(String(value));
+  const strValue = stringifyScalar(value);
+  nodes.push(document.createTextNode(strValue));
+  return {
+    nodes,
+    copyValue: strValue,
+    isCopyable: true,
+  };
 }
 
 function buildPayloadDetails(payload) {
@@ -381,6 +472,190 @@ function looksLikeHash(column, value) {
   return /^0x[a-fA-F0-9]{16,}$/.test(value);
 }
 
+function looksLikeTimestampColumn(column) {
+  const lower = column.toLowerCase();
+  return lower.includes("timestamp") || lower.endsWith("time");
+}
+
+function looksLikeChainColumn(column) {
+  const lower = column.toLowerCase();
+  if (lower === "chainid") {
+    return true;
+  }
+  return lower.includes("chainid") || lower.endsWith("_chain_id") || lower.endsWith("_chainid");
+}
+
+function looksLikeEidColumn(column) {
+  const lower = column.toLowerCase();
+  if (lower === "eid") {
+    return true;
+  }
+  return lower.endsWith("eid") || lower.endsWith("_eid") || lower.includes("eid_");
+}
+
+function chainPreferenceFromColumn(column) {
+  if (looksLikeChainColumn(column)) {
+    return "native";
+  }
+  if (looksLikeEidColumn(column)) {
+    return "eid";
+  }
+  return null;
+}
+
+function stringifyScalar(value) {
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return value ?? "";
+}
+
+function formatTimestampValue(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  const millis = numeric < 1e12 ? numeric * 1000 : numeric;
+  const date = new Date(millis);
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+  const iso = date.toISOString().replace("T", " ").replace("Z", " UTC");
+  return {
+    primary: iso,
+    secondary: `unix ${value}`,
+    copyValue: String(value),
+  };
+}
+
+function resolveChainLabel(value, preference = "auto") {
+  const key = String(value);
+  const nativeEntry = () => {
+    if (!chainLookup.byNativeId.has(key)) {
+      return null;
+    }
+    const label = chainLookup.byNativeId.get(key);
+    return {
+      primary: label,
+      secondary: `chainId ${key}`,
+      copyValue: key,
+    };
+  };
+  const eidEntry = () => {
+    if (!chainLookup.byEid.has(key)) {
+      return null;
+    }
+    const label = chainLookup.byEid.get(key);
+    return {
+      primary: label,
+      secondary: `eid ${key}`,
+      copyValue: key,
+    };
+  };
+
+  if (preference === "native") {
+    return nativeEntry() ?? eidEntry();
+  }
+  if (preference === "eid") {
+    return eidEntry() ?? nativeEntry();
+  }
+  return nativeEntry() ?? eidEntry();
+}
+
+async function loadChainMetadata() {
+  const candidates = [
+    "./layerzero-chains.json",
+    "./layerzero.json",
+    "../layerzero.json",
+    "/layerzero.json",
+  ];
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(candidate, { cache: "no-store" });
+      if (!response.ok) {
+        continue;
+      }
+      const data = await response.json();
+      hydrateChainLookup(data);
+      console.info(`[chains] loaded metadata from ${candidate}`);
+      return candidate;
+    } catch (error) {
+      console.warn(`[chains] failed to load ${candidate}`, error);
+    }
+  }
+  console.warn("[chains] metadata not found; chain names will not be resolved");
+  return null;
+}
+
+function hydrateChainLookup(data) {
+  if (!data || typeof data !== "object") {
+    return;
+  }
+
+  const nativeTable = data.native;
+  const eidTable = data.eid;
+  if (nativeTable || eidTable) {
+    if (nativeTable && typeof nativeTable === "object") {
+      Object.entries(nativeTable).forEach(([id, label]) => {
+        if (label) {
+          chainLookup.byNativeId.set(String(id), String(label));
+        }
+      });
+    }
+    if (eidTable && typeof eidTable === "object") {
+      Object.entries(eidTable).forEach(([id, label]) => {
+        if (label) {
+          chainLookup.byEid.set(String(id), String(label));
+        }
+      });
+    }
+    return;
+  }
+
+  Object.entries(data).forEach(([key, entry]) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+
+    const baseLabel = deriveChainLabel(entry, key);
+    const chainDetails = entry.chainDetails ?? {};
+    const nativeId = chainDetails.nativeChainId;
+    if (nativeId !== undefined && nativeId !== null) {
+      chainLookup.byNativeId.set(String(nativeId), baseLabel);
+    }
+
+    if (Array.isArray(entry.deployments)) {
+      entry.deployments.forEach((deployment) => {
+        if (!deployment || typeof deployment !== "object") {
+          return;
+        }
+        const eid = deployment.eid;
+        if (!eid) {
+          return;
+        }
+
+        const stage = deployment.stage && deployment.stage !== "mainnet"
+          ? ` (${deployment.stage})`
+          : "";
+        chainLookup.byEid.set(String(eid), `${baseLabel}${stage}`);
+      });
+    }
+  });
+}
+
+function deriveChainLabel(entry, fallbackKey) {
+  const details = entry.chainDetails ?? {};
+  return (
+    details.shortName ||
+    details.name ||
+    entry.chainKey ||
+    fallbackKey
+  );
+}
+
 function flipButtonTemporarily(button, label, timeoutMs) {
   const original = button.textContent;
   button.textContent = label;
@@ -393,6 +668,9 @@ function flipButtonTemporarily(button, label, timeoutMs) {
 
 function buildVariableSummary(variables = {}) {
   const parts = [];
+  if (!variables) {
+    return "";
+  }
   for (const [key, value] of Object.entries(variables)) {
     if (value === undefined || value === null) {
       continue;
@@ -415,3 +693,88 @@ function parseOptionalPositiveInt(rawValue) {
   }
   return Number.NaN;
 }
+
+async function handleCopyableClick(event) {
+  const target = event.target.closest(".copyable");
+  if (!target || !resultsBody.contains(target)) {
+    return;
+  }
+
+  const selection = window.getSelection();
+  if (selection && selection.toString().trim()) {
+    return;
+  }
+
+  const value = target.dataset.copyValue ?? target.textContent;
+  if (!value) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(value);
+    flashCopyFeedback(target, true);
+    showCopyToast("Copied", "success");
+  } catch (error) {
+    console.error("Copy failed", error);
+    flashCopyFeedback(target, false);
+    showCopyToast("Copy failed", "error");
+  }
+}
+
+function flashCopyFeedback(element, didSucceed) {
+  element.classList.remove("copied", "copy-failed");
+  element.classList.add(didSucceed ? "copied" : "copy-failed");
+
+  const existing = copyFeedbackTimers.get(element);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const timeout = setTimeout(() => {
+    element.classList.remove("copied", "copy-failed");
+    copyFeedbackTimers.delete(element);
+  }, didSucceed ? 1200 : 1600);
+  copyFeedbackTimers.set(element, timeout);
+}
+
+function showCopyToast(message, tone = "neutral") {
+  const container = ensureToastContainer();
+  const toast = document.createElement("div");
+  toast.className = `copy-toast copy-toast-${tone}`;
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add("visible");
+  });
+
+  const timeout = setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => {
+      toast.remove();
+    }, 220);
+  }, 1600);
+
+  copyToastState.timers.push(timeout);
+  if (copyToastState.timers.length > 6) {
+    const removedTimeout = copyToastState.timers.shift();
+    if (removedTimeout) {
+      clearTimeout(removedTimeout);
+    }
+  }
+}
+
+function ensureToastContainer() {
+  if (copyToastState.container && document.body.contains(copyToastState.container)) {
+    return copyToastState.container;
+  }
+  const container = document.createElement("div");
+  container.className = "copy-toast-container";
+  document.body.appendChild(container);
+  copyToastState.container = container;
+  return container;
+}
+const copyToastState = {
+  container: null,
+  timers: [],
+};
