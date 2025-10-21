@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LayerZero Security Config Explorer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <h1>LayerZero Security Config Explorer</h1>
+        <p>
+          utility surface for slicing the Hasura indexer at <br />
+          <span class="endpoint">http://localhost:8080/v1/graphql</span>
+        </p>
+      </div>
+      <button id="refresh-all" type="button">Refresh all</button>
+    </header>
+
+    <main>
+      <section id="query-panels" aria-label="Query presets">
+        <article class="query-card" data-query-key="top-oapps">
+          <header class="card-header">
+            <div>
+              <h2>Top OApps</h2>
+              <p>Ordered by total packets received.</p>
+            </div>
+            <button class="run-query" type="button">Run</button>
+          </header>
+          <form class="card-body">
+            <label>
+              Result limit
+              <input
+                name="limit"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="∞"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Minimum packet count
+              <input
+                name="minPackets"
+                type="number"
+                min="0"
+                step="1"
+                value="100"
+                inputmode="numeric"
+              />
+            </label>
+          </form>
+          <details class="card-query" open>
+            <summary>GraphQL query</summary>
+            <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+      </section>
+
+      <section id="results" aria-live="polite">
+        <header class="results-header">
+          <div>
+            <h2 id="results-title">Awaiting query</h2>
+            <p id="results-meta">Run a query to see data.</p>
+          </div>
+          <button id="copy-json" type="button" disabled>Copy JSON</button>
+        </header>
+        <div id="results-body" class="table-container empty">
+          <div class="placeholder">
+            <p class="placeholder-title">No data yet</p>
+            <p>Trigger a preset above to load indexer data.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <template id="error-template">
+      <div class="error-banner">
+        <strong>Error:</strong>
+        <span data-error-message></span>
+      </div>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
