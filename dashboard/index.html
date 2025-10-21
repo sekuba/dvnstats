@@ -60,6 +60,66 @@
             <span class="status-tag" data-status>Idle</span>
           </footer>
         </article>
+
+        <article class="query-card" data-query-key="oapp-security-config">
+          <header class="card-header">
+            <div>
+              <h2>OApp Security Config</h2>
+              <p>
+                Fetch the latest merged security settings for a specific OApp.
+              </p>
+            </div>
+            <button class="run-query" type="button">Run</button>
+          </header>
+          <form class="card-body">
+            <label>
+              OApp ID
+              <input
+                name="oappId"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="chainId_address"
+              />
+            </label>
+            <p class="field-hint">
+              Provide either the merged `oappId` or choose a chain and address below.
+            </p>
+            <label>
+              Destination chain
+              <input
+                name="chainId"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="Select chain"
+                list="oapp-chain-options"
+                data-chain-input
+              />
+              <datalist id="oapp-chain-options" data-chain-datalist></datalist>
+            </label>
+            <p class="field-hint" data-chain-label>Chain not selected.</p>
+            <label>
+              OApp address
+              <input
+                name="oappAddress"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="0xabc…"
+              />
+            </label>
+          </form>
+          <details class="card-query" open>
+            <summary>GraphQL query</summary>
+            <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
       </section>
 
       <section id="results" aria-live="polite">
