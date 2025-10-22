@@ -1286,10 +1286,8 @@ function aggregatePopularOapps(packets, options = {}) {
     const addressCell = createFormattedCell([address], address);
 
     const eidLines = [`Count ${eids.length}`];
-    if (eids.length) {
-      eidLines.push(...eids);
-    }
-    const eidCell = createFormattedCell(eidLines, eids.join(", "));
+    const eidCopyValue = eids.join(", ");
+    const eidCell = createFormattedCell(eidLines, eidCopyValue || `Count ${eids.length}`);
 
     const lastLines = [];
     if (group.lastTimestamp) {
