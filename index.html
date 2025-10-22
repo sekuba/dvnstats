@@ -52,7 +52,7 @@
               />
             </label>
           </form>
-          <details class="card-query" open>
+          <details class="card-query">
             <summary>GraphQL query</summary>
             <pre class="graphql" data-query-code></pre>
           </details>
@@ -112,7 +112,70 @@
               />
             </label>
           </form>
-          <details class="card-query" open>
+          <details class="card-query">
+            <summary>GraphQL query</summary>
+            <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
+        <article class="query-card" data-query-key="popular-oapps-window">
+          <header class="card-header">
+            <div>
+              <h2>Popular OApps (Window)</h2>
+              <p>Rank OApps by packets delivered within a recent time window.</p>
+            </div>
+            <button class="run-query" type="button">Run</button>
+          </header>
+          <form class="card-body">
+            <label>
+              Lookback value
+              <input
+                name="windowValue"
+                type="number"
+                min="1"
+                step="1"
+                value="7"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Time unit
+              <select name="windowUnit">
+                <option value="days" selected>Days</option>
+                <option value="hours">Hours</option>
+                <option value="minutes">Minutes</option>
+              </select>
+            </label>
+            <label>
+              Top results
+              <input
+                name="resultLimit"
+                type="number"
+                min="1"
+                step="1"
+                value="20"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Packet sample limit
+              <input
+                name="fetchLimit"
+                type="number"
+                min="0"
+                step="100"
+                placeholder="∞"
+                inputmode="numeric"
+              />
+            </label>
+            <p class="field-hint">
+              Sample limit bounds the packets scanned from Hasura; increase if results look truncated.
+            </p>
+          </form>
+          <details class="card-query">
             <summary>GraphQL query</summary>
             <pre class="graphql" data-query-code></pre>
           </details>

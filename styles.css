@@ -146,6 +146,14 @@ main {
   width: 100%;
 }
 
+.card-body select {
+  font: inherit;
+  padding: 0.55rem 0.6rem;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  width: 100%;
+}
+
 .card-body .field-hint {
   margin: -0.2rem 0 0.8rem;
   font-size: 0.7rem;
