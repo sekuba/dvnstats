@@ -9,6 +9,7 @@ const oappChainOptionsState = {
   list: [],
   map: new Map(),
 };
+const dvnLayerLookup = new Map();
 const chainMetadataPromise = loadChainMetadata();
 chainMetadataPromise.catch(() => {});
 chainMetadataPromise.then(() => {
@@ -281,6 +282,7 @@ const queryRegistry = {
         const chainDisplay = getChainDisplayLabel(chainId) || enrichedMeta.chainLabel || chainId;
         enrichedMeta.oappInfo = oapp;
         enrichedMeta.chainLabel = chainDisplay;
+        enrichedMeta.chainId = chainId;
         enrichedMeta.summary = enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
         enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
       }
@@ -1043,6 +1045,22 @@ function hydrateChainLookup(data) {
     if (nativeId !== undefined && nativeId !== null) {
       chainLookup.byNativeId.set(String(nativeId), baseLabel);
     }
+    const nativeIdKey =
+      nativeId !== undefined && nativeId !== null ? String(nativeId) : null;
+    if (nativeIdKey && entry.dvns && typeof entry.dvns === "object") {
+      Object.entries(entry.dvns).forEach(([address, info]) => {
+        if (!address) {
+          return;
+        }
+        const lowerAddress = String(address).toLowerCase();
+        const name =
+          info?.canonicalName ||
+          info?.name ||
+          info?.id ||
+          address;
+        dvnLayerLookup.set(`${nativeIdKey}:${lowerAddress}`, name);
+      });
+    }
 
     if (Array.isArray(entry.deployments)) {
       entry.deployments.forEach((deployment) => {
@@ -1570,7 +1588,7 @@ function formatRequiredDvns(row, meta) {
   const count = row.effectiveRequiredDVNCount ?? addresses.length ?? 0;
   const lines = [`Count ${count}`];
   if (addresses.length) {
-    lines.push(...resolveDvnLabels(addresses, meta));
+    lines.push(...resolveDvnLabels(addresses, meta, row.chainId ?? meta.chainId));
   }
 
   return createFormattedCell(lines, addresses.join(", ") || String(count));
@@ -1584,7 +1602,7 @@ function formatOptionalDvns(row, meta) {
   const threshold = row.effectiveOptionalDVNThreshold ?? "—";
   const lines = [`Count ${count}`, `Threshold ${threshold}`];
   if (addresses.length) {
-    lines.push(...resolveDvnLabels(addresses, meta));
+    lines.push(...resolveDvnLabels(addresses, meta, row.chainId ?? meta.chainId));
   }
 
   return createFormattedCell(lines, addresses.join(", ") || `${count}/${threshold}`);
@@ -1674,17 +1692,28 @@ function buildDvnLookup(entries) {
   return map;
 }
 
-function resolveDvnLabels(addresses, meta) {
+function resolveDvnLabels(addresses, meta, chainIdOverride) {
   const lookup = meta?.dvnLookup;
   if (!Array.isArray(addresses) || !addresses.length) {
     return [];
   }
+  const chainId = chainIdOverride !== undefined && chainIdOverride !== null
+    ? String(chainIdOverride)
+    : meta?.chainId !== undefined && meta?.chainId !== null
+      ? String(meta.chainId)
+      : null;
   return addresses.map((address) => {
     if (!address) {
       return "";
     }
     const key = String(address).toLowerCase();
-    if (lookup && lookup.has(key)) {
+    if (chainId) {
+      const layerKey = `${chainId}:${key}`;
+      if (dvnLayerLookup.has(layerKey)) {
+        return dvnLayerLookup.get(layerKey);
+      }
+    }
+    if (lookup instanceof Map && lookup.has(key)) {
       return lookup.get(key);
     }
     return address;
@@ -1776,6 +1805,10 @@ function handleAliasDblClick(event) {
   const oappId = target.dataset.oappId;
   if (!oappId) {
     return;
+  }
+  const selection = window.getSelection?.();
+  if (selection && selection.removeAllRanges) {
+    selection.removeAllRanges();
   }
   openAliasEditor(oappId);
 }
