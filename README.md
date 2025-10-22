@@ -1,3 +1,6 @@
+<img width="3840" height="4160" alt="image" src="https://github.com/user-attachments/assets/832c000e-573a-4e3b-ba4a-328a85553a3a" />
+
+
 icecold codex x sekuba present *layerzero security overview thing*
 
 <img width="1697" height="937" alt="image" src="https://github.com/user-attachments/assets/96ceaf15-7bf9-4931-9e2e-206ca633ef7d" />
