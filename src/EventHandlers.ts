@@ -41,32 +41,36 @@ const isZeroAddress = (value: string | undefined | null): boolean =>
   value !== null &&
   value.toLowerCase() === ZERO_ADDRESS;
 
-const buildDvnNameLookup = (raw: unknown): Map<string, string> => {
+const buildChainAwareDvnLookup = (raw: unknown): Map<string, string> => {
   const map = new Map<string, string>();
   if (!raw || typeof raw !== "object") return map;
 
   for (const value of Object.values(raw as Record<string, unknown>)) {
     if (!value || typeof value !== "object") continue;
+    const chainDetails = (value as { chainDetails?: { nativeChainId?: number } }).chainDetails;
+    const nativeChainId = chainDetails?.nativeChainId;
+    if (typeof nativeChainId !== "number") continue;
     const dvns = (value as Record<string, unknown>).dvns;
     if (!dvns || typeof dvns !== "object") continue;
     for (const [address, details] of Object.entries(
       dvns as Record<string, unknown>,
     )) {
       const normalized = normalizeAddress(address);
-      if (!normalized || isZeroAddress(normalized) || map.has(normalized)) {
-        continue;
-      }
-      const name =
-        (details as { canonicalName?: string; id?: string })?.canonicalName ??
-        (details as { canonicalName?: string; id?: string })?.id;
+      if (!normalized || isZeroAddress(normalized)) continue;
+      const info = details as { canonicalName?: string; id?: string; name?: string };
+      const name = info.canonicalName ?? info.name ?? info.id;
       if (!name) continue;
-      map.set(normalized, name);
+      map.set(`${nativeChainId}_${normalized}`, name);
     }
   }
+
   return map;
 };
 
-const DVN_NAME_LOOKUP = buildDvnNameLookup(layerzeroMetadata);
+const DVN_CHAIN_AWARE_LOOKUP = buildChainAwareDvnLookup(layerzeroMetadata);
+
+const getDvnName = (chainId: number, address: string): string | undefined =>
+  DVN_CHAIN_AWARE_LOOKUP.get(`${chainId}_${address}`);
 
 const RECEIVE_ULN_302_PER_CHAIN: Record<number, string> = {
   1: "0xc02ab410f0734efa3f14628780e6e695156024c2",
@@ -173,8 +177,15 @@ const ensureDvnMetadataEntries = async (
   for (const address of unique) {
     const id = `${chainId}_${address}`;
     const existing = await context.DvnMetadata.get(id);
-    if (existing) continue;
-    const name = DVN_NAME_LOOKUP.get(address) ?? address;
+    const name = getDvnName(chainId, address) ?? address;
+
+    if (existing) {
+      if (existing.name !== name) {
+        context.DvnMetadata.set({ ...existing, name });
+      }
+      continue;
+    }
+
     const entity: DvnMetadata = {
       id,
       chainId,
