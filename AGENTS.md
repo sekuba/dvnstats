@@ -1,12 +1,11 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `config.yaml` defines all chains and blockchain events we are indexing
+- `config.yaml` defines all chains and blockchain events we are indexing.
 - `src/` holds TypeScript event handlers (see `EventHandlers.ts`) orchestrating indexer persistence.
 - `generated/` stores Envio codegen outputs; treat as read-only and refresh with `pnpm codegen`.
-- `scripts/` contains operational tooling such as `packetSecuritySummary.js` for security config (DVN) stats exports.
-- `dashboard/` hosts the static explorer; open `index.html` locally or serve it with `pnpm dlx serve`.
-- `test/` mirrors handler behavior with ts-mocha specs; align filenames with the contracts under test.
+- `scripts/` reserved for ad-hoc operational tooling.
+- `test/` mirrors handler behaviour with ts-mocha specs; align filenames with the contracts under test.
 - Config assets sit at the repo root (`config.yaml`, `schema.graphql`, `layerzero.json`); `build/` and `generated/` artifacts may be recreated freely.
 
 ## Build, Test, and Development Commands
@@ -14,7 +13,6 @@
 - `pnpm start` runs the compiled indexer against configured endpoints for production-style verification.
 - `pnpm codegen` rebuilds TypeScript types from `config.yaml` and `schema.graphql`.
 - `pnpm build` compiles TypeScript; `pnpm clean` resets project references.
-- `pnpm stats:packets` writes `packet_security_summary.json`; override `--days` as needed.
 - `pnpm test` executes the mocha suite (alias of `pnpm mocha`); append `--watch` when iterating.
 
 ## Coding Style & Naming Conventions
@@ -28,11 +26,6 @@
 - Rely on `TestHelpers.MockDb` to simulate persistence and assert entity snapshots.
 - Cover new handlers with at least one happy-path and one edge-case test before submitting changes.
 - Run `pnpm test`; document external dependencies (e.g., live RPC) in the PR description.
-
-## Commit & Pull Request Guidelines
-- Prefer concise, imperative commit subjects (`add pic`, `required dvn count fix`) consistent with history.
-- Keep each commit focused; include body details when linking issues or noting follow-up work.
-- PRs must explain user impact, list executed commands, and attach dashboard screenshots for UI adjustments.
 
 ## Data & Configuration Notes
 - Maintain parity between `config.yaml` and `schema.graphql`; rerun `pnpm codegen` after edits.
@@ -49,4 +42,3 @@
   - Optional DVNs may exceed the threshold, but at least `optionalDVNThreshold` of them must sign any packet validated with optional-only configs.
 - **Reference Data**:
   - `layerzero.json` supplies DVN metadata (names, chain/address mappings) and ancillary protocol information.
-  - `scripts/packetSecuritySummary.js` exposes `LAYERZERO_CHAINS_V2`, mapping chain names to chain IDs and endpoint IDs (EIDs); mirror or supersede this mapping in indexer code as needed.
