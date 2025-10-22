@@ -222,7 +222,7 @@ const queryRegistry = {
     },
     processResponse: (payload, meta) => {
       const oapp = payload?.data?.OApp?.[0] ?? null;
-      const rows = payload?.data?.OAppSecurityConfig ?? [];
+      const configs = payload?.data?.OAppSecurityConfig ?? [];
       const enrichedMeta = { ...meta };
 
       if (oapp) {
@@ -234,7 +234,9 @@ const queryRegistry = {
         enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
       }
 
-      return { rows, meta: enrichedMeta };
+      const formattedRows = formatSecurityConfigRows(configs, enrichedMeta);
+
+      return { rows: formattedRows, meta: enrichedMeta };
     },
   },
 };
@@ -305,11 +307,12 @@ refreshAllButton?.addEventListener("click", async () => {
 });
 
 copyJsonButton?.addEventListener("click", async () => {
-  if (!resultsState.lastRows?.length) {
+  const source = resultsState.lastPayload?.data ?? resultsState.lastRows;
+  if (!source || (Array.isArray(source) && !source.length)) {
     return;
   }
 
-  const payload = JSON.stringify(resultsState.lastRows, null, 2);
+  const payload = JSON.stringify(source, null, 2);
   try {
     await navigator.clipboard.writeText(payload);
     flipButtonTemporarily(copyJsonButton, "Copied!", 1800);
@@ -567,6 +570,25 @@ function renderCell(column, value) {
 
 function interpretValue(column, value) {
   const nodes = [];
+
+  if (value && typeof value === "object" && value.__formatted) {
+    const lines = Array.isArray(value.lines) ? value.lines : [value.lines ?? ""];
+    lines.forEach((line) => {
+      const span = document.createElement("span");
+      const content = line === null || line === undefined || line === "" ? " " : String(line);
+      span.textContent = content;
+      nodes.push(span);
+    });
+    const cleanedLines = lines
+      .map((line) => (line === null || line === undefined ? "" : String(line)))
+      .filter((line) => line.trim().length > 0);
+    const copyValue = value.copyValue ?? cleanedLines.join(" | ");
+    return {
+      nodes,
+      copyValue,
+      isCopyable: true,
+    };
+  }
 
   if (value === null || value === undefined) {
     nodes.push(document.createTextNode("—"));
@@ -1023,6 +1045,138 @@ function appendSummaryRow(list, label, value) {
   const dd = document.createElement("dd");
   dd.textContent = String(value);
   list.appendChild(dd);
+}
+
+function formatSecurityConfigRows(rows, meta) {
+  return rows.map((row) => formatSecurityConfigRow(row, meta));
+}
+
+function formatSecurityConfigRow(row, meta) {
+  const formatted = {};
+  formatted.EID = String(row.eid ?? "—");
+  formatted.Library = formatLibraryDescriptor(row);
+  formatted["Required DVNs"] = formatRequiredDvns(row);
+  formatted["Optional DVNs"] = formatOptionalDvns(row);
+  formatted.Confirmations = formatConfirmations(row);
+  formatted.Fallbacks = formatFallbackFields(row.fallbackFields, row.usesDefaultConfig);
+  formatted["Last Update"] = formatLastComputed(row);
+
+  return formatted;
+}
+
+function formatLibraryDescriptor(row) {
+  const address = row.effectiveReceiveLibrary || "—";
+  const statusBits = [];
+  statusBits.push(row.isConfigTracked ? "tracked" : "untracked");
+  if (row.usesDefaultLibrary) {
+    statusBits.push("default");
+  }
+  if (!row.usesDefaultLibrary && row.libraryOverrideVersionId) {
+    statusBits.push("override");
+  }
+
+  const lines = [address];
+  if (statusBits.length) {
+    lines.push(statusBits.join(" • "));
+  }
+
+  return createFormattedCell(lines, address);
+}
+
+function formatRequiredDvns(row) {
+  if (row.usesRequiredDVNSentinel) {
+    return createFormattedCell(["optional-only (sentinel)"]);
+  }
+
+  const addresses = Array.isArray(row.effectiveRequiredDVNs)
+    ? row.effectiveRequiredDVNs.filter(Boolean)
+    : [];
+  const count = row.effectiveRequiredDVNCount ?? addresses.length ?? 0;
+  const lines = [`Count ${count}`];
+  if (addresses.length) {
+    lines.push(...addresses);
+  }
+
+  return createFormattedCell(lines, addresses.join(", ") || String(count));
+}
+
+function formatOptionalDvns(row) {
+  const addresses = Array.isArray(row.effectiveOptionalDVNs)
+    ? row.effectiveOptionalDVNs.filter(Boolean)
+    : [];
+  const count = row.effectiveOptionalDVNCount ?? addresses.length ?? 0;
+  const threshold = row.effectiveOptionalDVNThreshold ?? "—";
+  const lines = [`Count ${count}`, `Threshold ${threshold}`];
+  if (addresses.length) {
+    lines.push(...addresses);
+  }
+
+  return createFormattedCell(lines, addresses.join(", ") || `${count}/${threshold}`);
+}
+
+function formatConfirmations(row) {
+  const confirmations = row.effectiveConfirmations ?? "—";
+  const lines = [String(confirmations)];
+  const status = [];
+  if (row.usesDefaultConfig) {
+    status.push("default config");
+  }
+  if (status.length) {
+    lines.push(status.join(" • "));
+  }
+
+  return createFormattedCell(lines, String(confirmations));
+}
+
+function formatFallbackFields(fields, usesDefaultConfig) {
+  const names = Array.isArray(fields) ? fields : [];
+  if (!names.length) {
+    if (usesDefaultConfig) {
+      return createFormattedCell(["default"], "default");
+    }
+    return createFormattedCell(["—"], "");
+  }
+
+  const map = {
+    receiveLibrary: "library",
+    confirmations: "confirmations",
+    requiredDVNCount: "required count",
+    requiredDVNs: "required dvns",
+    optionalDVNCount: "optional count",
+    optionalDVNs: "optional dvns",
+    optionalDVNThreshold: "optional threshold",
+  };
+
+  const lines = names.map((name) => map[name] || name);
+  return createFormattedCell(lines, names.join(", "));
+}
+
+function formatLastComputed(row) {
+  const lines = [];
+  if (row.lastComputedBlock !== undefined && row.lastComputedBlock !== null) {
+    lines.push(`Block ${row.lastComputedBlock}`);
+  }
+  if (row.lastComputedTimestamp !== undefined && row.lastComputedTimestamp !== null) {
+    const ts = formatTimestampValue(row.lastComputedTimestamp);
+    if (ts) {
+      lines.push(ts.primary);
+    }
+  }
+  if (row.lastComputedByEventId) {
+    lines.push(row.lastComputedByEventId);
+  }
+
+  const copyValue = lines.join(" | ");
+  return createFormattedCell(lines.length ? lines : ["—"], copyValue);
+}
+
+function createFormattedCell(lines, copyValue) {
+  const normalizedLines = Array.isArray(lines) ? lines : [lines];
+  return {
+    __formatted: true,
+    lines: normalizedLines.map((line) => (line === null || line === undefined ? "" : String(line))),
+    copyValue,
+  };
 }
 
 function buildVariableSummary(variables = {}) {
