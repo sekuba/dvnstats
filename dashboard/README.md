@@ -72,8 +72,14 @@ If you introduce new components, reuse the existing token palette (`--ink`, `--a
 2. **OApp Security Config**  
    Uses the `OAppSecurityConfig` table to show the merged LayerZero security posture for a specific OApp/origin EID scope. Inputs accept either a full `oappId` or chain/address pair (chain list comes from `config.yaml` via `oapp-chains.json`). The response is enriched with `DvnMetadata` to render DVN names but the copy action preserves raw addresses. The summary panel echoes the latest `OApp` counters so you can cross-reference how active the receiver is – see the “Effective Configuration” section of the docs for field semantics.
 
-3. **Popular OApps (Window)**  
+3. **Popular OApps (Window)**
    Samples recent `PacketDelivered` rows (ordered by `blockTimestamp DESC`) within an adjustable lookback window. Aggregation happens client-side: we count packets, accumulate unique EIDs, and record last packet metadata per OApp. The default sample size is unlimited (walk the whole window), but you can cap it to speed up large queries. This card is conceptually similar to deriving `OAppEidPacketStats` from `PacketDelivered`, but scoped to a moving time window rather than cumulative totals.
+
+### OApp aliases
+
+- Double-click any OApp ID cell to open the alias editor. Aliases render as friendly names while keeping the raw `{chainId}_{address}` copy target.
+- Aliases load from `oapp-aliases.json` and are overlaid with values stored in `localStorage`. Use the “Export JSON” button in the editor to download the merged map and commit it back to the repo when you want to persist changes.
+- Summary panels (e.g., the OApp config overview) also surface the alias when one exists.
 
 Because each card is self-contained in `queryRegistry`, adding new panels usually means:
 

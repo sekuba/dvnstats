@@ -209,6 +209,37 @@
       </div>
     </template>
 
+    <div id="alias-editor" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alias-editor-title">
+      <div class="modal-content">
+        <h3 id="alias-editor-title">Set OApp Name</h3>
+        <form id="alias-editor-form">
+          <label>
+            OApp ID
+            <input name="oappId" type="text" readonly />
+          </label>
+          <label>
+            Alias
+            <input
+              name="alias"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Enter a friendly name"
+            />
+          </label>
+          <p class="modal-hint">
+            Aliases are stored locally and can be exported to update <code>oapp-aliases.json</code>.
+          </p>
+          <div class="modal-actions">
+            <button type="submit">Save</button>
+            <button type="button" data-action="clear">Clear</button>
+            <button type="button" data-action="export">Export JSON</button>
+            <button type="button" data-action="cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script type="module" src="./app.js"></script>
   </body>
 </html>
