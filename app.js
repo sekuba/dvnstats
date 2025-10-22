@@ -1,4 +1,6 @@
-const GRAPHQL_ENDPOINT = "http://localhost:8080/v1/graphql";
+const GRAPHQL_ENDPOINT =
+  document.documentElement.dataset.graphqlEndpoint ||
+  "http://localhost:8080/v1/graphql";
 
 const chainLookup = {
   byNativeId: new Map(),
