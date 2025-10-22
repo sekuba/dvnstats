@@ -167,6 +167,7 @@ const queryRegistry = {
         }
         DvnMetadata {
           address
+          chainId
           name
         }
       }
@@ -1683,10 +1684,19 @@ function buildDvnLookup(entries) {
     if (!entry || !entry.address) {
       return;
     }
-    const key = String(entry.address).toLowerCase();
+    const addressKey = String(entry.address).toLowerCase();
+    const chainKey = entry.chainId !== undefined && entry.chainId !== null
+      ? String(entry.chainId)
+      : null;
     const label = entry.name || entry.address;
-    if (key) {
-      map.set(key, label);
+    if (!addressKey) {
+      return;
+    }
+    if (chainKey) {
+      map.set(`${chainKey}_${addressKey}`, label);
+    }
+    if (!map.has(addressKey)) {
+      map.set(addressKey, label);
     }
   });
   return map;
@@ -1708,6 +1718,10 @@ function resolveDvnLabels(addresses, meta, chainIdOverride) {
     }
     const key = String(address).toLowerCase();
     if (chainId) {
+      const lookupKey = `${chainId}_${key}`;
+      if (lookup && lookup.has(lookupKey)) {
+        return lookup.get(lookupKey);
+      }
       const layerKey = `${chainId}:${key}`;
       if (dvnLayerLookup.has(layerKey)) {
         return dvnLayerLookup.get(layerKey);
