@@ -187,6 +187,52 @@
             <span class="status-tag" data-status>Idle</span>
           </footer>
         </article>
+
+        <article class="query-card" data-query-key="web-of-security">
+          <header class="card-header">
+            <div>
+              <h2>Web of Security</h2>
+              <p>Visualize the security graph for an OApp and its connections.</p>
+            </div>
+            <button class="run-query" type="button">Load</button>
+          </header>
+          <form class="card-body">
+            <label>
+              OApp ID
+              <input
+                name="oappId"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="chainId_address"
+              />
+            </label>
+            <p class="field-hint">
+              Load a pre-crawled web of security JSON file for this OApp. Use the crawler script first:
+              <code>node scripts/crawl-security-web.js &lt;oappId&gt;</code>
+            </p>
+            <label>
+              Web data file
+              <input
+                name="webFile"
+                type="file"
+                accept=".json"
+              />
+            </label>
+          </form>
+          <details class="card-query">
+            <summary>About</summary>
+            <p>
+              This visualization shows the web of security connections between OApps.
+              Each node represents an OApp, and edges show packet delivery paths.
+              Node color/size indicates the number of required DVNs in the security config.
+            </p>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
       </section>
 
       <section id="results" aria-live="polite">
