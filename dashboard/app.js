@@ -549,18 +549,15 @@ async function runQuery(key, card, config, statusEl) {
     }
 
     const elapsed = performance.now() - startedAt;
-  const baseMeta = {
-    elapsed,
-    variables,
-    requestId,
-    label: extraMeta.resultLabel || config.label,
-    limitLabel: extraMeta.limitLabel,
-    summary: extraMeta.summary,
-    chainLabel: extraMeta.chainLabel,
-    oappAddress: extraMeta.oappAddress,
-    queryKey: key,
-    originalLabel: config.label,
-  };
+    const baseMeta = {
+      elapsed,
+      variables,
+      requestId,
+      label: extraMeta.resultLabel || config.label,
+      originalLabel: config.label,
+      queryKey: key,
+      ...extraMeta,
+    };
 
   let rows = [];
   let finalMeta = { ...baseMeta };
