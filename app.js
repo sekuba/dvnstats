@@ -25,6 +25,48 @@ oappChainOptionsPromise.then(() => {
     updateResultsPane(rows, payload, meta);
   }
 });
+const oappAliasState = {
+  map: new Map(),
+  storageKey: "dashboard:oappAliases",
+};
+const oappAliasesPromise = loadOAppAliases();
+oappAliasesPromise.catch(() => {});
+oappAliasesPromise.then(() => {
+  reprocessLastResults();
+});
+
+function getOAppAlias(oappId) {
+  if (!oappId) {
+    return null;
+  }
+  return oappAliasState.map.get(String(oappId)) || null;
+}
+
+function setOAppAlias(oappId, alias) {
+  if (!oappId) {
+    return;
+  }
+  const normalizedId = String(oappId);
+  const normalizedAlias = alias && alias.trim() ? alias.trim() : null;
+
+  if (normalizedAlias) {
+    oappAliasState.map.set(normalizedId, normalizedAlias);
+  } else {
+    oappAliasState.map.delete(normalizedId);
+  }
+
+  persistOAppAliases();
+  reprocessLastResults();
+}
+
+function formatOAppIdCell(oappId) {
+  if (!oappId) {
+    return createFormattedCell(["—"], "");
+  }
+  const alias = getOAppAlias(oappId);
+  const lines = alias ? [alias, `ID ${oappId}`] : [oappId];
+  return createFormattedCell(lines, oappId, { oappId });
+}
 
 const queryRegistry = {
   "top-oapps": {
@@ -75,7 +117,11 @@ const queryRegistry = {
         },
       };
     },
-    extractRows: (data) => data?.OApp ?? [],
+    extractRows: (data) =>
+      (data?.OApp ?? []).map((row) => ({
+        ...row,
+        id: formatOAppIdCell(row.id),
+      })),
   },
   "oapp-security-config": {
     label: "OApp Security Config",
@@ -349,6 +395,10 @@ const resultsMeta = document.getElementById("results-meta");
 const resultsBody = document.getElementById("results-body");
 const copyJsonButton = document.getElementById("copy-json");
 const refreshAllButton = document.getElementById("refresh-all");
+const aliasEditor = document.getElementById("alias-editor");
+const aliasEditorForm = document.getElementById("alias-editor-form");
+const aliasEditorIdInput = aliasEditorForm?.querySelector('input[name="oappId"]');
+const aliasEditorAliasInput = aliasEditorForm?.querySelector('input[name="alias"]');
 
 const resultsState = {
   requestSeq: 0,
@@ -357,6 +407,9 @@ const resultsState = {
   lastPayload: null,
   lastQueryLabel: "Awaiting query",
   lastRender: null,
+  lastQueryKey: null,
+  lastMetaBase: null,
+  lastVariables: null,
 };
 
 document.querySelectorAll("[data-query-key]").forEach((card) => {
@@ -426,6 +479,21 @@ copyJsonButton?.addEventListener("click", async () => {
 });
 
 resultsBody?.addEventListener("click", handleCopyableClick);
+resultsBody?.addEventListener("dblclick", handleAliasDblClick);
+
+aliasEditorForm?.addEventListener("submit", handleAliasSubmit);
+aliasEditorForm?.addEventListener("click", handleAliasFormClick);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !aliasEditor?.classList.contains("hidden")) {
+    event.preventDefault();
+    closeAliasEditor();
+  }
+});
+aliasEditor?.addEventListener("click", (event) => {
+  if (event.target === aliasEditor) {
+    closeAliasEditor();
+  }
+});
 
 async function runQuery(key, card, config, statusEl) {
   const requestId = ++resultsState.requestSeq;
@@ -481,35 +549,41 @@ async function runQuery(key, card, config, statusEl) {
     }
 
     const elapsed = performance.now() - startedAt;
-    const baseMeta = {
-      elapsed,
-      variables,
-      requestId,
-      label: extraMeta.resultLabel || config.label,
-      limitLabel: extraMeta.limitLabel,
-      summary: extraMeta.summary,
-      chainLabel: extraMeta.chainLabel,
-      oappAddress: extraMeta.oappAddress,
-    };
+  const baseMeta = {
+    elapsed,
+    variables,
+    requestId,
+    label: extraMeta.resultLabel || config.label,
+    limitLabel: extraMeta.limitLabel,
+    summary: extraMeta.summary,
+    chainLabel: extraMeta.chainLabel,
+    oappAddress: extraMeta.oappAddress,
+    queryKey: key,
+    originalLabel: config.label,
+  };
 
-    let rows = [];
-    let finalMeta = { ...baseMeta };
+  let rows = [];
+  let finalMeta = { ...baseMeta };
 
-    if (typeof config.processResponse === "function") {
-      const result = config.processResponse(payload, baseMeta) || {};
-      rows = Array.isArray(result.rows) ? result.rows : [];
-      if (result.meta && typeof result.meta === "object") {
-        finalMeta = { ...baseMeta, ...result.meta };
-      }
-    } else if (typeof config.extractRows === "function") {
-      rows = config.extractRows(payload.data) ?? [];
+  if (typeof config.processResponse === "function") {
+    const result = config.processResponse(payload, { ...baseMeta }) || {};
+    rows = Array.isArray(result.rows) ? result.rows : [];
+    if (result.meta && typeof result.meta === "object") {
+      finalMeta = { ...baseMeta, ...result.meta };
     }
+  } else if (typeof config.extractRows === "function") {
+    rows = config.extractRows(payload.data) ?? [];
+  }
 
-    setStatus(
-      statusEl,
-      `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(
-        0,
-      )} ms`,
+  resultsState.lastMetaBase = baseMeta;
+  resultsState.lastQueryKey = key;
+  resultsState.lastVariables = variables;
+
+  setStatus(
+    statusEl,
+    `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(
+      0,
+    )} ms`,
       "success",
     );
 
@@ -652,7 +726,7 @@ function buildTable(rows) {
 }
 
 function renderCell(column, value) {
-  const { nodes, copyValue, isCopyable } = interpretValue(column, value);
+  const { nodes, copyValue, isCopyable, meta } = interpretValue(column, value);
   if (!isCopyable) {
     const fragment = document.createDocumentFragment();
     nodes.forEach((node) => fragment.append(node));
@@ -665,6 +739,12 @@ function renderCell(column, value) {
   const content = copyValue ?? nodes.map((node) => node.textContent ?? "").join(" ").trim();
   if (content) {
     container.dataset.copyValue = content;
+  }
+
+  if (meta && typeof meta === "object") {
+    if (meta.oappId) {
+      container.dataset.oappId = meta.oappId;
+    }
   }
 
   nodes.forEach((node) => container.append(node));
@@ -690,6 +770,7 @@ function interpretValue(column, value) {
       nodes,
       copyValue,
       isCopyable: true,
+      meta: value.meta || null,
     };
   }
 
@@ -1130,7 +1211,10 @@ function renderOAppSummary(meta) {
 
   const list = document.createElement("dl");
   panel.appendChild(list);
-
+  const alias = getOAppAlias(info.id);
+  if (alias) {
+    appendSummaryRow(list, "OApp Alias", alias);
+  }
   appendSummaryRow(list, "OApp ID", info.id ?? "");
   appendSummaryRow(list, "Chain", meta.chainLabel || String(info.chainId ?? ""));
   appendSummaryRow(list, "Address", info.address ?? "");
@@ -1282,7 +1366,7 @@ function aggregatePopularOapps(packets, options = {}) {
       group.chainId,
     );
 
-    const oappCell = createFormattedCell([group.oappId], group.oappId);
+    const oappCell = formatOAppIdCell(group.oappId);
     const addressCell = createFormattedCell([address], address);
 
     const eidLines = [`Count ${eids.length}`];
@@ -1352,6 +1436,98 @@ function buildOAppId(chainId, address) {
 
 function formatSecurityConfigRows(rows, meta) {
   return rows.map((row) => formatSecurityConfigRow(row, meta));
+}
+
+async function loadOAppAliases() {
+  const map = oappAliasState.map;
+  map.clear();
+
+  try {
+    const response = await fetch("./oapp-aliases.json", { cache: "no-store" });
+    if (response.ok) {
+      const data = await response.json();
+      if (data && typeof data === "object") {
+        Object.entries(data).forEach(([key, value]) => {
+          if (value) {
+            map.set(String(key), String(value));
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.warn("[aliases] failed to load oapp-aliases.json", error);
+  }
+
+  try {
+    const stored = localStorage.getItem(oappAliasState.storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (parsed && typeof parsed === "object") {
+        Object.entries(parsed).forEach(([key, value]) => {
+          if (value) {
+            map.set(String(key), String(value));
+          } else {
+            map.delete(String(key));
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.warn("[aliases] failed to restore aliases from localStorage", error);
+  }
+
+  return map;
+}
+
+function persistOAppAliases() {
+  try {
+    const obj = Object.fromEntries(oappAliasState.map.entries());
+    localStorage.setItem(oappAliasState.storageKey, JSON.stringify(obj));
+  } catch (error) {
+    console.warn("[aliases] failed to persist aliases", error);
+  }
+}
+
+function exportOAppAliases() {
+  const obj = Object.fromEntries(oappAliasState.map.entries());
+  const content = JSON.stringify(obj, null, 2);
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "oapp-aliases.json";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function reprocessLastResults() {
+  if (!resultsState.lastPayload || !resultsState.lastMetaBase || !resultsState.lastQueryKey) {
+    return;
+  }
+  const key = resultsState.lastQueryKey;
+  const config = queryRegistry[key];
+  if (!config) {
+    return;
+  }
+
+  const baseMeta = { ...resultsState.lastMetaBase };
+  let rows = [];
+  let finalMeta = { ...baseMeta };
+
+  if (typeof config.processResponse === "function") {
+    const result = config.processResponse(resultsState.lastPayload, { ...baseMeta }) || {};
+    rows = Array.isArray(result.rows) ? result.rows : [];
+    if (result.meta && typeof result.meta === "object") {
+      finalMeta = { ...baseMeta, ...result.meta };
+    }
+  } else if (typeof config.extractRows === "function") {
+    rows = config.extractRows(resultsState.lastPayload.data) ?? [];
+  }
+
+  resultsState.lastMetaBase = baseMeta;
+  updateResultsPane(rows, resultsState.lastPayload, finalMeta);
 }
 
 function formatSecurityConfigRow(row, meta) {
@@ -1473,12 +1649,13 @@ function formatLastComputed(row) {
   return createFormattedCell(lines.length ? lines : ["—"], copyValue);
 }
 
-function createFormattedCell(lines, copyValue) {
+function createFormattedCell(lines, copyValue, meta = {}) {
   const normalizedLines = Array.isArray(lines) ? lines : [lines];
   return {
     __formatted: true,
     lines: normalizedLines.map((line) => (line === null || line === undefined ? "" : String(line))),
     copyValue,
+    meta,
   };
 }
 
@@ -1591,6 +1768,72 @@ function flashCopyFeedback(element, didSucceed) {
     copyFeedbackTimers.delete(element);
   }, didSucceed ? 1200 : 1600);
   copyFeedbackTimers.set(element, timeout);
+}
+
+function handleAliasDblClick(event) {
+  const target = event.target.closest(".copyable[data-oapp-id]");
+  if (!target || !resultsBody.contains(target)) {
+    return;
+  }
+  event.preventDefault();
+  const oappId = target.dataset.oappId;
+  if (!oappId) {
+    return;
+  }
+  openAliasEditor(oappId);
+}
+
+function openAliasEditor(oappId) {
+  if (!aliasEditor || !aliasEditorForm || !aliasEditorIdInput || !aliasEditorAliasInput) {
+    return;
+  }
+  aliasEditorIdInput.value = oappId;
+  aliasEditorAliasInput.value = getOAppAlias(oappId) || "";
+  aliasEditor.classList.remove("hidden");
+  setTimeout(() => {
+    aliasEditorAliasInput.focus();
+    aliasEditorAliasInput.select();
+  }, 0);
+}
+
+function closeAliasEditor() {
+  if (!aliasEditor || !aliasEditorForm || !aliasEditorAliasInput) {
+    return;
+  }
+  aliasEditor.classList.add("hidden");
+  aliasEditorForm.reset();
+}
+
+function handleAliasSubmit(event) {
+  event.preventDefault();
+  if (!aliasEditorIdInput || !aliasEditorAliasInput) {
+    return;
+  }
+  const oappId = aliasEditorIdInput.value;
+  const alias = aliasEditorAliasInput.value;
+  setOAppAlias(oappId, alias);
+  closeAliasEditor();
+}
+
+function handleAliasFormClick(event) {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) {
+    return;
+  }
+  const action = target.dataset.action;
+  if (action === "cancel") {
+    event.preventDefault();
+    closeAliasEditor();
+  } else if (action === "clear") {
+    event.preventDefault();
+    if (aliasEditorIdInput) {
+      setOAppAlias(aliasEditorIdInput.value, "");
+    }
+    closeAliasEditor();
+  } else if (action === "export") {
+    event.preventDefault();
+    exportOAppAliases();
+  }
 }
 
 function showCopyToast(message, tone = "neutral") {
