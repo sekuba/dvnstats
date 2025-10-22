@@ -118,6 +118,10 @@ const queryRegistry = {
           lastComputedTimestamp
           lastComputedByEventId
         }
+        DvnMetadata {
+          address
+          name
+        }
       }
     `,
     initialize: ({ card }) => {
@@ -223,6 +227,7 @@ const queryRegistry = {
     processResponse: (payload, meta) => {
       const oapp = payload?.data?.OApp?.[0] ?? null;
       const configs = payload?.data?.OAppSecurityConfig ?? [];
+      const dvnMetadata = payload?.data?.DvnMetadata ?? [];
       const enrichedMeta = { ...meta };
 
       if (oapp) {
@@ -232,6 +237,12 @@ const queryRegistry = {
         enrichedMeta.chainLabel = chainDisplay;
         enrichedMeta.summary = enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
         enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
+      }
+
+      if (Array.isArray(dvnMetadata) && dvnMetadata.length) {
+        enrichedMeta.dvnLookup = buildDvnLookup(dvnMetadata);
+      } else {
+        enrichedMeta.dvnLookup = new Map();
       }
 
       const formattedRows = formatSecurityConfigRows(configs, enrichedMeta);
@@ -1055,8 +1066,8 @@ function formatSecurityConfigRow(row, meta) {
   const formatted = {};
   formatted.EID = String(row.eid ?? "—");
   formatted.Library = formatLibraryDescriptor(row);
-  formatted["Required DVNs"] = formatRequiredDvns(row);
-  formatted["Optional DVNs"] = formatOptionalDvns(row);
+  formatted["Required DVNs"] = formatRequiredDvns(row, meta);
+  formatted["Optional DVNs"] = formatOptionalDvns(row, meta);
   formatted.Confirmations = formatConfirmations(row);
   formatted.Fallbacks = formatFallbackFields(row.fallbackFields, row.usesDefaultConfig);
   formatted["Last Update"] = formatLastComputed(row);
@@ -1083,7 +1094,7 @@ function formatLibraryDescriptor(row) {
   return createFormattedCell(lines, address);
 }
 
-function formatRequiredDvns(row) {
+function formatRequiredDvns(row, meta) {
   if (row.usesRequiredDVNSentinel) {
     return createFormattedCell(["optional-only (sentinel)"]);
   }
@@ -1094,13 +1105,13 @@ function formatRequiredDvns(row) {
   const count = row.effectiveRequiredDVNCount ?? addresses.length ?? 0;
   const lines = [`Count ${count}`];
   if (addresses.length) {
-    lines.push(...addresses);
+    lines.push(...resolveDvnLabels(addresses, meta));
   }
 
   return createFormattedCell(lines, addresses.join(", ") || String(count));
 }
 
-function formatOptionalDvns(row) {
+function formatOptionalDvns(row, meta) {
   const addresses = Array.isArray(row.effectiveOptionalDVNs)
     ? row.effectiveOptionalDVNs.filter(Boolean)
     : [];
@@ -1108,7 +1119,7 @@ function formatOptionalDvns(row) {
   const threshold = row.effectiveOptionalDVNThreshold ?? "—";
   const lines = [`Count ${count}`, `Threshold ${threshold}`];
   if (addresses.length) {
-    lines.push(...addresses);
+    lines.push(...resolveDvnLabels(addresses, meta));
   }
 
   return createFormattedCell(lines, addresses.join(", ") || `${count}/${threshold}`);
@@ -1177,6 +1188,41 @@ function createFormattedCell(lines, copyValue) {
     lines: normalizedLines.map((line) => (line === null || line === undefined ? "" : String(line))),
     copyValue,
   };
+}
+
+function buildDvnLookup(entries) {
+  const map = new Map();
+  if (!Array.isArray(entries)) {
+    return map;
+  }
+  entries.forEach((entry) => {
+    if (!entry || !entry.address) {
+      return;
+    }
+    const key = String(entry.address).toLowerCase();
+    const label = entry.name || entry.address;
+    if (key) {
+      map.set(key, label);
+    }
+  });
+  return map;
+}
+
+function resolveDvnLabels(addresses, meta) {
+  const lookup = meta?.dvnLookup;
+  if (!Array.isArray(addresses) || !addresses.length) {
+    return [];
+  }
+  return addresses.map((address) => {
+    if (!address) {
+      return "";
+    }
+    const key = String(address).toLowerCase();
+    if (lookup && lookup.has(key)) {
+      return lookup.get(key);
+    }
+    return address;
+  });
 }
 
 function buildVariableSummary(variables = {}) {
