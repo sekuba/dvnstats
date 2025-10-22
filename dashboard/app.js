@@ -250,6 +250,98 @@ const queryRegistry = {
       return { rows: formattedRows, meta: enrichedMeta };
     },
   },
+  "popular-oapps-window": {
+    label: "Popular OApps (Window)",
+    description: "Rank OApps by packets in a configurable time window",
+    query: `
+      query PopularOAppsWindow($fromTimestamp: numeric!, $fetchLimit: Int) {
+        PacketDelivered(
+          where: { blockTimestamp: { _gte: $fromTimestamp } }
+          order_by: { blockTimestamp: desc }
+          limit: $fetchLimit
+        ) {
+          id
+          oappId
+          chainId
+          receiver
+          blockTimestamp
+          blockNumber
+          srcEid
+        }
+      }
+    `,
+    initialize: ({ card }) => {
+      const unitSelect = card.querySelector('select[name="windowUnit"]');
+      if (unitSelect && !unitSelect.value) {
+        unitSelect.value = "days";
+      }
+    },
+    buildVariables: (card) => {
+      const windowValueInput = card.querySelector('input[name="windowValue"]');
+      const windowUnitSelect = card.querySelector('select[name="windowUnit"]');
+      const resultLimitInput = card.querySelector('input[name="resultLimit"]');
+      const fetchLimitInput = card.querySelector('input[name="fetchLimit"]');
+
+      const rawWindowValue = clampInteger(windowValueInput?.value, 1, 365, 7);
+      const windowUnit = windowUnitSelect?.value ?? "days";
+      const unitSeconds = {
+        minutes: 60,
+        hours: 3600,
+        days: 86400,
+      };
+      const secondsPerUnit = unitSeconds[windowUnit] ?? unitSeconds.days;
+      const windowSeconds = rawWindowValue * secondsPerUnit;
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      const fromTimestamp = Math.max(nowSeconds - windowSeconds, 0);
+
+      const resultLimit = clampInteger(resultLimitInput?.value, 1, 200, 20);
+      const fetchLimitRaw = fetchLimitInput?.value?.trim();
+      const fetchLimitParsed = parseOptionalPositiveInt(fetchLimitRaw);
+      const fetchLimit =
+        Number.isFinite(fetchLimitParsed) && fetchLimitParsed > 0
+          ? Math.min(fetchLimitParsed, 200000)
+          : null;
+
+      const windowLabel = `${rawWindowValue}${windowUnit.charAt(0)}`;
+
+      return {
+        variables: {
+          fromTimestamp: String(fromTimestamp),
+          ...(fetchLimit ? { fetchLimit } : {}),
+        },
+        meta: {
+          limitLabel: `window=${windowLabel}, top=${resultLimit}, sample=${fetchLimit ?? "∞"}`,
+          summary: `Top ${resultLimit} • last ${windowLabel}`,
+          windowSeconds,
+          windowLabel,
+          fromTimestamp,
+          nowTimestamp: nowSeconds,
+          resultLimit,
+          fetchLimit,
+        },
+      };
+    },
+    processResponse: (payload, meta) => {
+      const packets = payload?.data?.PacketDelivered ?? [];
+      const result = aggregatePopularOapps(packets, {
+        fromTimestamp: meta.fromTimestamp,
+        nowTimestamp: meta.nowTimestamp,
+        windowLabel: meta.windowLabel,
+        windowSeconds: meta.windowSeconds,
+        resultLimit: meta.resultLimit,
+        fetchLimit: meta.fetchLimit,
+      });
+
+      return {
+        rows: result.rows,
+        meta: {
+          ...meta,
+          summary: result.meta.summary,
+          popularOappsSummary: result.meta.popularOappsSummary,
+        },
+      };
+    },
+  },
 };
 
 const resultsTitle = document.getElementById("results-title");
@@ -467,7 +559,7 @@ function updateResultsPane(rows, payload, meta) {
   resultsTitle.textContent = metaSnapshot.label;
   resultsMeta.textContent = metaParts.join(" • ");
 
-  const summaryPanel = renderOAppSummary(metaSnapshot);
+  const summaryPanel = renderSummaryPanel(metaSnapshot);
 
   if (!rows.length) {
     resultsBody.classList.add("empty");
@@ -1010,6 +1102,19 @@ function normalizeOAppId(value) {
   return `${chainId}_${address}`;
 }
 
+function renderSummaryPanel(meta) {
+  if (!meta) {
+    return null;
+  }
+  if (meta.oappInfo) {
+    return renderOAppSummary(meta);
+  }
+  if (meta.popularOappsSummary) {
+    return renderPopularOappsSummary(meta.popularOappsSummary);
+  }
+  return null;
+}
+
 function renderOAppSummary(meta) {
   const info = meta?.oappInfo;
   if (!info) {
@@ -1056,6 +1161,195 @@ function appendSummaryRow(list, label, value) {
   const dd = document.createElement("dd");
   dd.textContent = String(value);
   list.appendChild(dd);
+}
+
+function renderPopularOappsSummary(summary) {
+  if (!summary) {
+    return null;
+  }
+
+  const panel = document.createElement("div");
+  panel.className = "summary-panel";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Window Overview";
+  panel.appendChild(heading);
+
+  const list = document.createElement("dl");
+  panel.appendChild(list);
+
+  appendSummaryRow(list, "Window", summary.windowLabel || "");
+
+  if (summary.fromTimestamp) {
+    const fromTs = formatTimestampValue(summary.fromTimestamp);
+    if (fromTs) {
+      appendSummaryRow(list, "From", fromTs.primary);
+    }
+  }
+
+  if (summary.toTimestamp) {
+    const toTs = formatTimestampValue(summary.toTimestamp);
+    if (toTs) {
+      appendSummaryRow(list, "To", toTs.primary);
+    }
+  }
+
+  appendSummaryRow(list, "Packets Scanned", summary.sampledPackets);
+  appendSummaryRow(list, "Unique OApps", summary.totalOapps);
+  appendSummaryRow(list, "Results Returned", summary.returnedCount);
+  appendSummaryRow(list, "Sample Limit", summary.fetchLimit);
+
+  return panel;
+}
+
+function aggregatePopularOapps(packets, options = {}) {
+  const resultLimit = clampInteger(options.resultLimit, 1, 200, 20);
+  const fromTimestamp = options.fromTimestamp ?? 0;
+  const toTimestamp = options.nowTimestamp ?? Math.floor(Date.now() / 1000);
+  const windowLabel = options.windowLabel || "";
+  const fetchLimit = options.fetchLimit ?? null;
+
+  const groups = new Map();
+  let sampledPackets = 0;
+
+  packets.forEach((packet) => {
+    if (!packet) {
+      return;
+    }
+    sampledPackets += 1;
+
+    const inferredKey = packet.oappId || buildOAppId(packet.chainId, packet.receiver);
+    if (!inferredKey) {
+      return;
+    }
+
+    const [chainPart, addressPart] = inferredKey.split("_");
+    const normalizedAddress = (packet.receiver || addressPart || "").toLowerCase();
+    const chainId = chainPart || String(packet.chainId ?? "");
+
+    const group = groups.get(inferredKey) ?? {
+      oappId: inferredKey,
+      chainId,
+      address: normalizedAddress,
+      count: 0,
+      eids: new Set(),
+      lastTimestamp: 0,
+      firstTimestamp: Number.MAX_SAFE_INTEGER,
+      lastBlock: null,
+    };
+
+    group.count += 1;
+
+    if (packet.srcEid !== undefined && packet.srcEid !== null) {
+      group.eids.add(String(packet.srcEid));
+    }
+
+    const timestamp = Number(packet.blockTimestamp ?? 0);
+    if (Number.isFinite(timestamp)) {
+      if (timestamp > group.lastTimestamp) {
+        group.lastTimestamp = timestamp;
+      }
+      if (timestamp < group.firstTimestamp) {
+        group.firstTimestamp = timestamp;
+      }
+    }
+
+    const blockNumber = packet.blockNumber !== undefined ? Number(packet.blockNumber) : null;
+    if (Number.isFinite(blockNumber)) {
+      if (group.lastBlock === null || blockNumber > group.lastBlock) {
+        group.lastBlock = blockNumber;
+      }
+    }
+
+    groups.set(inferredKey, group);
+  });
+
+  const sortedGroups = Array.from(groups.values()).sort((a, b) => {
+    if (b.count !== a.count) {
+      return b.count - a.count;
+    }
+    return (b.lastTimestamp || 0) - (a.lastTimestamp || 0);
+  });
+
+  const limited = sortedGroups.slice(0, resultLimit);
+  const rows = limited.map((group, index) => {
+    const chainDisplay = getChainDisplayLabel(group.chainId) || group.chainId || "—";
+    const address = group.address || (group.oappId.split("_")[1] ?? "—");
+    const eids = Array.from(group.eids).sort();
+
+    const chainCell = createFormattedCell(
+      [chainDisplay, `ChainId ${group.chainId || "—"}`],
+      group.chainId,
+    );
+
+    const oappCell = createFormattedCell([group.oappId], group.oappId);
+    const addressCell = createFormattedCell([address], address);
+
+    const eidLines = [`Count ${eids.length}`];
+    if (eids.length) {
+      eidLines.push(...eids);
+    }
+    const eidCell = createFormattedCell(eidLines, eids.join(", "));
+
+    const lastLines = [];
+    if (group.lastTimestamp) {
+      const ts = formatTimestampValue(group.lastTimestamp);
+      if (ts) {
+        lastLines.push(ts.primary);
+        if (ts.secondary) {
+          lastLines.push(ts.secondary);
+        }
+      }
+    }
+    if (group.lastBlock !== null && group.lastBlock !== undefined) {
+      lastLines.push(`Block ${group.lastBlock}`);
+    }
+    const lastCell = createFormattedCell(
+      lastLines.length ? lastLines : ["—"],
+      String(group.lastTimestamp ?? ""),
+    );
+
+    return {
+      Rank: String(index + 1),
+      "OApp ID": oappCell,
+      Chain: chainCell,
+      Address: addressCell,
+      Packets: String(group.count),
+      "Unique EIDs": eidCell,
+      "Last Packet": lastCell,
+    };
+  });
+
+  const summary = {
+    windowLabel,
+    fromTimestamp,
+    toTimestamp,
+    totalOapps: groups.size,
+    sampledPackets,
+    returnedCount: rows.length,
+    fetchLimit: fetchLimit ?? "∞",
+  };
+
+  const summaryLabel = `Top ${rows.length} • last ${windowLabel || "window"}`;
+
+  return {
+    rows,
+    meta: {
+      summary: summaryLabel,
+      popularOappsSummary: summary,
+    },
+  };
+}
+
+function buildOAppId(chainId, address) {
+  if (chainId === undefined || chainId === null) {
+    return null;
+  }
+  if (!address) {
+    return null;
+  }
+  const trimmedAddress = String(address).toLowerCase();
+  return `${chainId}_${trimmedAddress}`;
 }
 
 function formatSecurityConfigRows(rows, meta) {
@@ -1235,6 +1529,9 @@ function buildVariableSummary(variables = {}) {
       continue;
     }
     if (key === "minPackets" && (value === "0" || value === 0)) {
+      continue;
+    }
+    if (key === "fromTimestamp" || key === "nowTimestamp") {
       continue;
     }
     if (key === "oappId") {
