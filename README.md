@@ -106,7 +106,7 @@ Raw JSON can be copied globally via the button in the results header. It uses `r
 
 - `layerzero-chains.json` and `oapp-chains.json` are generated from repo sources (`layerzero.json` and `config.yaml`). Regenerate them if chains are added or renamed.
 - DVN naming depends on `DvnMetadata` entries emitted by the indexer (see “Reference Data” in the docs). No DVN entry? The UI falls back to the address but copy still works.
-- The dashboard reads the Hasura endpoint from the `data-graphql-endpoint` attribute on the root `<html>` element (defaults to `http://localhost:8080/v1/graphql`). Update that attribute when you deploy behind a different host/port.
+- The dashboard reads the Hasura endpoint from the `data-graphql-endpoint` attribute on the root `<html>` element (defaults to `http://localhost:8080/v1/graphql`). Update that attribute when you deploy behind a different host/port. If you need to send headers (e.g., Hasura admin secret), set `data-hasura-admin-secret` as well.
 
 ---
 
@@ -135,32 +135,3 @@ Raw JSON can be copied globally via the button in the results header. It uses `r
    - Copy affordances rely on inline styles—verify high-contrast modes if you introduce darker backgrounds.
 
 With that, you should have enough context to extend the dashboard confidently. Keep cards focused, results readable, and remember the goal: make the LayerZero security-config index easy to interrogate without leaving the terminal. Happy shipping!
-
----
-
-## Deployment notes (Caddy)
-
-The dashboard is static HTML/JS, so any web server can host it. When serving alongside the indexer with [Caddy](https://caddyserver.com/):
-
-1. Sync the dashboard directory to the server (e.g., `/var/www/dvnstats/dashboard`) and keep the `data-graphql-endpoint` attribute in `index.html` pointing to the path you’ll reverse-proxy (`/v1/graphql` in the example below).
-2. Configure Caddy to serve the static assets and proxy Hasura:
-
-   ```caddyfile
-   dvn.example.com {
-     root * /var/www/dvnstats/dashboard
-     file_server
-
-     @graphql path /v1/graphql*
-     reverse_proxy @graphql localhost:8093
-   }
-   ```
-
-   Replace `dvn.example.com` with your domain and `localhost:8093` with the port where the indexer exposes Hasura (`pnpm dev` defaults to `8093`).
-
-3. If you expose the GraphQL endpoint on a different host/port, update the HTML attribute accordingly:
-
-   ```html
-   <html lang="en" data-graphql-endpoint="https://dvn.example.com/v1/graphql">
-   ```
-
-4. Restart Caddy. The dashboard will now load data through the reverse proxy, avoiding cross-origin issues.

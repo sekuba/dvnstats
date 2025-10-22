@@ -1,6 +1,12 @@
+const ROOT_DATASET = document.documentElement.dataset;
 const GRAPHQL_ENDPOINT =
-  document.documentElement.dataset.graphqlEndpoint ||
-  "http://localhost:8080/v1/graphql";
+  ROOT_DATASET.graphqlEndpoint || "http://localhost:8080/v1/graphql";
+const GRAPHQL_HEADERS = {
+  "Content-Type": "application/json",
+  ...(ROOT_DATASET.hasuraAdminSecret
+    ? { "x-hasura-admin-secret": ROOT_DATASET.hasuraAdminSecret }
+    : {}),
+};
 
 const chainLookup = {
   byNativeId: new Map(),
@@ -532,9 +538,7 @@ async function runQuery(key, card, config, statusEl) {
   try {
     const response = await fetch(GRAPHQL_ENDPOINT, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: GRAPHQL_HEADERS,
       body: requestBody,
     });
 
