@@ -399,6 +399,58 @@ const queryRegistry = {
       };
     },
   },
+  "web-of-security": {
+    label: "Web of Security",
+    description: "Load and visualize the security graph for an OApp",
+    query: null,
+    initialize: ({ card, run }) => {
+      const fileInput = card.querySelector('input[name="webFile"]');
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          if (fileInput.files && fileInput.files[0]) {
+            run();
+          }
+        });
+      }
+    },
+    buildVariables: (card) => {
+      const oappIdInput = card.querySelector('input[name="oappId"]');
+      const fileInput = card.querySelector('input[name="webFile"]');
+
+      const oappId = oappIdInput?.value?.trim() ?? "";
+
+      if (!fileInput?.files?.[0]) {
+        throw new Error("Please select a web data JSON file.");
+      }
+
+      return {
+        variables: {
+          oappId,
+          file: fileInput.files[0]
+        },
+        meta: {
+          limitLabel: oappId ? `seed=${oappId}` : "web-of-security",
+          summary: oappId || "Web of Security",
+        },
+      };
+    },
+    processResponse: async (payload, meta) => {
+      const webData = payload?.webData;
+      if (!webData) {
+        throw new Error("Invalid web data format");
+      }
+
+      return {
+        rows: [],
+        meta: {
+          ...meta,
+          webData,
+          resultLabel: "Web of Security",
+          renderMode: "graph",
+        },
+      };
+    },
+  },
 };
 
 const resultsTitle = document.getElementById("results-title");
@@ -528,33 +580,42 @@ async function runQuery(key, card, config, statusEl) {
     throw new Error("Missing query input.");
   }
 
-  const requestBody = JSON.stringify({
-    query: config.query,
-    variables,
-  });
-
   const startedAt = performance.now();
 
   try {
-    const response = await fetch(GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: GRAPHQL_HEADERS,
-      body: requestBody,
-    });
+    let payload;
 
-    const payload = await response.json().catch(() => ({}));
+    if (variables.file) {
+      const file = variables.file;
+      const text = await file.text();
+      const webData = JSON.parse(text);
+      payload = { webData };
+    } else {
+      const requestBody = JSON.stringify({
+        query: config.query,
+        variables,
+      });
 
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status} ${response.statusText || ""}`.trim(),
-      );
-    }
+      const response = await fetch(GRAPHQL_ENDPOINT, {
+        method: "POST",
+        headers: GRAPHQL_HEADERS,
+        body: requestBody,
+      });
 
-    if (payload.errors?.length) {
-      const message = payload.errors
-        .map((error) => error.message || "Unknown error")
-        .join("; ");
-      throw new Error(message);
+      payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status} ${response.statusText || ""}`.trim(),
+        );
+      }
+
+      if (payload.errors?.length) {
+        const message = payload.errors
+          .map((error) => error.message || "Unknown error")
+          .join("; ");
+        throw new Error(message);
+      }
     }
 
     const elapsed = performance.now() - startedAt;
@@ -572,7 +633,7 @@ async function runQuery(key, card, config, statusEl) {
   let finalMeta = { ...baseMeta };
 
   if (typeof config.processResponse === "function") {
-    const result = config.processResponse(payload, { ...baseMeta }) || {};
+    const result = await config.processResponse(payload, { ...baseMeta }) || {};
     rows = Array.isArray(result.rows) ? result.rows : [];
     if (result.meta && typeof result.meta === "object") {
       finalMeta = { ...baseMeta, ...result.meta };
@@ -587,9 +648,9 @@ async function runQuery(key, card, config, statusEl) {
 
   setStatus(
     statusEl,
-    `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(
-      0,
-    )} ms`,
+    finalMeta.renderMode === "graph"
+      ? `Loaded web with ${finalMeta.webData?.nodes?.length || 0} nodes in ${elapsed.toFixed(0)} ms`
+      : `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(0)} ms`,
       "success",
     );
 
@@ -624,11 +685,13 @@ function updateResultsPane(rows, payload, meta) {
   resultsState.lastQueryLabel = metaSnapshot.label;
   resultsState.lastRender = { rows, payload, meta: metaSnapshot };
 
-  copyJsonButton.disabled = rows.length === 0;
+  copyJsonButton.disabled = metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
 
   const variableHints = buildVariableSummary(metaSnapshot.variables);
   const metaParts = [
-    `${rows.length} row${rows.length === 1 ? "" : "s"}`,
+    metaSnapshot.renderMode === "graph"
+      ? `${metaSnapshot.webData?.nodes?.length || 0} nodes, ${metaSnapshot.webData?.edges?.length || 0} edges`
+      : `${rows.length} row${rows.length === 1 ? "" : "s"}`,
     metaSnapshot.summary,
     `${Math.round(metaSnapshot.elapsed)} ms`,
     metaSnapshot.limitLabel,
@@ -638,6 +701,14 @@ function updateResultsPane(rows, payload, meta) {
 
   resultsTitle.textContent = metaSnapshot.label;
   resultsMeta.textContent = metaParts.join(" • ");
+
+  if (metaSnapshot.renderMode === "graph") {
+    resultsBody.classList.remove("empty");
+    resultsBody.innerHTML = "";
+    const graphContainer = renderWebOfSecurity(metaSnapshot.webData);
+    resultsBody.appendChild(graphContainer);
+    return;
+  }
 
   const summaryPanel = renderSummaryPanel(metaSnapshot);
 
@@ -1928,3 +1999,385 @@ const copyToastState = {
   container: null,
   timers: [],
 };
+
+function renderWebOfSecurity(webData) {
+  if (!webData || !webData.nodes || !webData.edges) {
+    const error = document.createElement("div");
+    error.className = "placeholder";
+    error.innerHTML = `
+      <p class="placeholder-title">Invalid web data</p>
+      <p>The loaded file does not contain valid web data.</p>
+    `;
+    return error;
+  }
+
+  const container = document.createElement("div");
+  container.className = "web-of-security-container";
+
+  const summary = document.createElement("div");
+  summary.className = "summary-panel";
+  summary.innerHTML = `
+    <h3>Web of Security Overview</h3>
+    <dl>
+      <dt>Seed OApp</dt>
+      <dd>${webData.seed || "—"}</dd>
+      <dt>Crawl Depth</dt>
+      <dd>${webData.crawlDepth || 0}</dd>
+      <dt>Total Nodes</dt>
+      <dd>${webData.nodes.length}</dd>
+      <dt>Tracked Nodes</dt>
+      <dd>${webData.nodes.filter(n => n.isTracked).length}</dd>
+      <dt>Dangling Nodes</dt>
+      <dd>${webData.nodes.filter(n => n.isDangling).length}</dd>
+      <dt>Total Edges</dt>
+      <dd>${webData.edges.length}</dd>
+      <dt>Crawled At</dt>
+      <dd>${new Date(webData.timestamp).toLocaleString()}</dd>
+    </dl>
+    <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Legend</h4>
+    <dl style="font-size: 0.9em;">
+      <dt>Node Color</dt>
+      <dd>Based on <strong>minimum</strong> required DVNs across all source chains (weakest link)</dd>
+      <dt style="margin-top: 0.5rem;">Edge Color</dt>
+      <dd>
+        <span style="color: var(--ink); opacity: 0.5;">Gray</span>: Normal security<br>
+        <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower security than other edges in this web<br>
+        <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (dead address in DVNs)
+      </dd>
+      <dt style="margin-top: 0.5rem;">Node Border</dt>
+      <dd>
+        Solid: Tracked (security config known)<br>
+        Dashed: Dangling (unknown security - dangerous!)
+      </dd>
+    </dl>
+  `;
+  container.appendChild(summary);
+
+  const svg = renderSVGGraph(webData);
+  container.appendChild(svg);
+
+  const nodeList = renderNodeList(webData.nodes);
+  container.appendChild(nodeList);
+
+  return container;
+}
+
+function renderSVGGraph(webData) {
+  const width = 1600;
+  const height = 1200;
+  const nodeRadius = 40;
+  const padding = 150;
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", height);
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.style.border = "1px solid var(--ink)";
+  svg.style.background = "var(--paper)";
+  svg.style.marginTop = "1rem";
+
+  const defs = document.createElementNS(svgNS, "defs");
+  const marker = document.createElementNS(svgNS, "marker");
+  marker.setAttribute("id", "arrowhead");
+  marker.setAttribute("markerWidth", "10");
+  marker.setAttribute("markerHeight", "10");
+  marker.setAttribute("refX", "8");
+  marker.setAttribute("refY", "3");
+  marker.setAttribute("orient", "auto");
+  const polygon = document.createElementNS(svgNS, "polygon");
+  polygon.setAttribute("points", "0 0, 10 3, 0 6");
+  polygon.setAttribute("fill", "var(--ink)");
+  marker.appendChild(polygon);
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+
+  const nodePositions = layoutNodes(webData.nodes, width, height, padding);
+
+  const nodesById = new Map(webData.nodes.map(n => [n.id, n]));
+
+  const edgeSecurityInfo = [];
+  let maxRequiredDVNsInWeb = 0;
+
+  for (const edge of webData.edges) {
+    const toNode = nodesById.get(edge.to);
+    let requiredDVNCount = 0;
+    let requiredDVNs = [];
+    let isBlocked = false;
+
+    if (toNode && toNode.securityConfigs) {
+      const configForThisEdge = toNode.securityConfigs.find(cfg => String(cfg.srcEid) === String(edge.srcEid));
+      if (configForThisEdge) {
+        requiredDVNCount = configForThisEdge.requiredDVNCount || 0;
+        requiredDVNs = configForThisEdge.requiredDVNs || [];
+
+        const deadAddress = "0x000000000000000000000000000000000000dead";
+        isBlocked = requiredDVNs.some(addr =>
+          String(addr).toLowerCase() === deadAddress.toLowerCase()
+        );
+      }
+    }
+
+    if (!isBlocked && requiredDVNCount > maxRequiredDVNsInWeb) {
+      maxRequiredDVNsInWeb = requiredDVNCount;
+    }
+
+    edgeSecurityInfo.push({
+      edge,
+      requiredDVNCount,
+      requiredDVNs,
+      isBlocked,
+    });
+  }
+
+  const edgesGroup = document.createElementNS(svgNS, "g");
+  edgesGroup.setAttribute("class", "edges");
+
+  for (const info of edgeSecurityInfo) {
+    const edge = info.edge;
+    const fromPos = nodePositions.get(edge.from);
+    const toPos = nodePositions.get(edge.to);
+
+    if (!fromPos || !toPos) continue;
+
+    let strokeColor = "#000000ff";
+    let strokeWidth = "3";
+    let opacity = "0.5";
+    let dashArray = "none";
+
+    if (info.isBlocked) {
+      strokeColor = "#ff0000";
+      strokeWidth = "1";
+      opacity = "0.6";
+      dashArray = "8,4";
+    } else if (info.requiredDVNCount < maxRequiredDVNsInWeb) {
+      strokeColor = "#ff6666";
+      strokeWidth = "2";
+      opacity = "0.5";
+    }
+
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", fromPos.x);
+    line.setAttribute("y1", fromPos.y);
+    line.setAttribute("x2", toPos.x);
+    line.setAttribute("y2", toPos.y);
+    line.setAttribute("stroke", strokeColor);
+    line.setAttribute("stroke-width", strokeWidth);
+    line.setAttribute("stroke-dasharray", dashArray);
+    line.setAttribute("marker-end", "url(#arrowhead)");
+    line.setAttribute("opacity", opacity);
+
+    const title = document.createElementNS(svgNS, "title");
+    const titleLines = [
+      `${edge.from} → ${edge.to}`,
+      `Src EID: ${edge.srcEid}`,
+    ];
+
+    if (info.isBlocked) {
+      titleLines.push(`STATUS: BLOCKED (dead address in DVNs)`);
+    } else if (maxRequiredDVNsInWeb > 0 && info.requiredDVNCount < maxRequiredDVNsInWeb) {
+      titleLines.push(`WARNING: Lower security than other edges (${info.requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`);
+    }
+
+    if (info.requiredDVNs.length > 0) {
+      titleLines.push(`Required DVNs: ${info.requiredDVNs.join(", ")}`);
+      titleLines.push(`Required Count: ${info.requiredDVNCount}`);
+    } else if (info.requiredDVNCount > 0) {
+      titleLines.push(`Required DVN Count: ${info.requiredDVNCount}`);
+    } else {
+      titleLines.push(`Required DVN Count: 0 (WARNING: No required DVNs!)`);
+    }
+
+    title.textContent = titleLines.join("\n");
+    line.appendChild(title);
+
+    edgesGroup.appendChild(line);
+  }
+  svg.appendChild(edgesGroup);
+
+  const nodesGroup = document.createElementNS(svgNS, "g");
+  nodesGroup.setAttribute("class", "nodes");
+
+  for (const node of webData.nodes) {
+    const pos = nodePositions.get(node.id);
+    if (!pos) continue;
+
+    const minRequiredDVNs = node.securityConfigs && node.securityConfigs.length > 0
+      ? Math.min(...node.securityConfigs.map(c => c.requiredDVNCount))
+      : 0;
+
+    const radius = node.isTracked
+      ? nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
+      : nodeRadius * 0.5;
+
+    const nodeGroup = document.createElementNS(svgNS, "g");
+    nodeGroup.setAttribute("class", "node");
+
+    const circle = document.createElementNS(svgNS, "circle");
+    circle.setAttribute("cx", pos.x);
+    circle.setAttribute("cy", pos.y);
+    circle.setAttribute("r", radius);
+    circle.setAttribute("fill", node.isDangling ? "none" : getNodeColor(minRequiredDVNs));
+    circle.setAttribute("stroke", "var(--ink)");
+    circle.setAttribute("stroke-width", node.isDangling ? "3" : "2");
+    circle.setAttribute("stroke-dasharray", node.isDangling ? "5,5" : "none");
+
+    const title = document.createElementNS(svgNS, "title");
+    const alias = getOAppAlias(node.id);
+    const titleLines = [
+      alias ? `${alias} (${node.id})` : node.id,
+      `Chain: ${getChainDisplayLabel(node.chainId) || node.chainId}`,
+      `Tracked: ${node.isTracked ? "Yes" : "No (Dangling)"}`,
+      `Total Packets: ${node.totalPacketsReceived}`,
+      `Min Required DVNs: ${minRequiredDVNs}`,
+    ];
+    title.textContent = titleLines.join("\n");
+    circle.appendChild(title);
+
+    nodeGroup.appendChild(circle);
+
+    const text = document.createElementNS(svgNS, "text");
+    text.setAttribute("x", pos.x);
+    text.setAttribute("y", pos.y + radius + 18);
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("font-size", "11");
+    text.setAttribute("fill", "var(--ink)");
+    text.textContent = alias || `${node.chainId}:${node.address.substring(0, 6)}...`;
+    nodeGroup.appendChild(text);
+
+    nodesGroup.appendChild(nodeGroup);
+  }
+  svg.appendChild(nodesGroup);
+
+  return svg;
+}
+
+function layoutNodes(nodes, width, height, padding) {
+  const positions = new Map();
+
+  if (nodes.length === 0) return positions;
+
+  const nodesByDepth = new Map();
+  for (const node of nodes) {
+    const depth = node.depth >= 0 ? node.depth : 999;
+    if (!nodesByDepth.has(depth)) {
+      nodesByDepth.set(depth, []);
+    }
+    nodesByDepth.get(depth).push(node);
+  }
+
+  const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
+  const maxDepth = Math.max(...depths);
+
+  const depthSpacing = (width - 2 * padding) / Math.max(maxDepth, 1);
+
+  for (const [depthIndex, depth] of depths.entries()) {
+    const nodesAtDepth = nodesByDepth.get(depth);
+    const x = padding + depthSpacing * depthIndex;
+    const verticalSpacing = (height - 2 * padding) / Math.max(nodesAtDepth.length - 1, 1);
+
+    for (const [index, node] of nodesAtDepth.entries()) {
+      const y = padding + (nodesAtDepth.length === 1 ? (height - 2 * padding) / 2 : verticalSpacing * index);
+      positions.set(node.id, { x, y });
+    }
+  }
+
+  return positions;
+}
+
+function getNodeColor(requiredDVNCount) {
+  if (requiredDVNCount === 0) return "#ffcccc";
+  if (requiredDVNCount === 1) return "#ffffcc";
+  if (requiredDVNCount === 2) return "#ccffcc";
+  if (requiredDVNCount >= 3) return "#ccffff";
+  return "#f0f0f0";
+}
+
+function renderNodeList(nodes) {
+  const container = document.createElement("div");
+  container.className = "node-list-container";
+  container.style.marginTop = "2rem";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Nodes Detail";
+  container.appendChild(heading);
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  thead.innerHTML = `
+    <tr>
+      <th>OApp ID</th>
+      <th>Chain</th>
+      <th>Tracked</th>
+      <th>Depth</th>
+      <th>Security Configs</th>
+      <th>Total Packets</th>
+    </tr>
+  `;
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const node of nodes) {
+    const tr = document.createElement("tr");
+
+    const alias = getOAppAlias(node.id);
+    const oappIdCell = document.createElement("td");
+    const oappDiv = document.createElement("div");
+    oappDiv.className = "copyable";
+    oappDiv.dataset.copyValue = node.id;
+    oappDiv.dataset.oappId = node.id;
+    if (alias) {
+      const aliasSpan = document.createElement("span");
+      aliasSpan.textContent = alias;
+      oappDiv.appendChild(aliasSpan);
+      const idSpan = document.createElement("span");
+      idSpan.textContent = `ID ${node.id}`;
+      oappDiv.appendChild(idSpan);
+    } else {
+      const span = document.createElement("span");
+      span.textContent = node.id;
+      oappDiv.appendChild(span);
+    }
+    oappIdCell.appendChild(oappDiv);
+    tr.appendChild(oappIdCell);
+
+    const chainCell = document.createElement("td");
+    chainCell.textContent = getChainDisplayLabel(node.chainId) || node.chainId;
+    tr.appendChild(chainCell);
+
+    const trackedCell = document.createElement("td");
+    trackedCell.textContent = node.isTracked ? "Yes" : node.isDangling ? "No (Dangling)" : "No";
+    tr.appendChild(trackedCell);
+
+    const depthCell = document.createElement("td");
+    depthCell.textContent = node.depth >= 0 ? node.depth : "—";
+    tr.appendChild(depthCell);
+
+    const configsCell = document.createElement("td");
+    if (node.securityConfigs && node.securityConfigs.length > 0) {
+      const configSummaries = node.securityConfigs.map(cfg => {
+        const requiredDVNs = cfg.requiredDVNs.length > 0
+          ? cfg.requiredDVNs.join(", ")
+          : `${cfg.requiredDVNCount} DVNs`;
+        return `EID ${cfg.srcEid}: ${requiredDVNs} (${cfg.requiredDVNCount} required)`;
+      });
+      configsCell.innerHTML = `<div style="font-size: 0.85em">${configSummaries.slice(0, 3).join("<br>")}</div>`;
+      if (configSummaries.length > 3) {
+        configsCell.innerHTML += `<div style="font-size: 0.85em; opacity: 0.6">...and ${configSummaries.length - 3} more</div>`;
+      }
+    } else {
+      configsCell.textContent = "—";
+    }
+    tr.appendChild(configsCell);
+
+    const packetsCell = document.createElement("td");
+    packetsCell.textContent = node.totalPacketsReceived || "—";
+    tr.appendChild(packetsCell);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  container.appendChild(table);
+
+  return container;
+}
