@@ -2884,7 +2884,7 @@ function renderSVGGraph(webData) {
     let chainDisplayLabel = getChainDisplayLabel(node.chainId) || `Chain ${node.chainId}`;
     // Remove chainId in parentheses if present (e.g., "Arbitrum (42161)" -> "Arbitrum")
     chainDisplayLabel = chainDisplayLabel.replace(/\s*\(\d+\)$/, '');
-    const displayText = (alias || chainDisplayLabel).toUpperCase();
+    const displayText = chainDisplayLabel.toUpperCase();
 
     const text = document.createElementNS(svgNS, "text");
     text.setAttribute("x", pos.x);
