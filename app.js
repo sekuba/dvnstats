@@ -2312,6 +2312,74 @@ function renderSVGGraph(webData) {
   svg.style.border = "1px solid var(--ink)";
   svg.style.background = "var(--paper)";
   svg.style.marginTop = "1rem";
+  svg.style.cursor = "grab";
+
+  // Create a group for all content to enable zoom/pan
+  const contentGroup = document.createElementNS(svgNS, "g");
+  contentGroup.setAttribute("class", "zoom-content");
+
+  // Zoom and pan state
+  let scale = 1;
+  let translateX = 0;
+  let translateY = 0;
+  let isPanning = false;
+  let startX = 0;
+  let startY = 0;
+
+  function updateTransform() {
+    contentGroup.setAttribute("transform", `translate(${translateX}, ${translateY}) scale(${scale})`);
+  }
+
+  // Mouse wheel zoom
+  svg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Convert mouse position to SVG coordinates
+    const svgX = (mouseX - translateX) / scale;
+    const svgY = (mouseY - translateY) / scale;
+
+    // Zoom factor
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor));
+
+    // Adjust translation to zoom toward mouse position
+    translateX = mouseX - svgX * newScale;
+    translateY = mouseY - svgY * newScale;
+    scale = newScale;
+
+    updateTransform();
+  });
+
+  // Pan with mouse drag
+  svg.addEventListener("mousedown", (e) => {
+    if (e.target === svg || e.target === contentGroup) {
+      isPanning = true;
+      startX = e.clientX - translateX;
+      startY = e.clientY - translateY;
+      svg.style.cursor = "grabbing";
+    }
+  });
+
+  svg.addEventListener("mousemove", (e) => {
+    if (isPanning) {
+      translateX = e.clientX - startX;
+      translateY = e.clientY - startY;
+      updateTransform();
+    }
+  });
+
+  svg.addEventListener("mouseup", () => {
+    isPanning = false;
+    svg.style.cursor = "grab";
+  });
+
+  svg.addEventListener("mouseleave", () => {
+    isPanning = false;
+    svg.style.cursor = "grab";
+  });
 
 
   // Create persistent tooltip system
@@ -2480,7 +2548,7 @@ function renderSVGGraph(webData) {
       renderUnidirectionalEdge(edgesGroup, fromPos, toPos, info, maxRequiredDVNsInWeb, showPersistentTooltip);
     }
   }
-  svg.appendChild(edgesGroup);
+  contentGroup.appendChild(edgesGroup);
 
   const nodesGroup = document.createElementNS(svgNS, "g");
   nodesGroup.setAttribute("class", "nodes");
@@ -2583,7 +2651,8 @@ function renderSVGGraph(webData) {
 
     nodesGroup.appendChild(nodeGroup);
   }
-  svg.appendChild(nodesGroup);
+  contentGroup.appendChild(nodesGroup);
+  svg.appendChild(contentGroup);
 
   return svg;
 }
