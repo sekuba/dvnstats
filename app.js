@@ -2671,10 +2671,25 @@ function layoutNodes(nodes, width, height, padding) {
     nodesByDepth.get(depth).push(node);
   }
 
-  const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
-  const maxDepth = Math.max(...depths);
+  // Split depth 1 nodes into two columns if there are enough
+  if (nodesByDepth.has(1)) {
+    const depth1Nodes = nodesByDepth.get(1);
+    if (depth1Nodes.length > 1) {
+      const midpoint = Math.ceil(depth1Nodes.length / 2);
+      const firstHalf = depth1Nodes.slice(0, midpoint);
+      const secondHalf = depth1Nodes.slice(midpoint);
 
-  const depthSpacing = (width - 2 * padding) / Math.max(maxDepth, 1);
+      nodesByDepth.set(1.1, firstHalf);
+      nodesByDepth.set(1.2, secondHalf);
+      nodesByDepth.delete(1);
+    }
+  }
+
+  const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
+  const maxDepth = Math.max(...depths.filter(d => d < 999));
+  const totalColumns = depths.filter(d => d < 999).length;
+
+  const depthSpacing = (width - 2 * padding) / Math.max(totalColumns - 1, 1);
 
   for (const [depthIndex, depth] of depths.entries()) {
     const nodesAtDepth = nodesByDepth.get(depth);
