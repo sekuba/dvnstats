@@ -3,9 +3,6 @@ const GRAPHQL_ENDPOINT =
   ROOT_DATASET.graphqlEndpoint || "http://localhost:8080/v1/graphql";
 const GRAPHQL_HEADERS = {
   "Content-Type": "application/json",
-  ...(ROOT_DATASET.hasuraAdminSecret
-    ? { "x-hasura-admin-secret": ROOT_DATASET.hasuraAdminSecret }
-    : {}),
 };
 
 const chainLookup = {
@@ -399,6 +396,72 @@ const queryRegistry = {
       };
     },
   },
+  "web-of-security": {
+    label: "Web of Security",
+    description: "Crawl or load the security graph for an OApp",
+    query: null,
+    initialize: ({ card, run }) => {
+      const fileInput = card.querySelector('input[name="webFile"]');
+      if (fileInput) {
+        fileInput.addEventListener('change', () => {
+          if (fileInput.files && fileInput.files[0]) {
+            run();
+          }
+        });
+      }
+    },
+    buildVariables: (card) => {
+      const seedOAppIdInput = card.querySelector('input[name="seedOAppId"]');
+      const depthInput = card.querySelector('input[name="depth"]');
+      const limitInput = card.querySelector('input[name="limit"]');
+      const fileInput = card.querySelector('input[name="webFile"]');
+
+      const seedOAppId = seedOAppIdInput?.value?.trim();
+      const depth = parseInt(depthInput?.value) || 10;
+      const limit = parseInt(limitInput?.value) || 1000;
+      const file = fileInput?.files?.[0];
+
+      if (!seedOAppId && !file) {
+        throw new Error("Please provide a seed OApp ID to crawl or select a web data JSON file to load.");
+      }
+
+      const isCrawl = !!seedOAppId;
+
+      if (isCrawl && fileInput) {
+        fileInput.value = '';
+      }
+
+      return {
+        variables: {
+          seedOAppId,
+          depth,
+          limit,
+          file: isCrawl ? null : file,
+          isCrawl
+        },
+        meta: {
+          limitLabel: seedOAppId ? `seed=${seedOAppId}` : "web-of-security",
+          summary: seedOAppId || "Web of Security",
+        },
+      };
+    },
+    processResponse: async (payload, meta) => {
+      const webData = payload?.webData;
+      if (!webData) {
+        throw new Error("Invalid web data format");
+      }
+
+      return {
+        rows: [],
+        meta: {
+          ...meta,
+          webData,
+          resultLabel: "Web of Security",
+          renderMode: "graph",
+        },
+      };
+    },
+  },
 };
 
 const resultsTitle = document.getElementById("results-title");
@@ -474,6 +537,24 @@ refreshAllButton?.addEventListener("click", async () => {
 });
 
 copyJsonButton?.addEventListener("click", async () => {
+  const isGraphMode = resultsState.lastRender?.meta?.renderMode === "graph";
+  const webData = resultsState.lastRender?.meta?.webData;
+
+  if (isGraphMode && webData) {
+    const dataStr = JSON.stringify(webData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `web-of-security-${webData.seed || "data"}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    flipButtonTemporarily(copyJsonButton, "Downloaded!", 1800);
+    return;
+  }
+
   const source = resultsState.lastPayload?.data ?? resultsState.lastRows;
   if (!source || (Array.isArray(source) && !source.length)) {
     return;
@@ -528,33 +609,50 @@ async function runQuery(key, card, config, statusEl) {
     throw new Error("Missing query input.");
   }
 
-  const requestBody = JSON.stringify({
-    query: config.query,
-    variables,
-  });
-
   const startedAt = performance.now();
 
   try {
-    const response = await fetch(GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: GRAPHQL_HEADERS,
-      body: requestBody,
-    });
+    let payload;
 
-    const payload = await response.json().catch(() => ({}));
+    if (variables.isCrawl) {
+      setStatus(statusEl, "Crawling...", "loading");
+      const webData = await crawlSecurityWeb(variables.seedOAppId, {
+        depth: variables.depth,
+        limit: variables.limit,
+        onProgress: (status) => setStatus(statusEl, status, "loading")
+      });
+      payload = { webData };
+    } else if (variables.file) {
+      const file = variables.file;
+      const text = await file.text();
+      const webData = JSON.parse(text);
+      payload = { webData };
+    } else {
+      const requestBody = JSON.stringify({
+        query: config.query,
+        variables,
+      });
 
-    if (!response.ok) {
-      throw new Error(
-        `HTTP ${response.status} ${response.statusText || ""}`.trim(),
-      );
-    }
+      const response = await fetch(GRAPHQL_ENDPOINT, {
+        method: "POST",
+        headers: GRAPHQL_HEADERS,
+        body: requestBody,
+      });
 
-    if (payload.errors?.length) {
-      const message = payload.errors
-        .map((error) => error.message || "Unknown error")
-        .join("; ");
-      throw new Error(message);
+      payload = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          `HTTP ${response.status} ${response.statusText || ""}`.trim(),
+        );
+      }
+
+      if (payload.errors?.length) {
+        const message = payload.errors
+          .map((error) => error.message || "Unknown error")
+          .join("; ");
+        throw new Error(message);
+      }
     }
 
     const elapsed = performance.now() - startedAt;
@@ -572,7 +670,7 @@ async function runQuery(key, card, config, statusEl) {
   let finalMeta = { ...baseMeta };
 
   if (typeof config.processResponse === "function") {
-    const result = config.processResponse(payload, { ...baseMeta }) || {};
+    const result = await config.processResponse(payload, { ...baseMeta }) || {};
     rows = Array.isArray(result.rows) ? result.rows : [];
     if (result.meta && typeof result.meta === "object") {
       finalMeta = { ...baseMeta, ...result.meta };
@@ -587,9 +685,9 @@ async function runQuery(key, card, config, statusEl) {
 
   setStatus(
     statusEl,
-    `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(
-      0,
-    )} ms`,
+    finalMeta.renderMode === "graph"
+      ? `Loaded web with ${finalMeta.webData?.nodes?.length || 0} nodes in ${elapsed.toFixed(0)} ms`
+      : `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(0)} ms`,
       "success",
     );
 
@@ -624,11 +722,14 @@ function updateResultsPane(rows, payload, meta) {
   resultsState.lastQueryLabel = metaSnapshot.label;
   resultsState.lastRender = { rows, payload, meta: metaSnapshot };
 
-  copyJsonButton.disabled = rows.length === 0;
+  copyJsonButton.disabled = metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
+  copyJsonButton.textContent = metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
 
   const variableHints = buildVariableSummary(metaSnapshot.variables);
   const metaParts = [
-    `${rows.length} row${rows.length === 1 ? "" : "s"}`,
+    metaSnapshot.renderMode === "graph"
+      ? `${metaSnapshot.webData?.nodes?.length || 0} nodes, ${metaSnapshot.webData?.edges?.length || 0} edges`
+      : `${rows.length} row${rows.length === 1 ? "" : "s"}`,
     metaSnapshot.summary,
     `${Math.round(metaSnapshot.elapsed)} ms`,
     metaSnapshot.limitLabel,
@@ -638,6 +739,14 @@ function updateResultsPane(rows, payload, meta) {
 
   resultsTitle.textContent = metaSnapshot.label;
   resultsMeta.textContent = metaParts.join(" • ");
+
+  if (metaSnapshot.renderMode === "graph") {
+    resultsBody.classList.remove("empty");
+    resultsBody.innerHTML = "";
+    const graphContainer = renderWebOfSecurity(metaSnapshot.webData);
+    resultsBody.appendChild(graphContainer);
+    return;
+  }
 
   const summaryPanel = renderSummaryPanel(metaSnapshot);
 
@@ -1928,3 +2037,1025 @@ const copyToastState = {
   container: null,
   timers: [],
 };
+
+// Web of Security Crawl Functions
+const eidToChainIdMap = new Map();
+const chainIdToEidMap = new Map();
+let dvnLookupCache = null;
+
+async function loadLayerZeroMetadata() {
+  if (eidToChainIdMap.size > 0) {
+    return;
+  }
+
+  try {
+    const response = await fetch('./layerzero.json');
+    const data = await response.json();
+
+    for (const [chainKey, chainData] of Object.entries(data)) {
+      if (!chainData || typeof chainData !== 'object') continue;
+
+      const chainDetails = chainData.chainDetails || {};
+      const nativeChainId = chainDetails.nativeChainId;
+
+      if (!nativeChainId) continue;
+
+      if (Array.isArray(chainData.deployments)) {
+        for (const deployment of chainData.deployments) {
+          if (!deployment || !deployment.eid) continue;
+
+          const eid = String(deployment.eid);
+          const chainId = String(nativeChainId);
+
+          eidToChainIdMap.set(eid, chainId);
+          chainIdToEidMap.set(chainId, eid);
+        }
+      }
+    }
+
+    console.log(`Loaded ${eidToChainIdMap.size} EID->chainId mappings`);
+  } catch (error) {
+    console.warn('Failed to load layerzero.json, EID mappings may be incomplete:', error.message);
+  }
+}
+
+function eidToChainId(eid) {
+  return eidToChainIdMap.get(String(eid)) || null;
+}
+
+function normalizeAddressForCrawl(address) {
+  if (!address) return null;
+
+  let cleaned = String(address).toLowerCase();
+  if (cleaned.startsWith('0x')) {
+    cleaned = cleaned.substring(2);
+  }
+
+  cleaned = cleaned.replace(/^0+/, '');
+
+  if (cleaned.length === 0) return null;
+  if (cleaned.length > 40) {
+    cleaned = cleaned.substring(cleaned.length - 40);
+  }
+
+  return '0x' + cleaned.padStart(40, '0');
+}
+
+function makeOAppIdForCrawl(chainId, address) {
+  const normalized = normalizeAddressForCrawl(address);
+  if (!normalized || !chainId) return null;
+  return `${chainId}_${normalized}`;
+}
+
+async function graphqlQuery(query, variables) {
+  const endpoint = GRAPHQL_ENDPOINT;
+  const headers = { ...GRAPHQL_HEADERS, 'Content-Type': 'application/json' };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+
+  if (result.errors) {
+    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors, null, 2)}`);
+  }
+
+  return result.data;
+}
+
+async function getSenders(oappId, limit = 100) {
+  const query = `
+    query GetSenders($oappId: String!, $limit: Int!) {
+      PacketDelivered(
+        where: { oappId: { _eq: $oappId } }
+        order_by: { blockTimestamp: desc }
+        limit: $limit
+      ) {
+        sender
+        srcEid
+        receiver
+        oappId
+      }
+    }
+  `;
+
+  const data = await graphqlQuery(query, { oappId, limit });
+  return data.PacketDelivered || [];
+}
+
+async function getSecurityConfig(oappId) {
+  const query = `
+    query GetSecurityConfig($oappId: String!) {
+      OAppSecurityConfig(where: { oappId: { _eq: $oappId } }) {
+        id
+        oappId
+        eid
+        chainId
+        oapp
+        effectiveRequiredDVNCount
+        effectiveRequiredDVNs
+        effectiveOptionalDVNCount
+        effectiveOptionalDVNs
+        effectiveOptionalDVNThreshold
+        isConfigTracked
+        usesRequiredDVNSentinel
+      }
+      OApp(where: { id: { _eq: $oappId } }) {
+        id
+        chainId
+        address
+        totalPacketsReceived
+      }
+    }
+  `;
+
+  const data = await graphqlQuery(query, { oappId });
+  return {
+    configs: data.OAppSecurityConfig || [],
+    oapp: data.OApp?.[0] || null,
+  };
+}
+
+async function getDvnMetadata() {
+  const query = `
+    query GetDvnMetadata {
+      DvnMetadata {
+        id
+        chainId
+        address
+        name
+      }
+    }
+  `;
+
+  const data = await graphqlQuery(query, {});
+  return data.DvnMetadata || [];
+}
+
+function resolveDvnNames(dvnAddresses, chainId, dvnLookup) {
+  if (!Array.isArray(dvnAddresses)) return [];
+
+  return dvnAddresses.map(addr => {
+    const key = `${chainId}_${addr.toLowerCase()}`;
+    return dvnLookup.get(key) || dvnLookup.get(addr.toLowerCase()) || addr;
+  });
+}
+
+async function crawlSecurityWeb(seedOAppId, options = {}) {
+  const maxDepth = options.depth || 2;
+  const packetLimit = options.limit || 100;
+  const onProgress = options.onProgress || (() => {});
+
+  onProgress(`Loading LayerZero metadata...`);
+  await loadLayerZeroMetadata();
+
+  onProgress(`Loading DVN metadata...`);
+  if (!dvnLookupCache) {
+    const dvnMetadata = await getDvnMetadata();
+    dvnLookupCache = buildDvnLookup(dvnMetadata);
+    console.log(`Loaded ${dvnMetadata.length} DVN metadata entries`);
+  }
+
+  const nodes = new Map();
+  const edges = new Map();
+  const visited = new Set();
+  const queue = [{ oappId: seedOAppId, depth: 0 }];
+
+  let nodeCount = 0;
+
+  while (queue.length > 0) {
+    const { oappId, depth } = queue.shift();
+
+    if (visited.has(oappId)) continue;
+    visited.add(oappId);
+
+    nodeCount++;
+    onProgress(`Processing node ${nodeCount} [depth=${depth}]: ${oappId}`);
+
+    const { configs, oapp } = await getSecurityConfig(oappId);
+
+    const nodeData = {
+      id: oappId,
+      chainId: oapp?.chainId || oappId.split('_')[0],
+      address: oapp?.address || oappId.split('_')[1],
+      totalPacketsReceived: oapp?.totalPacketsReceived || 0,
+      isTracked: configs.length > 0,
+      depth,
+      securityConfigs: [],
+    };
+
+    for (const config of configs) {
+      const requiredDVNs = Array.isArray(config.effectiveRequiredDVNs)
+        ? config.effectiveRequiredDVNs
+        : [];
+      const optionalDVNs = Array.isArray(config.effectiveOptionalDVNs)
+        ? config.effectiveOptionalDVNs
+        : [];
+
+      const requiredDVNNames = resolveDvnNames(requiredDVNs, config.chainId, dvnLookupCache);
+      const optionalDVNNames = resolveDvnNames(optionalDVNs, config.chainId, dvnLookupCache);
+
+      nodeData.securityConfigs.push({
+        srcEid: config.eid,
+        requiredDVNCount: config.effectiveRequiredDVNCount || 0,
+        requiredDVNs: requiredDVNNames,
+        optionalDVNCount: config.effectiveOptionalDVNCount || 0,
+        optionalDVNs: optionalDVNNames,
+        optionalDVNThreshold: config.effectiveOptionalDVNThreshold || 0,
+        usesRequiredDVNSentinel: config.usesRequiredDVNSentinel || false,
+        isConfigTracked: config.isConfigTracked || false,
+      });
+    }
+
+    nodes.set(oappId, nodeData);
+
+    if (depth < maxDepth) {
+      const packets = await getSenders(oappId, packetLimit);
+
+      const senderSet = new Map();
+      for (const packet of packets) {
+        const key = `${packet.srcEid}_${packet.sender}`;
+        if (!senderSet.has(key)) {
+          senderSet.set(key, packet);
+        }
+      }
+
+      for (const [key, packet] of senderSet.entries()) {
+        const srcChainId = eidToChainId(packet.srcEid);
+
+        if (!srcChainId) {
+          console.log(`Skipping sender: unknown chainId for srcEid=${packet.srcEid}`);
+          continue;
+        }
+
+        const senderOAppId = makeOAppIdForCrawl(srcChainId, packet.sender);
+
+        if (!senderOAppId) {
+          console.log(`Skipping sender: invalid address ${packet.sender}`);
+          continue;
+        }
+
+        const edgeKey = `${senderOAppId}->${oappId}`;
+        const existingEdge = edges.get(edgeKey);
+
+        if (existingEdge) {
+          existingEdge.packetCount += 1;
+        } else {
+          edges.set(edgeKey, {
+            from: senderOAppId,
+            to: oappId,
+            srcEid: packet.srcEid,
+            srcChainId,
+            packetCount: 1,
+          });
+        }
+
+        if (!visited.has(senderOAppId)) {
+          queue.push({ oappId: senderOAppId, depth: depth + 1 });
+        }
+      }
+    }
+  }
+
+  const danglingNodes = new Set();
+  for (const edge of edges.values()) {
+    if (!nodes.has(edge.from)) {
+      danglingNodes.add(edge.from);
+    }
+    if (!nodes.has(edge.to)) {
+      danglingNodes.add(edge.to);
+    }
+  }
+
+  for (const oappId of danglingNodes) {
+    const [chainId, address] = oappId.split('_');
+    nodes.set(oappId, {
+      id: oappId,
+      chainId,
+      address,
+      isTracked: false,
+      isDangling: true,
+      depth: -1,
+      securityConfigs: [],
+      totalPacketsReceived: 0,
+    });
+  }
+
+  onProgress(`Crawl complete: ${nodes.size} nodes, ${edges.size} edges`);
+
+  return {
+    seed: seedOAppId,
+    crawlDepth: maxDepth,
+    packetLimit,
+    timestamp: new Date().toISOString(),
+    nodes: Array.from(nodes.values()),
+    edges: Array.from(edges.values()),
+  };
+}
+
+function renderWebOfSecurity(webData) {
+  if (!webData || !webData.nodes || !webData.edges) {
+    const error = document.createElement("div");
+    error.className = "placeholder";
+    error.innerHTML = `
+      <p class="placeholder-title">Invalid web data</p>
+      <p>The loaded file does not contain valid web data.</p>
+    `;
+    return error;
+  }
+
+  const container = document.createElement("div");
+  container.className = "web-of-security-container";
+
+  const summary = document.createElement("div");
+  summary.className = "summary-panel";
+  summary.innerHTML = `
+    <h3>Web of Security Overview</h3>
+    <dl>
+      <dt>Seed OApp</dt>
+      <dd>${webData.seed || "—"}</dd>
+      <dt>Crawl Depth</dt>
+      <dd>${webData.crawlDepth || 0}</dd>
+      <dt>Total Nodes</dt>
+      <dd>${webData.nodes.length}</dd>
+      <dt>Tracked Nodes</dt>
+      <dd>${webData.nodes.filter(n => n.isTracked).length}</dd>
+      <dt>Dangling Nodes</dt>
+      <dd>${webData.nodes.filter(n => n.isDangling).length}</dd>
+      <dt>Total Edges</dt>
+      <dd>${webData.edges.length}</dd>
+      <dt>Crawled At</dt>
+      <dd>${new Date(webData.timestamp).toLocaleString()}</dd>
+    </dl>
+    <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Legend</h4>
+    <dl style="font-size: 0.9em;">
+      <dt>Node Color</dt>
+      <dd>
+        <span style="display: inline-block; background: #ffff99; padding: 2px 6px; border: 1px solid #000; margin-right: 4px;">Yellow</span>: Maximum security (min DVN count ≥ web max, excl. blocked configs)<br>
+        <span style="display: inline-block; background: #ff9999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Red</span>: Weak link (min DVN count &lt; web max)
+      </dd>
+      <dt style="margin-top: 0.5rem;">Edge Color</dt>
+      <dd>
+        <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Maximum security (DVN count = web max)<br>
+        <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower security (DVN count &lt; web max)<br>
+        <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (dead address in DVNs)
+      </dd>
+      <dt style="margin-top: 0.5rem;">Node Border</dt>
+      <dd>
+        Solid: Tracked (security config known)<br>
+        Dashed: Dangling (unknown security - dangerous!)
+      </dd>
+    </dl>
+  `;
+
+  container.appendChild(summary);
+
+  const svg = renderSVGGraph(webData);
+  container.appendChild(svg);
+
+  const nodeList = renderNodeList(webData.nodes);
+  container.appendChild(nodeList);
+
+  return container;
+}
+
+function renderUnidirectionalEdge(edgesGroup, fromPos, toPos, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const { edge, isBlocked, requiredDVNCount, requiredDVNs } = info;
+
+  const style = getEdgeStyle(isBlocked, requiredDVNCount, maxRequiredDVNsInWeb);
+
+  const line = document.createElementNS(svgNS, "line");
+  line.setAttribute("x1", fromPos.x);
+  line.setAttribute("y1", fromPos.y);
+  line.setAttribute("x2", toPos.x);
+  line.setAttribute("y2", toPos.y);
+  line.setAttribute("stroke", style.color);
+  line.setAttribute("stroke-width", style.width);
+  line.setAttribute("stroke-dasharray", style.dashArray);
+  line.setAttribute("opacity", style.opacity);
+  line.style.cursor = "pointer";
+
+  const tooltipText = buildEdgeTooltip(edge, isBlocked, requiredDVNCount, requiredDVNs, maxRequiredDVNsInWeb);
+  const title = document.createElementNS(svgNS, "title");
+  title.textContent = tooltipText;
+  line.appendChild(title);
+
+  line.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showPersistentTooltip(tooltipText, e.pageX + 10, e.pageY + 10);
+  });
+
+  edgesGroup.appendChild(line);
+
+  const dx = toPos.x - fromPos.x;
+  const dy = toPos.y - fromPos.y;
+  const angle = Math.atan2(dy, dx);
+  const arrowX = fromPos.x + dx * 0.75;
+  const arrowY = fromPos.y + dy * 0.75;
+
+  const arrow = createArrowMarker(svgNS, arrowX, arrowY, angle, 8, style.color);
+  edgesGroup.appendChild(arrow);
+}
+
+function getEdgeStyle(isBlocked, requiredDVNCount, maxRequiredDVNsInWeb) {
+  if (isBlocked) {
+    return { color: "#ff0000", width: "1", opacity: "0.6", dashArray: "8,4" };
+  }
+  if (requiredDVNCount < maxRequiredDVNsInWeb) {
+    return { color: "#ff6666", width: "2", opacity: "0.5", dashArray: "none" };
+  }
+  return { color: "#000000ff", width: "3", opacity: "0.5", dashArray: "none" };
+}
+
+function buildEdgeTooltip(edge, isBlocked, requiredDVNCount, requiredDVNs, maxRequiredDVNsInWeb) {
+  const lines = [
+    `${edge.from} → ${edge.to}`,
+    `Src EID: ${edge.srcEid}`
+  ];
+
+  if (isBlocked) {
+    lines.push("STATUS: BLOCKED (dead address in DVNs)");
+  } else if (maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb) {
+    lines.push(`WARNING: Lower security (${requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`);
+  }
+
+  if (requiredDVNs.length > 0) {
+    lines.push(`Required DVNs: ${requiredDVNs.join(", ")}`);
+    lines.push(`Required Count: ${requiredDVNCount}`);
+  } else if (requiredDVNCount > 0) {
+    lines.push(`Required DVN Count: ${requiredDVNCount}`);
+  } else {
+    lines.push("Required DVN Count: 0 (WARNING: No required DVNs!)");
+  }
+
+  return lines.join("\n");
+}
+
+function renderBidirectionalEdge(edgesGroup, fromPos, toPos, forwardInfo, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip) {
+  const svgNS = "http://www.w3.org/2000/svg";
+
+  const forwardStyle = getEdgeStyle(forwardInfo.isBlocked, forwardInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+  const reverseStyle = getEdgeStyle(reverseInfo.isBlocked, reverseInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+
+  const midX = (fromPos.x + toPos.x) / 2;
+  const midY = (fromPos.y + toPos.y) / 2;
+
+  renderHalfEdge(svgNS, edgesGroup, fromPos.x, fromPos.y, midX, midY, reverseStyle, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
+  renderHalfEdge(svgNS, edgesGroup, midX, midY, toPos.x, toPos.y, forwardStyle, forwardInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
+
+  const dx = toPos.x - fromPos.x;
+  const dy = toPos.y - fromPos.y;
+  const angle = Math.atan2(dy, dx);
+
+  edgesGroup.appendChild(createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, forwardStyle.color));
+  edgesGroup.appendChild(createArrowMarker(svgNS, fromPos.x + dx * 0.25, fromPos.y + dy * 0.25, angle + Math.PI, 8, reverseStyle.color));
+}
+
+function renderHalfEdge(svgNS, edgesGroup, x1, y1, x2, y2, style, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
+  const line = document.createElementNS(svgNS, "line");
+  line.setAttribute("x1", x1);
+  line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2);
+  line.setAttribute("y2", y2);
+  line.setAttribute("stroke", style.color);
+  line.setAttribute("stroke-width", style.width);
+  line.setAttribute("stroke-dasharray", style.dashArray);
+  line.setAttribute("opacity", style.opacity);
+  line.style.cursor = "pointer";
+
+  const tooltipText = buildEdgeTooltip(info.edge, info.isBlocked, info.requiredDVNCount, info.requiredDVNs, maxRequiredDVNsInWeb);
+  const title = document.createElementNS(svgNS, "title");
+  title.textContent = tooltipText;
+  line.appendChild(title);
+
+  line.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showPersistentTooltip(tooltipText, e.pageX + 10, e.pageY + 10);
+  });
+
+  edgesGroup.appendChild(line);
+}
+
+function createArrowMarker(svgNS, x, y, angle, size, color) {
+  const arrowGroup = document.createElementNS(svgNS, "g");
+  arrowGroup.setAttribute("transform", `translate(${x}, ${y}) rotate(${angle * 180 / Math.PI})`);
+
+  const arrow = document.createElementNS(svgNS, "polygon");
+  arrow.setAttribute("points", `0,0 -${size},-${size/2} -${size},${size/2}`);
+  arrow.setAttribute("fill", color);
+  arrow.setAttribute("opacity", "0.8");
+
+  arrowGroup.appendChild(arrow);
+  return arrowGroup;
+}
+
+function isDeadAddress(address, deadAddress) {
+  return String(address).toLowerCase() === deadAddress.toLowerCase();
+}
+
+function calculateEdgeSecurityInfo(edges, nodesById, deadAddress) {
+  const edgeSecurityInfo = [];
+  let maxRequiredDVNsInWeb = 0;
+
+  for (const edge of edges) {
+    const toNode = nodesById.get(edge.to);
+    let requiredDVNCount = 0;
+    let requiredDVNs = [];
+    let isBlocked = false;
+
+    if (toNode?.securityConfigs) {
+      const config = toNode.securityConfigs.find(cfg => String(cfg.srcEid) === String(edge.srcEid));
+      if (config) {
+        requiredDVNCount = config.requiredDVNCount || 0;
+        requiredDVNs = config.requiredDVNs || [];
+        isBlocked = requiredDVNs.some(addr => isDeadAddress(addr, deadAddress));
+      }
+    }
+
+    if (!isBlocked && requiredDVNCount > maxRequiredDVNsInWeb) {
+      maxRequiredDVNsInWeb = requiredDVNCount;
+    }
+
+    edgeSecurityInfo.push({ edge, requiredDVNCount, requiredDVNs, isBlocked });
+  }
+
+  return { edgeSecurityInfo, maxRequiredDVNsInWeb };
+}
+
+function calculateMaxMinRequiredDVNsForNodes(nodes, deadAddress) {
+  let max = 0;
+
+  for (const node of nodes) {
+    if (node.isDangling || !node.securityConfigs?.length) continue;
+
+    const nonBlockedConfigs = node.securityConfigs.filter(cfg => {
+      const dvns = cfg.requiredDVNs || [];
+      return !dvns.some(addr => isDeadAddress(addr, deadAddress));
+    });
+
+    if (nonBlockedConfigs.length > 0) {
+      const min = Math.min(...nonBlockedConfigs.map(c => c.requiredDVNCount));
+      if (min > max) max = min;
+    }
+  }
+
+  return max;
+}
+
+function setupZoomAndPan(svg, contentGroup) {
+  let scale = 1;
+  let translateX = 0;
+  let translateY = 0;
+  let isPanning = false;
+  let startX = 0;
+  let startY = 0;
+
+  function updateTransform() {
+    contentGroup.setAttribute("transform", `translate(${translateX}, ${translateY}) scale(${scale})`);
+  }
+
+  svg.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const svgX = (mouseX - translateX) / scale;
+    const svgY = (mouseY - translateY) / scale;
+    const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+    const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor));
+    translateX = mouseX - svgX * newScale;
+    translateY = mouseY - svgY * newScale;
+    scale = newScale;
+    updateTransform();
+  });
+
+  svg.addEventListener("mousedown", (e) => {
+    if (e.target === svg || e.target === contentGroup) {
+      isPanning = true;
+      startX = e.clientX - translateX;
+      startY = e.clientY - translateY;
+      svg.style.cursor = "grabbing";
+    }
+  });
+
+  svg.addEventListener("mousemove", (e) => {
+    if (isPanning) {
+      translateX = e.clientX - startX;
+      translateY = e.clientY - startY;
+      updateTransform();
+    }
+  });
+
+  svg.addEventListener("mouseup", () => {
+    isPanning = false;
+    svg.style.cursor = "grab";
+  });
+
+  svg.addEventListener("mouseleave", () => {
+    isPanning = false;
+    svg.style.cursor = "grab";
+  });
+}
+
+function setupPersistentTooltips(svg) {
+  let persistentTooltip = null;
+
+  function show(text, x, y) {
+    hide();
+
+    persistentTooltip = document.createElement("div");
+    persistentTooltip.className = "persistent-tooltip";
+    persistentTooltip.style.cssText = `
+      position: absolute;
+      left: ${x}px;
+      top: ${y}px;
+      background: var(--paper);
+      border: 2px solid var(--ink);
+      padding: 8px 12px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      max-width: 400px;
+      z-index: 1000;
+      pointer-events: auto;
+      box-shadow: 4px 4px 0 rgba(0,0,0,0.1);
+      user-select: text;
+    `;
+    persistentTooltip.textContent = text;
+    document.body.appendChild(persistentTooltip);
+
+    const rect = persistentTooltip.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 10) {
+      persistentTooltip.style.left = `${x - rect.width - 20}px`;
+    }
+    if (rect.bottom > window.innerHeight - 10) {
+      persistentTooltip.style.top = `${y - rect.height - 20}px`;
+    }
+  }
+
+  function hide() {
+    if (persistentTooltip) {
+      persistentTooltip.remove();
+      persistentTooltip = null;
+    }
+  }
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hide();
+  });
+
+  svg.addEventListener("click", (e) => {
+    if (e.target === svg) hide();
+  });
+
+  return show;
+}
+
+function renderSVGGraph(webData) {
+  const SVG_WIDTH = 1600;
+  const SVG_HEIGHT = 1200;
+  const NODE_RADIUS = 40;
+  const PADDING = 150;
+  const DEAD_ADDRESS = "0x000000000000000000000000000000000000dead";
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", SVG_HEIGHT);
+  svg.setAttribute("viewBox", `0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`);
+  svg.style.border = "1px solid var(--ink)";
+  svg.style.background = "var(--paper)";
+  svg.style.marginTop = "1rem";
+  svg.style.cursor = "grab";
+
+  const contentGroup = document.createElementNS(svgNS, "g");
+  contentGroup.setAttribute("class", "zoom-content");
+
+  setupZoomAndPan(svg, contentGroup);
+  const showPersistentTooltip = setupPersistentTooltips(svg);
+
+  const nodePositions = layoutNodes(webData.nodes, SVG_WIDTH, SVG_HEIGHT, PADDING);
+  const nodesById = new Map(webData.nodes.map(n => [n.id, n]));
+
+  const { edgeSecurityInfo, maxRequiredDVNsInWeb } = calculateEdgeSecurityInfo(webData.edges, nodesById, DEAD_ADDRESS);
+  const maxMinRequiredDVNsForNodes = calculateMaxMinRequiredDVNsForNodes(webData.nodes, DEAD_ADDRESS);
+
+  // Detect bidirectional edges
+  const edgeMap = new Map();
+  const processedEdges = new Set();
+
+  for (const info of edgeSecurityInfo) {
+    const edge = info.edge;
+    const key = `${edge.from}|${edge.to}`;
+    const reverseKey = `${edge.to}|${edge.from}`;
+
+    if (!edgeMap.has(key)) {
+      edgeMap.set(key, { forward: info, reverse: null });
+    }
+
+    if (edgeMap.has(reverseKey)) {
+      edgeMap.get(reverseKey).reverse = info;
+    }
+  }
+
+  const edgesGroup = document.createElementNS(svgNS, "g");
+  edgesGroup.setAttribute("class", "edges");
+
+  for (const info of edgeSecurityInfo) {
+    const edge = info.edge;
+    const key = `${edge.from}|${edge.to}`;
+    const reverseKey = `${edge.to}|${edge.from}`;
+
+    // Skip if already processed as part of bidirectional pair
+    if (processedEdges.has(key)) continue;
+
+    const fromPos = nodePositions.get(edge.from);
+    const toPos = nodePositions.get(edge.to);
+    if (!fromPos || !toPos) continue;
+
+    const edgePair = edgeMap.get(key);
+    const isBidirectional = edgePair && edgePair.reverse !== null;
+
+    if (isBidirectional) {
+      // Mark both directions as processed
+      processedEdges.add(key);
+      processedEdges.add(reverseKey);
+
+      // Render bidirectional edge with split styling
+      renderBidirectionalEdge(edgesGroup, fromPos, toPos, edgePair.forward, edgePair.reverse, maxRequiredDVNsInWeb, showPersistentTooltip);
+    } else {
+      // Render unidirectional edge
+      renderUnidirectionalEdge(edgesGroup, fromPos, toPos, info, maxRequiredDVNsInWeb, showPersistentTooltip);
+    }
+  }
+  contentGroup.appendChild(edgesGroup);
+
+  const nodesGroup = document.createElementNS(svgNS, "g");
+  nodesGroup.setAttribute("class", "nodes");
+
+  for (const node of webData.nodes) {
+    const pos = nodePositions.get(node.id);
+    if (!pos) continue;
+
+    const nonBlockedConfigs = node.securityConfigs?.filter(cfg => {
+      const dvns = cfg.requiredDVNs || [];
+      return !dvns.some(addr => isDeadAddress(addr, DEAD_ADDRESS));
+    }) || [];
+
+    const minRequiredDVNs = nonBlockedConfigs.length > 0
+      ? Math.min(...nonBlockedConfigs.map(c => c.requiredDVNCount))
+      : 0;
+
+    const hasBlockedConfig = node.securityConfigs?.some(cfg => {
+      const dvns = cfg.requiredDVNs || [];
+      return dvns.some(addr => isDeadAddress(addr, DEAD_ADDRESS));
+    }) || false;
+
+    const radius = node.isTracked
+      ? NODE_RADIUS * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
+      : NODE_RADIUS * 0.5;
+
+    const nodeGroup = document.createElementNS(svgNS, "g");
+    nodeGroup.setAttribute("class", "node");
+
+    let fillColor;
+    if (node.isDangling) {
+      fillColor = "none";
+    } else if (minRequiredDVNs >= maxMinRequiredDVNsForNodes) {
+      fillColor = "#ffff99";
+    } else {
+      fillColor = "#ff9999";
+    }
+
+    const circle = document.createElementNS(svgNS, "circle");
+    circle.setAttribute("cx", pos.x);
+    circle.setAttribute("cy", pos.y);
+    circle.setAttribute("r", radius);
+    circle.setAttribute("fill", fillColor);
+    circle.setAttribute("stroke", "none");
+    circle.style.cursor = "pointer";
+
+    const title = document.createElementNS(svgNS, "title");
+    const alias = getOAppAlias(node.id);
+    const titleLines = [
+      alias ? `${alias} (${node.id})` : node.id,
+      `Chain: ${getChainDisplayLabel(node.chainId) || node.chainId}`,
+      `Tracked: ${node.isTracked ? "Yes" : "No"}`,
+      `Total Packets: ${node.totalPacketsReceived}`,
+      `Min Required DVNs: ${minRequiredDVNs}`,
+    ];
+
+    if (hasBlockedConfig) {
+      titleLines.push(`WARNING: Has blocked config(s) with dead address`);
+    }
+
+    if (minRequiredDVNs < maxMinRequiredDVNsForNodes) {
+      if (node.isTracked) {
+        titleLines.push(`WEAK LINK: Lower than best node security (${minRequiredDVNs} vs ${maxMinRequiredDVNsForNodes})`);
+      } else {
+        titleLines.push(`POTENTIAL WEAK LINK: Unknown security config (untracked)`);
+      }
+    }
+
+    const nodeTooltipText = titleLines.join("\n");
+    title.textContent = nodeTooltipText;
+    circle.appendChild(title);
+
+    // Add click handler for persistent tooltip
+    circle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showPersistentTooltip(nodeTooltipText, e.pageX + 10, e.pageY + 10);
+    });
+
+    nodeGroup.appendChild(circle);
+
+    // Get chain name without chainId, using uppercase for brutalist style
+    let chainDisplayLabel = getChainDisplayLabel(node.chainId) || `Chain ${node.chainId}`;
+    // Remove chainId in parentheses if present (e.g., "Arbitrum (42161)" -> "Arbitrum")
+    chainDisplayLabel = chainDisplayLabel.replace(/\s*\(\d+\)$/, '');
+    const displayText = chainDisplayLabel.toUpperCase();
+
+    const text = document.createElementNS(svgNS, "text");
+    text.setAttribute("x", pos.x);
+    text.setAttribute("y", pos.y + 4);
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("font-size", "12");
+    text.setAttribute("font-weight", "500");
+    text.setAttribute("fill", "var(--ink)");
+    text.textContent = displayText;
+    nodeGroup.appendChild(text);
+
+    nodesGroup.appendChild(nodeGroup);
+  }
+  contentGroup.appendChild(nodesGroup);
+  svg.appendChild(contentGroup);
+
+  return svg;
+}
+
+function layoutNodes(nodes, width, height, padding) {
+  const positions = new Map();
+
+  if (nodes.length === 0) return positions;
+
+  const nodesByDepth = new Map();
+  for (const node of nodes) {
+    const depth = node.depth >= 0 ? node.depth : 999;
+    if (!nodesByDepth.has(depth)) {
+      nodesByDepth.set(depth, []);
+    }
+    nodesByDepth.get(depth).push(node);
+  }
+
+  // Split depth 1 nodes into multiple columns based on total node count
+  if (nodesByDepth.has(1)) {
+    const depth1Nodes = nodesByDepth.get(1);
+    if (depth1Nodes.length > 1) {
+      // Calculate number of columns based on total nodes (more nodes = more columns)
+      const numColumns = Math.max(2, Math.min(6, Math.ceil(nodes.length / 15)));
+      const nodesPerColumn = Math.ceil(depth1Nodes.length / numColumns);
+
+      // Split into columns
+      for (let i = 0; i < numColumns; i++) {
+        const start = i * nodesPerColumn;
+        const end = Math.min(start + nodesPerColumn, depth1Nodes.length);
+        if (start < depth1Nodes.length) {
+          const columnNodes = depth1Nodes.slice(start, end);
+          if (columnNodes.length > 0) {
+            nodesByDepth.set(1.1 + (i * 0.1), columnNodes);
+          }
+        }
+      }
+      nodesByDepth.delete(1);
+    }
+  }
+
+  const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
+  const maxDepth = Math.max(...depths.filter(d => d < 999));
+  const totalColumns = depths.filter(d => d < 999).length;
+
+  const depthSpacing = (width - 2 * padding) / Math.max(totalColumns - 1, 1);
+
+  for (const [depthIndex, depth] of depths.entries()) {
+    const nodesAtDepth = nodesByDepth.get(depth);
+    const baseX = padding + depthSpacing * depthIndex;
+    const verticalSpacing = (height - 2 * padding) / Math.max(nodesAtDepth.length - 1, 1);
+
+    for (const [index, node] of nodesAtDepth.entries()) {
+      const baseY = padding + (nodesAtDepth.length === 1 ? (height - 2 * padding) / 2 : verticalSpacing * index);
+
+      const centerIndex = (nodesAtDepth.length - 1) / 2;
+      const distanceFromCenterIndex = index - centerIndex;
+      const maxDistanceFromCenter = Math.max(centerIndex, nodesAtDepth.length - 1 - centerIndex);
+      const normalizedPosition = maxDistanceFromCenter > 0 ? distanceFromCenterIndex / maxDistanceFromCenter : 0;
+
+      const arcIntensity = 200;
+      const xOffset = arcIntensity * normalizedPosition * normalizedPosition;
+
+      const x = baseX - xOffset;
+      const y = baseY;
+
+      positions.set(node.id, { x, y });
+    }
+  }
+
+  return positions;
+}
+
+
+function renderNodeList(nodes) {
+  const container = document.createElement("div");
+  container.className = "node-list-container";
+  container.style.marginTop = "2rem";
+
+  const heading = document.createElement("h3");
+  heading.textContent = "Nodes Detail";
+  container.appendChild(heading);
+
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  thead.innerHTML = `
+    <tr>
+      <th>OApp ID</th>
+      <th>Chain</th>
+      <th>Tracked</th>
+      <th>Depth</th>
+      <th>Security Configs</th>
+      <th>Total Packets</th>
+    </tr>
+  `;
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (const node of nodes) {
+    const tr = document.createElement("tr");
+
+    const alias = getOAppAlias(node.id);
+    const oappIdCell = document.createElement("td");
+    const oappDiv = document.createElement("div");
+    oappDiv.className = "copyable";
+    oappDiv.dataset.copyValue = node.id;
+    oappDiv.dataset.oappId = node.id;
+    if (alias) {
+      const aliasSpan = document.createElement("span");
+      aliasSpan.textContent = alias;
+      oappDiv.appendChild(aliasSpan);
+      const idSpan = document.createElement("span");
+      idSpan.textContent = `ID ${node.id}`;
+      oappDiv.appendChild(idSpan);
+    } else {
+      const span = document.createElement("span");
+      span.textContent = node.id;
+      oappDiv.appendChild(span);
+    }
+    oappIdCell.appendChild(oappDiv);
+    tr.appendChild(oappIdCell);
+
+    const chainCell = document.createElement("td");
+    chainCell.textContent = getChainDisplayLabel(node.chainId) || node.chainId;
+    tr.appendChild(chainCell);
+
+    const trackedCell = document.createElement("td");
+    trackedCell.textContent = node.isTracked ? "Yes" : node.isDangling ? "No (Dangling)" : "No";
+    tr.appendChild(trackedCell);
+
+    const depthCell = document.createElement("td");
+    depthCell.textContent = node.depth >= 0 ? node.depth : "—";
+    tr.appendChild(depthCell);
+
+    const configsCell = document.createElement("td");
+    if (node.securityConfigs && node.securityConfigs.length > 0) {
+      const configSummaries = node.securityConfigs.map(cfg => {
+        const requiredDVNs = cfg.requiredDVNs.length > 0
+          ? cfg.requiredDVNs.join(", ")
+          : `${cfg.requiredDVNCount} DVNs`;
+        return `EID ${cfg.srcEid}: ${requiredDVNs} (${cfg.requiredDVNCount} required)`;
+      });
+      configsCell.innerHTML = `<div style="font-size: 0.85em">${configSummaries.slice(0, 3).join("<br>")}</div>`;
+      if (configSummaries.length > 3) {
+        configsCell.innerHTML += `<div style="font-size: 0.85em; opacity: 0.6">...and ${configSummaries.length - 3} more</div>`;
+      }
+    } else {
+      configsCell.textContent = "—";
+    }
+    tr.appendChild(configsCell);
+
+    const packetsCell = document.createElement("td");
+    packetsCell.textContent = node.totalPacketsReceived || "—";
+    tr.appendChild(packetsCell);
+
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+  container.appendChild(table);
+
+  return container;
+}
