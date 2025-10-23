@@ -428,13 +428,19 @@ const queryRegistry = {
         throw new Error("Please provide a seed OApp ID to crawl or select a web data JSON file to load.");
       }
 
+      const isCrawl = !!seedOAppId;
+
+      if (isCrawl && fileInput) {
+        fileInput.value = '';
+      }
+
       return {
         variables: {
           seedOAppId,
           depth,
           limit,
-          file,
-          isCrawl: !!seedOAppId && !file
+          file: isCrawl ? null : file,
+          isCrawl
         },
         meta: {
           limitLabel: seedOAppId ? `seed=${seedOAppId}` : "web-of-security",
@@ -534,6 +540,24 @@ refreshAllButton?.addEventListener("click", async () => {
 });
 
 copyJsonButton?.addEventListener("click", async () => {
+  const isGraphMode = resultsState.lastRender?.meta?.renderMode === "graph";
+  const webData = resultsState.lastRender?.meta?.webData;
+
+  if (isGraphMode && webData) {
+    const dataStr = JSON.stringify(webData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `web-of-security-${webData.seed || "data"}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    flipButtonTemporarily(copyJsonButton, "Downloaded!", 1800);
+    return;
+  }
+
   const source = resultsState.lastPayload?.data ?? resultsState.lastRows;
   if (!source || (Array.isArray(source) && !source.length)) {
     return;
@@ -702,6 +726,7 @@ function updateResultsPane(rows, payload, meta) {
   resultsState.lastRender = { rows, payload, meta: metaSnapshot };
 
   copyJsonButton.disabled = metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
+  copyJsonButton.textContent = metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
 
   const variableHints = buildVariableSummary(metaSnapshot.variables);
   const metaParts = [
@@ -2393,24 +2418,6 @@ function renderWebOfSecurity(webData) {
     </dl>
   `;
 
-  const downloadBtn = document.createElement("button");
-  downloadBtn.type = "button";
-  downloadBtn.textContent = "Download JSON";
-  downloadBtn.style.cssText = "margin-top: 1rem; width: 100%;";
-  downloadBtn.addEventListener("click", () => {
-    const dataStr = JSON.stringify(webData, null, 2);
-    const dataBlob = new Blob([dataStr], { type: "application/json" });
-    const url = URL.createObjectURL(dataBlob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `web-of-security-${webData.seed || "data"}-${Date.now()}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  });
-
-  summary.appendChild(downloadBtn);
   container.appendChild(summary);
 
   const svg = renderSVGGraph(webData);
@@ -2911,16 +2918,25 @@ function layoutNodes(nodes, width, height, padding) {
     nodesByDepth.get(depth).push(node);
   }
 
-  // Split depth 1 nodes into two columns if there are enough
+  // Split depth 1 nodes into multiple columns based on total node count
   if (nodesByDepth.has(1)) {
     const depth1Nodes = nodesByDepth.get(1);
     if (depth1Nodes.length > 1) {
-      const midpoint = Math.ceil(depth1Nodes.length / 2);
-      const firstHalf = depth1Nodes.slice(0, midpoint);
-      const secondHalf = depth1Nodes.slice(midpoint);
+      // Calculate number of columns based on total nodes (more nodes = more columns)
+      const numColumns = Math.max(2, Math.min(6, Math.ceil(nodes.length / 15)));
+      const nodesPerColumn = Math.ceil(depth1Nodes.length / numColumns);
 
-      nodesByDepth.set(1.1, firstHalf);
-      nodesByDepth.set(1.2, secondHalf);
+      // Split into columns
+      for (let i = 0; i < numColumns; i++) {
+        const start = i * nodesPerColumn;
+        const end = Math.min(start + nodesPerColumn, depth1Nodes.length);
+        if (start < depth1Nodes.length) {
+          const columnNodes = depth1Nodes.slice(start, end);
+          if (columnNodes.length > 0) {
+            nodesByDepth.set(1.1 + (i * 0.1), columnNodes);
+          }
+        }
+      }
       nodesByDepth.delete(1);
     }
   }
