@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'http://localhost:8080/v1/graphql';
-const HASURA_ADMIN_SECRET = process.env.HASURA_ADMIN_SECRET || 'testing';
 
 const eidToChainIdMap = new Map();
 const chainIdToEidMap = new Map();
@@ -74,7 +73,6 @@ async function graphqlQuery(query, variables) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-hasura-admin-secret': HASURA_ADMIN_SECRET,
     },
     body: JSON.stringify({ query, variables }),
   });
@@ -344,7 +342,6 @@ Options:
   --limit <n>        Max packets per node to sample (default: 100)
   --output <file>    Output JSON file (default: web-of-security.json)
   --endpoint <url>   GraphQL endpoint (default: http://localhost:8080/v1/graphql)
-  --secret <key>     Hasura admin secret
 
 Example:
   node scripts/crawl-security-web.js 8453_0x5634c4a5fed09819e3c46d86a965dd9447d86e47 --depth 2 --output web.json
@@ -371,9 +368,6 @@ Example:
       i++;
     } else if (args[i] === '--endpoint' && args[i + 1]) {
       process.env.GRAPHQL_ENDPOINT = args[i + 1];
-      i++;
-    } else if (args[i] === '--secret' && args[i + 1]) {
-      process.env.HASURA_ADMIN_SECRET = args[i + 1];
       i++;
     }
   }

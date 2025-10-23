@@ -3,9 +3,6 @@ const GRAPHQL_ENDPOINT =
   ROOT_DATASET.graphqlEndpoint || "http://localhost:8080/v1/graphql";
 const GRAPHQL_HEADERS = {
   "Content-Type": "application/json",
-  ...(ROOT_DATASET.hasuraAdminSecret
-    ? { "x-hasura-admin-secret": ROOT_DATASET.hasuraAdminSecret }
-    : {}),
 };
 
 const chainLookup = {
