@@ -576,3 +576,13 @@ td {
     right: 1.25rem;
   }
 }
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.field-separator {
+  margin-top: 1rem;
+}
