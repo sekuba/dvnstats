@@ -1,27 +1,8 @@
 #!/usr/bin/env node
 
-/**
- * Web of Security Crawler
- *
- * Crawls the OApp security network starting from a seed OApp ID.
- * Builds a graph of security relationships by following PacketDelivered
- * connections and resolving security configs.
- *
- * Usage:
- *   node scripts/crawl-security-web.js <oappId> [options]
- *
- * Options:
- *   --depth <n>        Maximum crawl depth (default: 2)
- *   --limit <n>        Max packets per node to sample (default: 100)
- *   --output <file>    Output JSON file (default: web-of-security.json)
- *   --endpoint <url>   GraphQL endpoint (default: http://localhost:8080/v1/graphql)
- *   --secret <key>     Hasura admin secret
- */
-
 const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'http://localhost:8080/v1/graphql';
 const HASURA_ADMIN_SECRET = process.env.HASURA_ADMIN_SECRET || 'testing';
 
-// EID to chainId mapping - need to build from layerzero.json
 const eidToChainIdMap = new Map();
 const chainIdToEidMap = new Map();
 
@@ -34,13 +15,11 @@ async function loadLayerZeroMetadata() {
     const content = await fs.readFile(layerzeroPath, 'utf-8');
     const data = JSON.parse(content);
 
-    // Build EID <-> chainId mappings from layerzero.json
     for (const [chainKey, chainData] of Object.entries(data)) {
       if (!chainData || typeof chainData !== 'object') continue;
 
       const chainDetails = chainData.chainDetails || {};
       const nativeChainId = chainDetails.nativeChainId;
-
       if (!nativeChainId) continue;
 
       if (Array.isArray(chainData.deployments)) {
@@ -69,19 +48,15 @@ function eidToChainId(eid) {
 function normalizeAddress(address) {
   if (!address) return null;
 
-  // Remove leading zeros padding (addresses are often padded to 32 bytes in events)
   let cleaned = String(address).toLowerCase();
   if (cleaned.startsWith('0x')) {
     cleaned = cleaned.substring(2);
   }
 
-  // Remove leading zeros
   cleaned = cleaned.replace(/^0+/, '');
 
-  // Ensure it's a valid 40-char hex address
   if (cleaned.length === 0) return null;
   if (cleaned.length > 40) {
-    // Take last 40 chars (address is at the end)
     cleaned = cleaned.substring(cleaned.length - 40);
   }
 
@@ -194,8 +169,6 @@ function buildDvnLookup(dvnMetadata) {
 
     const key = `${dvn.chainId}_${dvn.address.toLowerCase()}`;
     lookup.set(key, dvn.name || dvn.address);
-
-    // Also add address-only key as fallback
     lookup.set(dvn.address.toLowerCase(), dvn.name || dvn.address);
   }
 
@@ -237,10 +210,8 @@ async function crawlSecurityWeb(seedOAppId, options = {}) {
 
     console.log(`\nProcessing [depth=${depth}]: ${oappId}`);
 
-    // Get security config for this node
     const { configs, oapp } = await getSecurityConfig(oappId);
 
-    // Store node info
     const nodeData = {
       id: oappId,
       chainId: oapp?.chainId || oappId.split('_')[0],
@@ -251,14 +222,9 @@ async function crawlSecurityWeb(seedOAppId, options = {}) {
       securityConfigs: [],
     };
 
-    // Process each security config (one per source EID)
     for (const config of configs) {
-      const requiredDVNs = Array.isArray(config.effectiveRequiredDVNs)
-        ? config.effectiveRequiredDVNs
-        : [];
-      const optionalDVNs = Array.isArray(config.effectiveOptionalDVNs)
-        ? config.effectiveOptionalDVNs
-        : [];
+      const requiredDVNs = Array.isArray(config.effectiveRequiredDVNs) ? config.effectiveRequiredDVNs : [];
+      const optionalDVNs = Array.isArray(config.effectiveOptionalDVNs) ? config.effectiveOptionalDVNs : [];
 
       const requiredDVNNames = resolveDvnNames(requiredDVNs, config.chainId, dvnLookup);
       const optionalDVNNames = resolveDvnNames(optionalDVNs, config.chainId, dvnLookup);
@@ -278,12 +244,10 @@ async function crawlSecurityWeb(seedOAppId, options = {}) {
     nodes.set(oappId, nodeData);
     console.log(`  Added node: ${configs.length} security configs, isTracked=${nodeData.isTracked}`);
 
-    // If we haven't reached max depth, crawl senders
     if (depth < maxDepth) {
       const packets = await getSenders(oappId, packetLimit);
       console.log(`  Found ${packets.length} packets`);
 
-      // Deduplicate senders by (srcEid, sender)
       const senderSet = new Map();
       for (const packet of packets) {
         const key = `${packet.srcEid}_${packet.sender}`;
@@ -309,7 +273,6 @@ async function crawlSecurityWeb(seedOAppId, options = {}) {
           continue;
         }
 
-        // Record edge
         const edgeKey = `${senderOAppId}->${oappId}`;
         const existingEdge = edges.get(edgeKey);
 
@@ -325,7 +288,6 @@ async function crawlSecurityWeb(seedOAppId, options = {}) {
           });
         }
 
-        // Queue sender for crawling if not visited
         if (!visited.has(senderOAppId)) {
           queue.push({ oappId: senderOAppId, depth: depth + 1 });
         }
@@ -333,18 +295,12 @@ async function crawlSecurityWeb(seedOAppId, options = {}) {
     }
   }
 
-  // Identify dangling nodes (referenced in edges but not in nodes)
   const danglingNodes = new Set();
   for (const edge of edges.values()) {
-    if (!nodes.has(edge.from)) {
-      danglingNodes.add(edge.from);
-    }
-    if (!nodes.has(edge.to)) {
-      danglingNodes.add(edge.to);
-    }
+    if (!nodes.has(edge.from)) danglingNodes.add(edge.from);
+    if (!nodes.has(edge.to)) danglingNodes.add(edge.to);
   }
 
-  // Add dangling nodes with minimal info
   for (const oappId of danglingNodes) {
     const [chainId, address] = oappId.split('_');
     nodes.set(oappId, {
