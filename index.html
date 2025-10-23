@@ -194,32 +194,56 @@
               <h2>Web of Security</h2>
               <p>Visualize the security graph for an OApp and its connections.</p>
             </div>
-            <button class="run-query" type="button">Load</button>
+            <button class="run-query" type="button">Crawl / Load</button>
           </header>
           <form class="card-body">
-            <label>
-              OApp ID
-              <input
-                name="oappId"
-                type="text"
-                inputmode="text"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="chainId_address"
-              />
-            </label>
-            <p class="field-hint">
-              Load a pre-crawled web of security JSON file for this OApp. Use the crawler script first:
-              <code>node scripts/crawl-security-web.js &lt;oappId&gt;</code>
-            </p>
-            <label>
-              Web data file
-              <input
-                name="webFile"
-                type="file"
-                accept=".json"
-              />
-            </label>
+            <fieldset>
+              <legend>Crawl New Web</legend>
+              <label>
+                Seed OApp ID
+                <input
+                  name="seedOAppId"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="chainId_address"
+                />
+              </label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                <label>
+                  Depth
+                  <input
+                    name="depth"
+                    type="number"
+                    min="1"
+                    max="20"
+                    value="10"
+                  />
+                </label>
+                <label>
+                  Packet Limit
+                  <input
+                    name="limit"
+                    type="number"
+                    min="10"
+                    max="10000"
+                    value="1000"
+                  />
+                </label>
+              </div>
+            </fieldset>
+            <fieldset style="margin-top: 1rem;">
+              <legend>Or Load From File</legend>
+              <label>
+                Web data file
+                <input
+                  name="webFile"
+                  type="file"
+                  accept=".json"
+                />
+              </label>
+            </fieldset>
           </form>
           <details class="card-query">
             <summary>About</summary>
