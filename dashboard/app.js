@@ -401,7 +401,7 @@ const queryRegistry = {
   },
   "web-of-security": {
     label: "Web of Security",
-    description: "Load and visualize the security graph for an OApp",
+    description: "Crawl or load the security graph for an OApp",
     query: null,
     initialize: ({ card, run }) => {
       const fileInput = card.querySelector('input[name="webFile"]');
@@ -414,23 +414,31 @@ const queryRegistry = {
       }
     },
     buildVariables: (card) => {
-      const oappIdInput = card.querySelector('input[name="oappId"]');
+      const seedOAppIdInput = card.querySelector('input[name="seedOAppId"]');
+      const depthInput = card.querySelector('input[name="depth"]');
+      const limitInput = card.querySelector('input[name="limit"]');
       const fileInput = card.querySelector('input[name="webFile"]');
 
-      const oappId = oappIdInput?.value?.trim() ?? "";
+      const seedOAppId = seedOAppIdInput?.value?.trim();
+      const depth = parseInt(depthInput?.value) || 10;
+      const limit = parseInt(limitInput?.value) || 1000;
+      const file = fileInput?.files?.[0];
 
-      if (!fileInput?.files?.[0]) {
-        throw new Error("Please select a web data JSON file.");
+      if (!seedOAppId && !file) {
+        throw new Error("Please provide a seed OApp ID to crawl or select a web data JSON file to load.");
       }
 
       return {
         variables: {
-          oappId,
-          file: fileInput.files[0]
+          seedOAppId,
+          depth,
+          limit,
+          file,
+          isCrawl: !!seedOAppId && !file
         },
         meta: {
-          limitLabel: oappId ? `seed=${oappId}` : "web-of-security",
-          summary: oappId || "Web of Security",
+          limitLabel: seedOAppId ? `seed=${seedOAppId}` : "web-of-security",
+          summary: seedOAppId || "Web of Security",
         },
       };
     },
@@ -585,7 +593,15 @@ async function runQuery(key, card, config, statusEl) {
   try {
     let payload;
 
-    if (variables.file) {
+    if (variables.isCrawl) {
+      setStatus(statusEl, "Crawling...", "loading");
+      const webData = await crawlSecurityWeb(variables.seedOAppId, {
+        depth: variables.depth,
+        limit: variables.limit,
+        onProgress: (status) => setStatus(statusEl, status, "loading")
+      });
+      payload = { webData };
+    } else if (variables.file) {
       const file = variables.file;
       const text = await file.text();
       const webData = JSON.parse(text);
@@ -2000,6 +2016,328 @@ const copyToastState = {
   timers: [],
 };
 
+// Web of Security Crawl Functions
+const eidToChainIdMap = new Map();
+const chainIdToEidMap = new Map();
+let dvnLookupCache = null;
+
+async function loadLayerZeroMetadata() {
+  if (eidToChainIdMap.size > 0) {
+    return;
+  }
+
+  try {
+    const response = await fetch('./layerzero.json');
+    const data = await response.json();
+
+    for (const [chainKey, chainData] of Object.entries(data)) {
+      if (!chainData || typeof chainData !== 'object') continue;
+
+      const chainDetails = chainData.chainDetails || {};
+      const nativeChainId = chainDetails.nativeChainId;
+
+      if (!nativeChainId) continue;
+
+      if (Array.isArray(chainData.deployments)) {
+        for (const deployment of chainData.deployments) {
+          if (!deployment || !deployment.eid) continue;
+
+          const eid = String(deployment.eid);
+          const chainId = String(nativeChainId);
+
+          eidToChainIdMap.set(eid, chainId);
+          chainIdToEidMap.set(chainId, eid);
+        }
+      }
+    }
+
+    console.log(`Loaded ${eidToChainIdMap.size} EID->chainId mappings`);
+  } catch (error) {
+    console.warn('Failed to load layerzero.json, EID mappings may be incomplete:', error.message);
+  }
+}
+
+function eidToChainId(eid) {
+  return eidToChainIdMap.get(String(eid)) || null;
+}
+
+function normalizeAddressForCrawl(address) {
+  if (!address) return null;
+
+  let cleaned = String(address).toLowerCase();
+  if (cleaned.startsWith('0x')) {
+    cleaned = cleaned.substring(2);
+  }
+
+  cleaned = cleaned.replace(/^0+/, '');
+
+  if (cleaned.length === 0) return null;
+  if (cleaned.length > 40) {
+    cleaned = cleaned.substring(cleaned.length - 40);
+  }
+
+  return '0x' + cleaned.padStart(40, '0');
+}
+
+function makeOAppIdForCrawl(chainId, address) {
+  const normalized = normalizeAddressForCrawl(address);
+  if (!normalized || !chainId) return null;
+  return `${chainId}_${normalized}`;
+}
+
+async function graphqlQuery(query, variables) {
+  const endpoint = GRAPHQL_ENDPOINT;
+  const headers = { ...GRAPHQL_HEADERS, 'Content-Type': 'application/json' };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
+  }
+
+  const result = await response.json();
+
+  if (result.errors) {
+    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors, null, 2)}`);
+  }
+
+  return result.data;
+}
+
+async function getSenders(oappId, limit = 100) {
+  const query = `
+    query GetSenders($oappId: String!, $limit: Int!) {
+      PacketDelivered(
+        where: { oappId: { _eq: $oappId } }
+        order_by: { blockTimestamp: desc }
+        limit: $limit
+      ) {
+        sender
+        srcEid
+        receiver
+        oappId
+      }
+    }
+  `;
+
+  const data = await graphqlQuery(query, { oappId, limit });
+  return data.PacketDelivered || [];
+}
+
+async function getSecurityConfig(oappId) {
+  const query = `
+    query GetSecurityConfig($oappId: String!) {
+      OAppSecurityConfig(where: { oappId: { _eq: $oappId } }) {
+        id
+        oappId
+        eid
+        chainId
+        oapp
+        effectiveRequiredDVNCount
+        effectiveRequiredDVNs
+        effectiveOptionalDVNCount
+        effectiveOptionalDVNs
+        effectiveOptionalDVNThreshold
+        isConfigTracked
+        usesRequiredDVNSentinel
+      }
+      OApp(where: { id: { _eq: $oappId } }) {
+        id
+        chainId
+        address
+        totalPacketsReceived
+      }
+    }
+  `;
+
+  const data = await graphqlQuery(query, { oappId });
+  return {
+    configs: data.OAppSecurityConfig || [],
+    oapp: data.OApp?.[0] || null,
+  };
+}
+
+async function getDvnMetadata() {
+  const query = `
+    query GetDvnMetadata {
+      DvnMetadata {
+        id
+        chainId
+        address
+        name
+      }
+    }
+  `;
+
+  const data = await graphqlQuery(query, {});
+  return data.DvnMetadata || [];
+}
+
+function resolveDvnNames(dvnAddresses, chainId, dvnLookup) {
+  if (!Array.isArray(dvnAddresses)) return [];
+
+  return dvnAddresses.map(addr => {
+    const key = `${chainId}_${addr.toLowerCase()}`;
+    return dvnLookup.get(key) || dvnLookup.get(addr.toLowerCase()) || addr;
+  });
+}
+
+async function crawlSecurityWeb(seedOAppId, options = {}) {
+  const maxDepth = options.depth || 2;
+  const packetLimit = options.limit || 100;
+  const onProgress = options.onProgress || (() => {});
+
+  onProgress(`Loading LayerZero metadata...`);
+  await loadLayerZeroMetadata();
+
+  onProgress(`Loading DVN metadata...`);
+  if (!dvnLookupCache) {
+    const dvnMetadata = await getDvnMetadata();
+    dvnLookupCache = buildDvnLookup(dvnMetadata);
+    console.log(`Loaded ${dvnMetadata.length} DVN metadata entries`);
+  }
+
+  const nodes = new Map();
+  const edges = new Map();
+  const visited = new Set();
+  const queue = [{ oappId: seedOAppId, depth: 0 }];
+
+  let nodeCount = 0;
+
+  while (queue.length > 0) {
+    const { oappId, depth } = queue.shift();
+
+    if (visited.has(oappId)) continue;
+    visited.add(oappId);
+
+    nodeCount++;
+    onProgress(`Processing node ${nodeCount} [depth=${depth}]: ${oappId}`);
+
+    const { configs, oapp } = await getSecurityConfig(oappId);
+
+    const nodeData = {
+      id: oappId,
+      chainId: oapp?.chainId || oappId.split('_')[0],
+      address: oapp?.address || oappId.split('_')[1],
+      totalPacketsReceived: oapp?.totalPacketsReceived || 0,
+      isTracked: configs.length > 0,
+      depth,
+      securityConfigs: [],
+    };
+
+    for (const config of configs) {
+      const requiredDVNs = Array.isArray(config.effectiveRequiredDVNs)
+        ? config.effectiveRequiredDVNs
+        : [];
+      const optionalDVNs = Array.isArray(config.effectiveOptionalDVNs)
+        ? config.effectiveOptionalDVNs
+        : [];
+
+      const requiredDVNNames = resolveDvnNames(requiredDVNs, config.chainId, dvnLookupCache);
+      const optionalDVNNames = resolveDvnNames(optionalDVNs, config.chainId, dvnLookupCache);
+
+      nodeData.securityConfigs.push({
+        srcEid: config.eid,
+        requiredDVNCount: config.effectiveRequiredDVNCount || 0,
+        requiredDVNs: requiredDVNNames,
+        optionalDVNCount: config.effectiveOptionalDVNCount || 0,
+        optionalDVNs: optionalDVNNames,
+        optionalDVNThreshold: config.effectiveOptionalDVNThreshold || 0,
+        usesRequiredDVNSentinel: config.usesRequiredDVNSentinel || false,
+        isConfigTracked: config.isConfigTracked || false,
+      });
+    }
+
+    nodes.set(oappId, nodeData);
+
+    if (depth < maxDepth) {
+      const packets = await getSenders(oappId, packetLimit);
+
+      const senderSet = new Map();
+      for (const packet of packets) {
+        const key = `${packet.srcEid}_${packet.sender}`;
+        if (!senderSet.has(key)) {
+          senderSet.set(key, packet);
+        }
+      }
+
+      for (const [key, packet] of senderSet.entries()) {
+        const srcChainId = eidToChainId(packet.srcEid);
+
+        if (!srcChainId) {
+          console.log(`Skipping sender: unknown chainId for srcEid=${packet.srcEid}`);
+          continue;
+        }
+
+        const senderOAppId = makeOAppIdForCrawl(srcChainId, packet.sender);
+
+        if (!senderOAppId) {
+          console.log(`Skipping sender: invalid address ${packet.sender}`);
+          continue;
+        }
+
+        const edgeKey = `${senderOAppId}->${oappId}`;
+        const existingEdge = edges.get(edgeKey);
+
+        if (existingEdge) {
+          existingEdge.packetCount += 1;
+        } else {
+          edges.set(edgeKey, {
+            from: senderOAppId,
+            to: oappId,
+            srcEid: packet.srcEid,
+            srcChainId,
+            packetCount: 1,
+          });
+        }
+
+        if (!visited.has(senderOAppId)) {
+          queue.push({ oappId: senderOAppId, depth: depth + 1 });
+        }
+      }
+    }
+  }
+
+  const danglingNodes = new Set();
+  for (const edge of edges.values()) {
+    if (!nodes.has(edge.from)) {
+      danglingNodes.add(edge.from);
+    }
+    if (!nodes.has(edge.to)) {
+      danglingNodes.add(edge.to);
+    }
+  }
+
+  for (const oappId of danglingNodes) {
+    const [chainId, address] = oappId.split('_');
+    nodes.set(oappId, {
+      id: oappId,
+      chainId,
+      address,
+      isTracked: false,
+      isDangling: true,
+      depth: -1,
+      securityConfigs: [],
+      totalPacketsReceived: 0,
+    });
+  }
+
+  onProgress(`Crawl complete: ${nodes.size} nodes, ${edges.size} edges`);
+
+  return {
+    seed: seedOAppId,
+    crawlDepth: maxDepth,
+    packetLimit,
+    timestamp: new Date().toISOString(),
+    nodes: Array.from(nodes.values()),
+    edges: Array.from(edges.values()),
+  };
+}
+
 function renderWebOfSecurity(webData) {
   if (!webData || !webData.nodes || !webData.edges) {
     const error = document.createElement("div");
@@ -2054,6 +2392,25 @@ function renderWebOfSecurity(webData) {
       </dd>
     </dl>
   `;
+
+  const downloadBtn = document.createElement("button");
+  downloadBtn.type = "button";
+  downloadBtn.textContent = "Download JSON";
+  downloadBtn.style.cssText = "margin-top: 1rem; width: 100%;";
+  downloadBtn.addEventListener("click", () => {
+    const dataStr = JSON.stringify(webData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `web-of-security-${webData.seed || "data"}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  });
+
+  summary.appendChild(downloadBtn);
   container.appendChild(summary);
 
   const svg = renderSVGGraph(webData);
