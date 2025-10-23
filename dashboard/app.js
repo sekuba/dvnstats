@@ -2067,61 +2067,26 @@ function renderWebOfSecurity(webData) {
 
 function renderUnidirectionalEdge(edgesGroup, fromPos, toPos, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
   const svgNS = "http://www.w3.org/2000/svg";
-  const edge = info.edge;
+  const { edge, isBlocked, requiredDVNCount, requiredDVNs } = info;
 
-  let strokeColor = "#000000ff";
-  let strokeWidth = "3";
-  let opacity = "0.5";
-  let dashArray = "none";
-
-  if (info.isBlocked) {
-    strokeColor = "#ff0000";
-    strokeWidth = "1";
-    opacity = "0.6";
-    dashArray = "8,4";
-  } else if (info.requiredDVNCount < maxRequiredDVNsInWeb) {
-    strokeColor = "#ff6666";
-    strokeWidth = "2";
-    opacity = "0.5";
-  }
+  const style = getEdgeStyle(isBlocked, requiredDVNCount, maxRequiredDVNsInWeb);
 
   const line = document.createElementNS(svgNS, "line");
   line.setAttribute("x1", fromPos.x);
   line.setAttribute("y1", fromPos.y);
   line.setAttribute("x2", toPos.x);
   line.setAttribute("y2", toPos.y);
-  line.setAttribute("stroke", strokeColor);
-  line.setAttribute("stroke-width", strokeWidth);
-  line.setAttribute("stroke-dasharray", dashArray);
-  line.setAttribute("opacity", opacity);
+  line.setAttribute("stroke", style.color);
+  line.setAttribute("stroke-width", style.width);
+  line.setAttribute("stroke-dasharray", style.dashArray);
+  line.setAttribute("opacity", style.opacity);
   line.style.cursor = "pointer";
 
+  const tooltipText = buildEdgeTooltip(edge, isBlocked, requiredDVNCount, requiredDVNs, maxRequiredDVNsInWeb);
   const title = document.createElementNS(svgNS, "title");
-  const titleLines = [
-    `${edge.from} → ${edge.to}`,
-    `Src EID: ${edge.srcEid}`,
-  ];
-
-  if (info.isBlocked) {
-    titleLines.push(`STATUS: BLOCKED (dead address in DVNs)`);
-  } else if (maxRequiredDVNsInWeb > 0 && info.requiredDVNCount < maxRequiredDVNsInWeb) {
-    titleLines.push(`WARNING: Lower security than other edges (${info.requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`);
-  }
-
-  if (info.requiredDVNs.length > 0) {
-    titleLines.push(`Required DVNs: ${info.requiredDVNs.join(", ")}`);
-    titleLines.push(`Required Count: ${info.requiredDVNCount}`);
-  } else if (info.requiredDVNCount > 0) {
-    titleLines.push(`Required DVN Count: ${info.requiredDVNCount}`);
-  } else {
-    titleLines.push(`Required DVN Count: 0 (WARNING: No required DVNs!)`);
-  }
-
-  const tooltipText = titleLines.join("\n");
   title.textContent = tooltipText;
   line.appendChild(title);
 
-  // Add click handler for persistent tooltip
   line.addEventListener("click", (e) => {
     e.stopPropagation();
     showPersistentTooltip(tooltipText, e.pageX + 10, e.pageY + 10);
@@ -2129,160 +2094,93 @@ function renderUnidirectionalEdge(edgesGroup, fromPos, toPos, info, maxRequiredD
 
   edgesGroup.appendChild(line);
 
-  // Add arrow at distal position (75% along the line)
   const dx = toPos.x - fromPos.x;
   const dy = toPos.y - fromPos.y;
   const angle = Math.atan2(dy, dx);
-  const arrowSize = 8;
   const arrowX = fromPos.x + dx * 0.75;
   const arrowY = fromPos.y + dy * 0.75;
 
-  const arrow = createArrowMarker(svgNS, arrowX, arrowY, angle, arrowSize, strokeColor);
+  const arrow = createArrowMarker(svgNS, arrowX, arrowY, angle, 8, style.color);
   edgesGroup.appendChild(arrow);
+}
+
+function getEdgeStyle(isBlocked, requiredDVNCount, maxRequiredDVNsInWeb) {
+  if (isBlocked) {
+    return { color: "#ff0000", width: "1", opacity: "0.6", dashArray: "8,4" };
+  }
+  if (requiredDVNCount < maxRequiredDVNsInWeb) {
+    return { color: "#ff6666", width: "2", opacity: "0.5", dashArray: "none" };
+  }
+  return { color: "#000000ff", width: "3", opacity: "0.5", dashArray: "none" };
+}
+
+function buildEdgeTooltip(edge, isBlocked, requiredDVNCount, requiredDVNs, maxRequiredDVNsInWeb) {
+  const lines = [
+    `${edge.from} → ${edge.to}`,
+    `Src EID: ${edge.srcEid}`
+  ];
+
+  if (isBlocked) {
+    lines.push("STATUS: BLOCKED (dead address in DVNs)");
+  } else if (maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb) {
+    lines.push(`WARNING: Lower security (${requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`);
+  }
+
+  if (requiredDVNs.length > 0) {
+    lines.push(`Required DVNs: ${requiredDVNs.join(", ")}`);
+    lines.push(`Required Count: ${requiredDVNCount}`);
+  } else if (requiredDVNCount > 0) {
+    lines.push(`Required DVN Count: ${requiredDVNCount}`);
+  } else {
+    lines.push("Required DVN Count: 0 (WARNING: No required DVNs!)");
+  }
+
+  return lines.join("\n");
 }
 
 function renderBidirectionalEdge(edgesGroup, fromPos, toPos, forwardInfo, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip) {
   const svgNS = "http://www.w3.org/2000/svg";
-  const forwardEdge = forwardInfo.edge;
-  const reverseEdge = reverseInfo.edge;
 
-  // Calculate midpoint
+  const forwardStyle = getEdgeStyle(forwardInfo.isBlocked, forwardInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+  const reverseStyle = getEdgeStyle(reverseInfo.isBlocked, reverseInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+
   const midX = (fromPos.x + toPos.x) / 2;
   const midY = (fromPos.y + toPos.y) / 2;
 
-  // Helper to get style for each direction
-  const getEdgeStyle = (info) => {
-    let strokeColor = "#000000ff";
-    let strokeWidth = "3";
-    let opacity = "0.5";
-    let dashArray = "none";
+  renderHalfEdge(svgNS, edgesGroup, fromPos.x, fromPos.y, midX, midY, reverseStyle, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
+  renderHalfEdge(svgNS, edgesGroup, midX, midY, toPos.x, toPos.y, forwardStyle, forwardInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
 
-    if (info.isBlocked) {
-      strokeColor = "#ff0000";
-      strokeWidth = "1";
-      opacity = "0.6";
-      dashArray = "8,4";
-    } else if (info.requiredDVNCount < maxRequiredDVNsInWeb) {
-      strokeColor = "#ff6666";
-      strokeWidth = "2";
-      opacity = "0.5";
-    }
-
-    return { strokeColor, strokeWidth, opacity, dashArray };
-  };
-
-  const forwardStyle = getEdgeStyle(forwardInfo);
-  const reverseStyle = getEdgeStyle(reverseInfo);
-
-  // Create first half (from -> mid) with REVERSE styling (switched)
-  const halfLine1 = document.createElementNS(svgNS, "line");
-  halfLine1.setAttribute("x1", fromPos.x);
-  halfLine1.setAttribute("y1", fromPos.y);
-  halfLine1.setAttribute("x2", midX);
-  halfLine1.setAttribute("y2", midY);
-  halfLine1.setAttribute("stroke", reverseStyle.strokeColor);
-  halfLine1.setAttribute("stroke-width", reverseStyle.strokeWidth);
-  halfLine1.setAttribute("stroke-dasharray", reverseStyle.dashArray);
-  halfLine1.setAttribute("opacity", reverseStyle.opacity);
-  halfLine1.style.cursor = "pointer";
-
-  // Add tooltip for reverse direction (switched)
-  const title1 = document.createElementNS(svgNS, "title");
-  const reverseTitleLines = [
-    `${reverseEdge.from} → ${reverseEdge.to}`,
-    `Src EID: ${reverseEdge.srcEid}`,
-  ];
-
-  if (reverseInfo.isBlocked) {
-    reverseTitleLines.push(`STATUS: BLOCKED (dead address in DVNs)`);
-  } else if (maxRequiredDVNsInWeb > 0 && reverseInfo.requiredDVNCount < maxRequiredDVNsInWeb) {
-    reverseTitleLines.push(`WARNING: Lower security (${reverseInfo.requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`);
-  }
-
-  if (reverseInfo.requiredDVNs.length > 0) {
-    reverseTitleLines.push(`Required DVNs: ${reverseInfo.requiredDVNs.join(", ")}`);
-    reverseTitleLines.push(`Required Count: ${reverseInfo.requiredDVNCount}`);
-  } else if (reverseInfo.requiredDVNCount > 0) {
-    reverseTitleLines.push(`Required DVN Count: ${reverseInfo.requiredDVNCount}`);
-  } else {
-    reverseTitleLines.push(`Required DVN Count: 0 (WARNING: No required DVNs!)`);
-  }
-
-  const reverseTooltipText = reverseTitleLines.join("\n");
-  title1.textContent = reverseTooltipText;
-  halfLine1.appendChild(title1);
-
-  // Add click handler for reverse direction
-  halfLine1.addEventListener("click", (e) => {
-    e.stopPropagation();
-    showPersistentTooltip(reverseTooltipText, e.pageX + 10, e.pageY + 10);
-  });
-
-  // Create second half (mid -> to) with FORWARD styling (switched)
-  const halfLine2 = document.createElementNS(svgNS, "line");
-  halfLine2.setAttribute("x1", midX);
-  halfLine2.setAttribute("y1", midY);
-  halfLine2.setAttribute("x2", toPos.x);
-  halfLine2.setAttribute("y2", toPos.y);
-  halfLine2.setAttribute("stroke", forwardStyle.strokeColor);
-  halfLine2.setAttribute("stroke-width", forwardStyle.strokeWidth);
-  halfLine2.setAttribute("stroke-dasharray", forwardStyle.dashArray);
-  halfLine2.setAttribute("opacity", forwardStyle.opacity);
-  halfLine2.style.cursor = "pointer";
-
-  // Add tooltip for forward direction (switched)
-  const title2 = document.createElementNS(svgNS, "title");
-  const forwardTitleLines = [
-    `${forwardEdge.from} → ${forwardEdge.to}`,
-    `Src EID: ${forwardEdge.srcEid}`,
-  ];
-
-  if (forwardInfo.isBlocked) {
-    forwardTitleLines.push(`STATUS: BLOCKED (dead address in DVNs)`);
-  } else if (maxRequiredDVNsInWeb > 0 && forwardInfo.requiredDVNCount < maxRequiredDVNsInWeb) {
-    forwardTitleLines.push(`WARNING: Lower security (${forwardInfo.requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`);
-  }
-
-  if (forwardInfo.requiredDVNs.length > 0) {
-    forwardTitleLines.push(`Required DVNs: ${forwardInfo.requiredDVNs.join(", ")}`);
-    forwardTitleLines.push(`Required Count: ${forwardInfo.requiredDVNCount}`);
-  } else if (forwardInfo.requiredDVNCount > 0) {
-    forwardTitleLines.push(`Required DVN Count: ${forwardInfo.requiredDVNCount}`);
-  } else {
-    forwardTitleLines.push(`Required DVN Count: 0 (WARNING: No required DVNs!)`);
-  }
-
-  const forwardTooltipText = forwardTitleLines.join("\n");
-  title2.textContent = forwardTooltipText;
-  halfLine2.appendChild(title2);
-
-  // Add click handler for forward direction
-  halfLine2.addEventListener("click", (e) => {
-    e.stopPropagation();
-    showPersistentTooltip(forwardTooltipText, e.pageX + 10, e.pageY + 10);
-  });
-
-  // Add both halves to the group
-  edgesGroup.appendChild(halfLine1);
-  edgesGroup.appendChild(halfLine2);
-
-  // Add arrows at 75% and 25% positions for visual clarity
   const dx = toPos.x - fromPos.x;
   const dy = toPos.y - fromPos.y;
   const angle = Math.atan2(dy, dx);
-  const arrowSize = 8;
 
-  // Forward arrow at 75% from start
-  const fwdArrowX = fromPos.x + dx * 0.75;
-  const fwdArrowY = fromPos.y + dy * 0.75;
-  const fwdArrow = createArrowMarker(svgNS, fwdArrowX, fwdArrowY, angle, arrowSize, forwardStyle.strokeColor);
-  edgesGroup.appendChild(fwdArrow);
+  edgesGroup.appendChild(createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, forwardStyle.color));
+  edgesGroup.appendChild(createArrowMarker(svgNS, fromPos.x + dx * 0.25, fromPos.y + dy * 0.25, angle + Math.PI, 8, reverseStyle.color));
+}
 
-  // Reverse arrow at 25% from start (pointing backwards)
-  const revArrowX = fromPos.x + dx * 0.25;
-  const revArrowY = fromPos.y + dy * 0.25;
-  const revArrow = createArrowMarker(svgNS, revArrowX, revArrowY, angle + Math.PI, arrowSize, reverseStyle.strokeColor);
-  edgesGroup.appendChild(revArrow);
+function renderHalfEdge(svgNS, edgesGroup, x1, y1, x2, y2, style, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
+  const line = document.createElementNS(svgNS, "line");
+  line.setAttribute("x1", x1);
+  line.setAttribute("y1", y1);
+  line.setAttribute("x2", x2);
+  line.setAttribute("y2", y2);
+  line.setAttribute("stroke", style.color);
+  line.setAttribute("stroke-width", style.width);
+  line.setAttribute("stroke-dasharray", style.dashArray);
+  line.setAttribute("opacity", style.opacity);
+  line.style.cursor = "pointer";
+
+  const tooltipText = buildEdgeTooltip(info.edge, info.isBlocked, info.requiredDVNCount, info.requiredDVNs, maxRequiredDVNsInWeb);
+  const title = document.createElementNS(svgNS, "title");
+  title.textContent = tooltipText;
+  line.appendChild(title);
+
+  line.addEventListener("click", (e) => {
+    e.stopPropagation();
+    showPersistentTooltip(tooltipText, e.pageX + 10, e.pageY + 10);
+  });
+
+  edgesGroup.appendChild(line);
 }
 
 function createArrowMarker(svgNS, x, y, angle, size, color) {
@@ -2298,27 +2196,60 @@ function createArrowMarker(svgNS, x, y, angle, size, color) {
   return arrowGroup;
 }
 
-function renderSVGGraph(webData) {
-  const width = 1600;
-  const height = 1200;
-  const nodeRadius = 40;
-  const padding = 150;
+function isDeadAddress(address, deadAddress) {
+  return String(address).toLowerCase() === deadAddress.toLowerCase();
+}
 
-  const svgNS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(svgNS, "svg");
-  svg.setAttribute("width", "100%");
-  svg.setAttribute("height", height);
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.style.border = "1px solid var(--ink)";
-  svg.style.background = "var(--paper)";
-  svg.style.marginTop = "1rem";
-  svg.style.cursor = "grab";
+function calculateEdgeSecurityInfo(edges, nodesById, deadAddress) {
+  const edgeSecurityInfo = [];
+  let maxRequiredDVNsInWeb = 0;
 
-  // Create a group for all content to enable zoom/pan
-  const contentGroup = document.createElementNS(svgNS, "g");
-  contentGroup.setAttribute("class", "zoom-content");
+  for (const edge of edges) {
+    const toNode = nodesById.get(edge.to);
+    let requiredDVNCount = 0;
+    let requiredDVNs = [];
+    let isBlocked = false;
 
-  // Zoom and pan state
+    if (toNode?.securityConfigs) {
+      const config = toNode.securityConfigs.find(cfg => String(cfg.srcEid) === String(edge.srcEid));
+      if (config) {
+        requiredDVNCount = config.requiredDVNCount || 0;
+        requiredDVNs = config.requiredDVNs || [];
+        isBlocked = requiredDVNs.some(addr => isDeadAddress(addr, deadAddress));
+      }
+    }
+
+    if (!isBlocked && requiredDVNCount > maxRequiredDVNsInWeb) {
+      maxRequiredDVNsInWeb = requiredDVNCount;
+    }
+
+    edgeSecurityInfo.push({ edge, requiredDVNCount, requiredDVNs, isBlocked });
+  }
+
+  return { edgeSecurityInfo, maxRequiredDVNsInWeb };
+}
+
+function calculateMaxMinRequiredDVNsForNodes(nodes, deadAddress) {
+  let max = 0;
+
+  for (const node of nodes) {
+    if (node.isDangling || !node.securityConfigs?.length) continue;
+
+    const nonBlockedConfigs = node.securityConfigs.filter(cfg => {
+      const dvns = cfg.requiredDVNs || [];
+      return !dvns.some(addr => isDeadAddress(addr, deadAddress));
+    });
+
+    if (nonBlockedConfigs.length > 0) {
+      const min = Math.min(...nonBlockedConfigs.map(c => c.requiredDVNCount));
+      if (min > max) max = min;
+    }
+  }
+
+  return max;
+}
+
+function setupZoomAndPan(svg, contentGroup) {
   let scale = 1;
   let translateX = 0;
   let translateY = 0;
@@ -2330,30 +2261,21 @@ function renderSVGGraph(webData) {
     contentGroup.setAttribute("transform", `translate(${translateX}, ${translateY}) scale(${scale})`);
   }
 
-  // Mouse wheel zoom
   svg.addEventListener("wheel", (e) => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
-
-    // Convert mouse position to SVG coordinates
     const svgX = (mouseX - translateX) / scale;
     const svgY = (mouseY - translateY) / scale;
-
-    // Zoom factor
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
     const newScale = Math.max(0.1, Math.min(10, scale * zoomFactor));
-
-    // Adjust translation to zoom toward mouse position
     translateX = mouseX - svgX * newScale;
     translateY = mouseY - svgY * newScale;
     scale = newScale;
-
     updateTransform();
   });
 
-  // Pan with mouse drag
   svg.addEventListener("mousedown", (e) => {
     if (e.target === svg || e.target === contentGroup) {
       isPanning = true;
@@ -2380,13 +2302,13 @@ function renderSVGGraph(webData) {
     isPanning = false;
     svg.style.cursor = "grab";
   });
+}
 
-
-  // Create persistent tooltip system
+function setupPersistentTooltips(svg) {
   let persistentTooltip = null;
 
-  function showPersistentTooltip(text, x, y) {
-    hidePersistentTooltip();
+  function show(text, x, y) {
+    hide();
 
     persistentTooltip = document.createElement("div");
     persistentTooltip.className = "persistent-tooltip";
@@ -2407,10 +2329,8 @@ function renderSVGGraph(webData) {
       user-select: text;
     `;
     persistentTooltip.textContent = text;
-
     document.body.appendChild(persistentTooltip);
 
-    // Adjust position if off-screen
     const rect = persistentTooltip.getBoundingClientRect();
     if (rect.right > window.innerWidth - 10) {
       persistentTooltip.style.left = `${x - rect.width - 20}px`;
@@ -2420,85 +2340,52 @@ function renderSVGGraph(webData) {
     }
   }
 
-  function hidePersistentTooltip() {
+  function hide() {
     if (persistentTooltip) {
       persistentTooltip.remove();
       persistentTooltip = null;
     }
   }
 
-  // Close tooltip on Escape key
-  const escapeHandler = (e) => {
-    if (e.key === "Escape") {
-      hidePersistentTooltip();
-    }
-  };
-  document.addEventListener("keydown", escapeHandler);
-
-  // Close tooltip when clicking on SVG background
-  svg.addEventListener("click", (e) => {
-    if (e.target === svg) {
-      hidePersistentTooltip();
-    }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hide();
   });
 
-  const nodePositions = layoutNodes(webData.nodes, width, height, padding);
+  svg.addEventListener("click", (e) => {
+    if (e.target === svg) hide();
+  });
 
+  return show;
+}
+
+function renderSVGGraph(webData) {
+  const SVG_WIDTH = 1600;
+  const SVG_HEIGHT = 1200;
+  const NODE_RADIUS = 40;
+  const PADDING = 150;
+  const DEAD_ADDRESS = "0x000000000000000000000000000000000000dead";
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", "100%");
+  svg.setAttribute("height", SVG_HEIGHT);
+  svg.setAttribute("viewBox", `0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`);
+  svg.style.border = "1px solid var(--ink)";
+  svg.style.background = "var(--paper)";
+  svg.style.marginTop = "1rem";
+  svg.style.cursor = "grab";
+
+  const contentGroup = document.createElementNS(svgNS, "g");
+  contentGroup.setAttribute("class", "zoom-content");
+
+  setupZoomAndPan(svg, contentGroup);
+  const showPersistentTooltip = setupPersistentTooltips(svg);
+
+  const nodePositions = layoutNodes(webData.nodes, SVG_WIDTH, SVG_HEIGHT, PADDING);
   const nodesById = new Map(webData.nodes.map(n => [n.id, n]));
 
-  const deadAddress = "0x000000000000000000000000000000000000dead";
-
-  const edgeSecurityInfo = [];
-  let maxRequiredDVNsInWeb = 0;
-
-  for (const edge of webData.edges) {
-    const toNode = nodesById.get(edge.to);
-    let requiredDVNCount = 0;
-    let requiredDVNs = [];
-    let isBlocked = false;
-
-    if (toNode && toNode.securityConfigs) {
-      const configForThisEdge = toNode.securityConfigs.find(cfg => String(cfg.srcEid) === String(edge.srcEid));
-      if (configForThisEdge) {
-        requiredDVNCount = configForThisEdge.requiredDVNCount || 0;
-        requiredDVNs = configForThisEdge.requiredDVNs || [];
-
-        isBlocked = requiredDVNs.some(addr =>
-          String(addr).toLowerCase() === deadAddress.toLowerCase()
-        );
-      }
-    }
-
-    if (!isBlocked && requiredDVNCount > maxRequiredDVNsInWeb) {
-      maxRequiredDVNsInWeb = requiredDVNCount;
-    }
-
-    edgeSecurityInfo.push({
-      edge,
-      requiredDVNCount,
-      requiredDVNs,
-      isBlocked,
-    });
-  }
-
-  let maxMinRequiredDVNsForNodes = 0;
-  for (const node of webData.nodes) {
-    if (node.isDangling || !node.securityConfigs || node.securityConfigs.length === 0) {
-      continue;
-    }
-
-    const nonBlockedConfigs = node.securityConfigs.filter(cfg => {
-      const requiredDVNs = cfg.requiredDVNs || [];
-      return !requiredDVNs.some(addr => String(addr).toLowerCase() === deadAddress.toLowerCase());
-    });
-
-    if (nonBlockedConfigs.length > 0) {
-      const minRequiredDVNs = Math.min(...nonBlockedConfigs.map(c => c.requiredDVNCount));
-      if (minRequiredDVNs > maxMinRequiredDVNsForNodes) {
-        maxMinRequiredDVNsForNodes = minRequiredDVNs;
-      }
-    }
-  }
+  const { edgeSecurityInfo, maxRequiredDVNsInWeb } = calculateEdgeSecurityInfo(webData.edges, nodesById, DEAD_ADDRESS);
+  const maxMinRequiredDVNsForNodes = calculateMaxMinRequiredDVNsForNodes(webData.nodes, DEAD_ADDRESS);
 
   // Detect bidirectional edges
   const edgeMap = new Map();
@@ -2557,27 +2444,23 @@ function renderSVGGraph(webData) {
     const pos = nodePositions.get(node.id);
     if (!pos) continue;
 
-    const nonBlockedConfigs = node.securityConfigs && node.securityConfigs.length > 0
-      ? node.securityConfigs.filter(cfg => {
-          const requiredDVNs = cfg.requiredDVNs || [];
-          return !requiredDVNs.some(addr => String(addr).toLowerCase() === deadAddress.toLowerCase());
-        })
-      : [];
+    const nonBlockedConfigs = node.securityConfigs?.filter(cfg => {
+      const dvns = cfg.requiredDVNs || [];
+      return !dvns.some(addr => isDeadAddress(addr, DEAD_ADDRESS));
+    }) || [];
 
     const minRequiredDVNs = nonBlockedConfigs.length > 0
       ? Math.min(...nonBlockedConfigs.map(c => c.requiredDVNCount))
       : 0;
 
-    const hasBlockedConfig = node.securityConfigs && node.securityConfigs.length > 0
-      ? node.securityConfigs.some(cfg => {
-          const requiredDVNs = cfg.requiredDVNs || [];
-          return requiredDVNs.some(addr => String(addr).toLowerCase() === deadAddress.toLowerCase());
-        })
-      : false;
+    const hasBlockedConfig = node.securityConfigs?.some(cfg => {
+      const dvns = cfg.requiredDVNs || [];
+      return dvns.some(addr => isDeadAddress(addr, DEAD_ADDRESS));
+    }) || false;
 
     const radius = node.isTracked
-      ? nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
-      : nodeRadius * 0.5;
+      ? NODE_RADIUS * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
+      : NODE_RADIUS * 0.5;
 
     const nodeGroup = document.createElementNS(svgNS, "g");
     nodeGroup.setAttribute("class", "node");
@@ -2699,16 +2582,15 @@ function layoutNodes(nodes, width, height, padding) {
     for (const [index, node] of nodesAtDepth.entries()) {
       const baseY = padding + (nodesAtDepth.length === 1 ? (height - 2 * padding) / 2 : verticalSpacing * index);
 
-      // Add arc effect: offset x based on position in column (normalized -1 to 1)
       const centerIndex = (nodesAtDepth.length - 1) / 2;
       const distanceFromCenterIndex = index - centerIndex;
       const maxDistanceFromCenter = Math.max(centerIndex, nodesAtDepth.length - 1 - centerIndex);
       const normalizedPosition = maxDistanceFromCenter > 0 ? distanceFromCenterIndex / maxDistanceFromCenter : 0;
 
-      const arcIntensity = 200; // Pixels of horizontal offset at edges
-      const xOffset = arcIntensity * normalizedPosition * normalizedPosition; // Quadratic curve (always positive)
+      const arcIntensity = 200;
+      const xOffset = arcIntensity * normalizedPosition * normalizedPosition;
 
-      const x = baseX - xOffset; // Negative to push all nodes left (away from center)
+      const x = baseX - xOffset;
       const y = baseY;
 
       positions.set(node.id, { x, y });
