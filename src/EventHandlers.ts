@@ -21,18 +21,23 @@ import layerzeroMetadata from "../layerzero.json";
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /**
- * Sentinel value (255) for requiredDVNCount indicating explicit override to ZERO required DVNs.
+ * Sentinel Values in LayerZero UlnConfig
  *
- * LayerZero UlnConfig supports three distinct states for requiredDVNCount:
- * 1. Inherit (0 or undefined): Use the default UlnConfig for that destination chain
- * 2. Override with value (1, 2, etc): Specify a custom count of required DVNs
- * 3. Override with none (255): Explicitly have ZERO required DVNs, even if default specifies one or more
+ * These special values distinguish between "inherit from default" (0) and "explicitly set to zero" (sentinel).
+ *
+ * | Field              | Type   | Meaning of 0 (DEFAULT)          | Meaning of max_value (NIL)                    |
+ * |--------------------|--------|---------------------------------|-----------------------------------------------|
+ * | requiredDVNCount   | uint8  | Inherit the default setting     | 255: Override to zero required DVNs           |
+ * | optionalDVNCount   | uint8  | Inherit the default setting     | 255: Override to zero optional DVNs           |
+ * | confirmations      | uint64 | Inherit the default setting     | 2^64-1: Override to zero confirmations        |
  *
  * Example: If OApp sets requiredDVNCount = 255 with empty requiredDVNs array,
  * the system will require zero DVNs from the required list (not inherit from defaults).
  * If they had set it to 0, it would have inherited the default configuration.
  */
 const SENTINEL_REQUIRED_DVN_COUNT = 255;
+const SENTINEL_OPTIONAL_DVN_COUNT = 255;
+const SENTINEL_CONFIRMATIONS = 18446744073709551615n; // 2^64 - 1
 
 const FALLBACK_FIELD_ORDER = [
   "receiveLibrary",
@@ -194,6 +199,26 @@ const validateUlnConfig = (
 ): boolean => {
   let isValid = true;
 
+  // Log sentinel value usage (informational)
+  if (config.requiredDVNCount === SENTINEL_REQUIRED_DVN_COUNT) {
+    context.log.debug(
+      `UlnConfig using sentinel: requiredDVNCount=255 (NIL) in ${source}`,
+      {
+        chainId,
+        eid: eid.toString(),
+      },
+    );
+  }
+  if (config.optionalDVNCount === SENTINEL_OPTIONAL_DVN_COUNT) {
+    context.log.debug(
+      `UlnConfig using sentinel: optionalDVNCount=255 (NIL) in ${source}`,
+      {
+        chainId,
+        eid: eid.toString(),
+      },
+    );
+  }
+
   // Validate requiredDVNCount vs requiredDVNs.length (except sentinel)
   if (
     config.requiredDVNCount !== undefined &&
@@ -215,9 +240,10 @@ const validateUlnConfig = (
     isValid = false;
   }
 
-  // Validate optionalDVNCount vs optionalDVNs.length
+  // Validate optionalDVNCount vs optionalDVNs.length (except sentinel)
   if (
     config.optionalDVNCount !== undefined &&
+    config.optionalDVNCount !== SENTINEL_OPTIONAL_DVN_COUNT &&
     config.optionalDVNCount > 0 &&
     config.optionalDVNs.length > 0 &&
     config.optionalDVNCount !== config.optionalDVNs.length
@@ -363,11 +389,14 @@ const createNormalizedConfig = (
   const requiredDVNs = uniqueNormalizedAddresses(input.requiredDVNs ?? []);
   const optionalDVNs = uniqueNormalizedAddresses(input.optionalDVNs ?? []);
 
+  // A config "has values" if any field is explicitly set (including sentinel values)
+  // 0/undefined means "inherit from default" and doesn't count as having a value
   const hasValues =
     (confirmations !== undefined && confirmations !== 0n) ||
     (requiredDVNCount !== undefined &&
       (requiredDVNCount > 0 || requiredDVNCount === SENTINEL_REQUIRED_DVN_COUNT)) ||
-    (optionalDVNCount !== undefined && optionalDVNCount > 0) ||
+    (optionalDVNCount !== undefined &&
+      (optionalDVNCount > 0 || optionalDVNCount === SENTINEL_OPTIONAL_DVN_COUNT)) ||
     (optionalDVNThreshold !== undefined && optionalDVNThreshold > 0) ||
     requiredDVNs.length > 0 ||
     optionalDVNs.length > 0;
@@ -522,9 +551,17 @@ const mergeSecurityConfig = (
     overrideConfirmations !== undefined &&
     overrideConfirmations !== 0n
   ) {
-    effectiveConfirmations = overrideConfirmations;
+    // Sentinel value means explicitly set to zero confirmations
+    effectiveConfirmations =
+      overrideConfirmations === SENTINEL_CONFIRMATIONS
+        ? 0n
+        : overrideConfirmations;
   } else if (defaultConfirmations !== undefined) {
-    effectiveConfirmations = defaultConfirmations;
+    // Sentinel value in default also means zero confirmations
+    effectiveConfirmations =
+      defaultConfirmations === SENTINEL_CONFIRMATIONS
+        ? 0n
+        : defaultConfirmations;
     if (
       overrideHasConfig &&
       (overrideConfirmations === undefined || overrideConfirmations === 0n)
@@ -558,10 +595,22 @@ const mergeSecurityConfig = (
   const overrideOptionalCount = overrideConfig.optionalDVNCount;
   const defaultOptionalCount = defaultConfig.optionalDVNCount;
   let rawOptionalCount: number | undefined;
-  if (overrideOptionalCount !== undefined && overrideOptionalCount > 0) {
-    rawOptionalCount = overrideOptionalCount;
+  if (
+    overrideOptionalCount !== undefined &&
+    (overrideOptionalCount > 0 ||
+      overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT)
+  ) {
+    // Sentinel value means explicitly set to zero optional DVNs
+    rawOptionalCount =
+      overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT
+        ? 0
+        : overrideOptionalCount;
   } else if (defaultOptionalCount !== undefined) {
-    rawOptionalCount = defaultOptionalCount;
+    // Sentinel value in default also means zero optional DVNs
+    rawOptionalCount =
+      defaultOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT
+        ? 0
+        : defaultOptionalCount;
     if (
       overrideHasConfig &&
       (overrideOptionalCount === undefined || overrideOptionalCount === 0)
