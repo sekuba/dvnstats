@@ -1,0 +1,56 @@
+/**
+ * Centralized configuration for the LayerZero Security Config Explorer
+ */
+
+export const CONFIG = {
+  // GraphQL endpoint - can be overridden via URL param or data attribute
+  GRAPHQL_ENDPOINT:
+    new URLSearchParams(window.location.search).get("endpoint") ||
+    document.documentElement.dataset.graphqlEndpoint ||
+    "http://localhost:8080/v1/graphql",
+
+  // Dead address used for blocked DVN detection
+  DEAD_ADDRESS: "0x000000000000000000000000000000000000dead",
+
+  // SVG graph rendering constants
+  SVG: {
+    WIDTH: 1600,
+    HEIGHT: 1200,
+    NODE_RADIUS: 40,
+    PADDING: 150,
+  },
+
+  // Security web crawler settings
+  CRAWLER: {
+    DEFAULT_DEPTH: 10,
+    DEFAULT_LIMIT: 1000,
+  },
+
+  // UI interaction settings
+  UI: {
+    TOAST_DURATION: 1600,
+    MAX_TOASTS: 6,
+    COPY_FEEDBACK_DURATION: 1200,
+    BUTTON_FEEDBACK_DURATION: 1800,
+  },
+
+  // Data sources
+  DATA_SOURCES: {
+    CHAIN_METADATA: [
+      "./layerzero.json",           // Full format with EID mappings (preferred)
+      "../layerzero.json",
+      "/layerzero.json",
+      "./layerzero-chains.json",    // Simplified format (fallback)
+    ],
+    OAPP_CHAINS: "./oapp-chains.json",
+    OAPP_ALIASES: "./oapp-aliases.json",
+  },
+
+  // Local storage keys
+  STORAGE: {
+    OAPP_ALIASES: "dashboard:oappAliases",
+  },
+
+  // Metadata cache TTL (1 hour)
+  CACHE_TTL: 3600000,
+};
