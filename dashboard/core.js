@@ -167,30 +167,7 @@ export class ChainMetadata {
       return;
     }
 
-    // Check for simplified format {native: {...}, eid: {...}}
-    const nativeTable = data.native;
-    const eidTable = data.eid;
-
-    if (nativeTable || eidTable) {
-      if (nativeTable && typeof nativeTable === "object") {
-        Object.entries(nativeTable).forEach(([id, label]) => {
-          if (label) {
-            this.nativeChainLabels.set(String(id), String(label));
-          }
-        });
-      }
-      if (eidTable && typeof eidTable === "object") {
-        Object.entries(eidTable).forEach(([id, label]) => {
-          if (label) {
-            this.eidLabels.set(String(id), String(label));
-          }
-        });
-      }
-      console.log("[ChainMetadata] Loaded simplified format (labels only, no EID-to-chainId mappings)");
-      return;
-    }
-
-    // Full LayerZero format
+    // Process LayerZero chain metadata format
     let processedChains = 0;
     let processedDeployments = 0;
 

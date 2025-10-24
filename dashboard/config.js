@@ -37,10 +37,9 @@ export const CONFIG = {
   // Data sources
   DATA_SOURCES: {
     CHAIN_METADATA: [
-      "./layerzero.json",           // Full format with EID mappings (preferred)
+      "./layerzero.json",
       "../layerzero.json",
       "/layerzero.json",
-      "./layerzero-chains.json",    // Simplified format (fallback)
     ],
     OAPP_CHAINS: "./oapp-chains.json",
     OAPP_ALIASES: "./oapp-aliases.json",

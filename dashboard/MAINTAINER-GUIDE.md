@@ -696,15 +696,14 @@ http://localhost:3000?endpoint=https://your-hasura.com/v1/graphql
 
 ### Updating Chain Metadata
 
-**Important**: The crawler requires the **full** `layerzero.json` format with deployment data.
+**Important**: The dashboard requires `layerzero.json` (the standard LayerZero chain metadata file).
 
 **File Priority** (config.js):
-1. `./layerzero.json` ✅ Full format with EID mappings
+1. `./layerzero.json`
 2. `../layerzero.json`
 3. `/layerzero.json`
-4. `./layerzero-chains.json` ⚠️ Simplified (labels only)
 
-**Full Format Structure**:
+**Expected Format**:
 ```json
 {
   "chain-key": {
@@ -929,14 +928,14 @@ ui.js: ResultsRenderer.render()
 Skipping sender: unknown chainId for srcEid=30184
 ```
 
-**Cause**: Wrong metadata file loaded (simplified format instead of full)
+**Cause**: `layerzero.json` file missing or has invalid format
 
 **Fix**:
 1. Check console for: `[ChainMetadata] Loaded from ...`
-2. Ensure it says `./layerzero.json` NOT `./layerzero-chains.json`
-3. Verify file exists: `ls dashboard/layerzero.json`
-4. Check file format: Should have `deployments` arrays with `eid` fields
-5. If simplified format loaded, check `config.js` → `DATA_SOURCES.CHAIN_METADATA` order
+2. Verify file exists: `ls dashboard/layerzero.json`
+3. Check file format: Should have `deployments` arrays with `eid` fields
+4. Download fresh copy from LayerZero API if corrupted
+5. Verify console shows: `[ChainMetadata] Processed X chains, Y deployments, Z EID mappings` with Z > 0
 
 **Verification**:
 ```javascript
