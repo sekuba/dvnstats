@@ -14,6 +14,10 @@ export class SecurityGraphRenderer {
     this.height = CONFIG.SVG.HEIGHT;
     this.nodeRadius = CONFIG.SVG.NODE_RADIUS;
     this.padding = CONFIG.SVG.PADDING;
+    this.seedGap = CONFIG.SVG.SEED_GAP;
+    this.columnSpacing = CONFIG.SVG.COLUMN_SPACING;
+    this.maxNodesPerColumn = CONFIG.SVG.MAX_NODES_PER_COLUMN;
+    this.maxColumns = CONFIG.SVG.MAX_COLUMNS;
     this.deadAddress = CONFIG.DEAD_ADDRESS;
     this.getOAppAlias = getOAppAlias;
     this.getChainDisplayLabel = getChainDisplayLabel;
@@ -656,72 +660,57 @@ export class SecurityGraphRenderer {
       });
     }
 
-    // Split depth 1 nodes into tracked (left) and untracked (right) with multiple columns
-    if (nodesByDepth.has(1)) {
-      const depth1Nodes = nodesByDepth.get(1);
-      if (depth1Nodes.length > 1) {
-        // Separate into tracked and untracked
-        const trackedNodes = depth1Nodes.filter(n => n.isTracked);
-        const untrackedNodes = depth1Nodes.filter(n => !n.isTracked);
+    // Apply column splitting to all depths
+    const depthsToProcess = Array.from(nodesByDepth.keys()).filter(d => d !== 0 && d < 999);
+    for (const originalDepth of depthsToProcess) {
+      const depthNodes = nodesByDepth.get(originalDepth);
+      if (!depthNodes || depthNodes.length <= 1) continue;
+
+      // Special handling for depth 1: separate tracked (left) and untracked (right)
+      if (originalDepth === 1) {
+        const trackedNodes = depthNodes.filter(n => n.isTracked);
+        const untrackedNodes = depthNodes.filter(n => !n.isTracked);
 
         // Process tracked nodes (left side, mirrored)
         if (trackedNodes.length > 0) {
-          const numColumnsTracked = Math.max(1, Math.min(10, Math.ceil(trackedNodes.length / 8)));
-          const nodesPerColumnTracked = Math.ceil(trackedNodes.length / numColumnsTracked);
-
-          for (let i = 0; i < numColumnsTracked; i++) {
-            const start = i * nodesPerColumnTracked;
-            const end = Math.min(start + nodesPerColumnTracked, trackedNodes.length);
-            if (start < trackedNodes.length) {
-              const columnNodes = trackedNodes.slice(start, end);
-              if (columnNodes.length > 0) {
-                // Use negative depths for left side: -0.1, -0.2, -0.3, etc.
-                // When sorted, these appear left of seed (depth 0)
-                nodesByDepth.set(-0.1 - i * 0.1, columnNodes);
-              }
-            }
-          }
+          this.splitIntoColumns(trackedNodes, nodesByDepth, -0.1, -0.1);
         }
 
         // Process untracked nodes (right side)
         if (untrackedNodes.length > 0) {
-          const numColumnsUntracked = Math.max(1, Math.min(10, Math.ceil(untrackedNodes.length / 8)));
-          const nodesPerColumnUntracked = Math.ceil(untrackedNodes.length / numColumnsUntracked);
-
-          for (let i = 0; i < numColumnsUntracked; i++) {
-            const start = i * nodesPerColumnUntracked;
-            const end = Math.min(start + nodesPerColumnUntracked, untrackedNodes.length);
-            if (start < untrackedNodes.length) {
-              const columnNodes = untrackedNodes.slice(start, end);
-              if (columnNodes.length > 0) {
-                // Use positive offsets for right side: 1.1, 1.2, 1.3, etc.
-                nodesByDepth.set(1.1 + i * 0.1, columnNodes);
-              }
-            }
-          }
+          this.splitIntoColumns(untrackedNodes, nodesByDepth, originalDepth + 0.1, 0.1);
         }
-
-        nodesByDepth.delete(1);
+      } else {
+        // For all other depths, just split into columns if needed
+        this.splitIntoColumns(depthNodes, nodesByDepth, originalDepth + 0.1, 0.1);
       }
+
+      nodesByDepth.delete(originalDepth);
     }
 
     const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
-    const totalColumns = depths.filter((d) => d < 999 && d > -999).length;
+    const centerX = this.width / 2;
 
-    const depthSpacing = 2 * (this.width - 2 * this.padding) / Math.max(totalColumns - 1, 1);
+    // Pre-calculate left and right column depths for indexing
+    const leftDepths = depths.filter(d => d < 0).sort((a, b) => b - a); // Sort descending: -0.1, -0.2, -0.3...
+    const rightDepths = depths.filter(d => d > 1).sort((a, b) => a - b); // Sort ascending: 1.1, 1.2, 1.3...
 
-    for (const [depthIndex, depth] of depths.entries()) {
+    for (const depth of depths) {
       const nodesAtDepth = nodesByDepth.get(depth);
-      let baseX = this.padding + depthSpacing * depthIndex;
 
-      // Add extra spacing between seed and all columns on either side
-      const seedGap = 250; // pixels of extra space on each side of seed
-      if (depth > 1) {
-        // Right side columns (depth >= 1.1)
-        baseX += seedGap;
+      // Calculate x position using simple constant spacing
+      let baseX;
+      if (depth === 0) {
+        // Seed node at center
+        baseX = centerX;
       } else if (depth < 0) {
-        // Left side columns (depth <= -0.1)
-        baseX -= seedGap;
+        // Left side: each column to the left of seed
+        const columnIndex = leftDepths.indexOf(depth);
+        baseX = centerX - this.seedGap - (columnIndex * this.columnSpacing);
+      } else {
+        // Right side: each column to the right of seed
+        const columnIndex = rightDepths.indexOf(depth);
+        baseX = centerX + this.seedGap + (columnIndex * this.columnSpacing);
       }
 
       const verticalSpacing =
@@ -759,6 +748,29 @@ export class SecurityGraphRenderer {
     }
 
     return positions;
+  }
+
+  splitIntoColumns(nodes, nodesByDepth, baseDepth, increment) {
+    if (nodes.length <= this.maxNodesPerColumn) {
+      // No splitting needed, create single column
+      nodesByDepth.set(baseDepth, nodes);
+      return;
+    }
+
+    const numColumns = Math.max(1, Math.min(this.maxColumns, Math.ceil(nodes.length / this.maxNodesPerColumn)));
+    const nodesPerColumn = Math.ceil(nodes.length / numColumns);
+
+    for (let i = 0; i < numColumns; i++) {
+      const start = i * nodesPerColumn;
+      const end = Math.min(start + nodesPerColumn, nodes.length);
+      if (start < nodes.length) {
+        const columnNodes = nodes.slice(start, end);
+        if (columnNodes.length > 0) {
+          const columnDepth = baseDepth + (i * increment);
+          nodesByDepth.set(columnDepth, columnNodes);
+        }
+      }
+    }
   }
 
   setupZoomAndPan(svg, contentGroup) {
