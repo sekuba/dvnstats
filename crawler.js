@@ -203,11 +203,15 @@ export class SecurityWebCrawler {
     const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
 
     if (!chainId) {
+      const fallbackSuffix = peerHex ? peerHex.toLowerCase() : "unknown";
+      const fallbackChainId =
+        eid !== null && eid !== undefined ? `eid-${eid}` : "unknown-eid";
+      const fallbackOAppId = `${fallbackChainId}_${fallbackSuffix}`;
       return {
         rawPeer: peerHex,
-        chainId: null,
+        chainId: fallbackChainId,
         address: null,
-        oappId: null,
+        oappId: fallbackOAppId,
         resolved: false,
       };
     }
