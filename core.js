@@ -84,6 +84,33 @@ export function normalizeAddress(address) {
 }
 
 /**
+ * Decodes a bytes32 value into a 20-byte address if possible.
+ * Returns null when the value cannot be interpreted as an EVM address.
+ */
+export function bytes32ToAddress(value) {
+  if (!value) {
+    return null;
+  }
+
+  const hex = String(value).toLowerCase().trim();
+  if (!hex.startsWith("0x") || hex.length !== 66) {
+    return null;
+  }
+
+  const body = hex.slice(2);
+  if (!/^[0-9a-f]{64}$/.test(body)) {
+    return null;
+  }
+
+  const addressPart = body.slice(-40);
+  if (/^0+$/.test(addressPart)) {
+    return null;
+  }
+
+  return `0x${addressPart}`;
+}
+
+/**
  * Creates a normalized OApp ID from chain ID and address
  */
 export function makeOAppId(chainId, address) {

@@ -23,7 +23,6 @@ export const CONFIG = {
   // Security web crawler settings
   CRAWLER: {
     DEFAULT_DEPTH: 10,
-    DEFAULT_LIMIT: 1000,
   },
 
   // UI interaction settings
