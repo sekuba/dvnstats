@@ -226,153 +226,57 @@ export class SecurityGraphRenderer {
     maxRequiredDVNsInWeb,
     showPersistentTooltip,
   ) {
-    const { edge, isBlocked, requiredDVNCount, requiredDVNs } = info;
     const style = this.getEdgeStyle(
-      isBlocked,
-      requiredDVNCount,
+      info.isBlocked,
+      info.requiredDVNCount,
       maxRequiredDVNsInWeb,
     );
 
+    this.createEdgeLine(svgNS, edgesGroup, fromPos, toPos, style, info, maxRequiredDVNsInWeb, showPersistentTooltip);
+
+    const dx = toPos.x - fromPos.x;
+    const dy = toPos.y - fromPos.y;
+    const angle = Math.atan2(dy, dx);
+
+    edgesGroup.appendChild(
+      this.createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, style.color)
+    );
+  }
+
+  renderBidirectionalEdge(svgNS, edgesGroup, fromPos, toPos, forwardInfo, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip) {
+    const forwardStyle = this.getEdgeStyle(forwardInfo.isBlocked, forwardInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+    const reverseStyle = this.getEdgeStyle(reverseInfo.isBlocked, reverseInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+    const midX = (fromPos.x + toPos.x) / 2;
+    const midY = (fromPos.y + toPos.y) / 2;
+    const dx = toPos.x - fromPos.x;
+    const dy = toPos.y - fromPos.y;
+    const angle = Math.atan2(dy, dx);
+
+    // Render two halves
+    this.renderHalfEdge(svgNS, edgesGroup, fromPos.x, fromPos.y, midX, midY, reverseStyle, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
+    this.renderHalfEdge(svgNS, edgesGroup, midX, midY, toPos.x, toPos.y, forwardStyle, forwardInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
+
+    // Arrows
+    edgesGroup.appendChild(this.createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, forwardStyle.color));
+    edgesGroup.appendChild(this.createArrowMarker(svgNS, fromPos.x + dx * 0.25, fromPos.y + dy * 0.25, angle + Math.PI, 8, reverseStyle.color));
+  }
+
+  renderHalfEdge(svgNS, edgesGroup, x1, y1, x2, y2, style, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
+    this.createEdgeLine(svgNS, edgesGroup, { x: x1, y: y1 }, { x: x2, y: y2 }, style, info, maxRequiredDVNsInWeb, showPersistentTooltip);
+  }
+
+  createEdgeLine(svgNS, edgesGroup, fromPos, toPos, style, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", fromPos.x);
     line.setAttribute("y1", fromPos.y);
     line.setAttribute("x2", toPos.x);
     line.setAttribute("y2", toPos.y);
-    line.setAttribute("stroke", style.color);
-    line.setAttribute("stroke-width", style.width);
-    line.setAttribute("stroke-dasharray", style.dashArray);
-    line.setAttribute("opacity", style.opacity);
-    line.style.cursor = "pointer";
+    Object.assign(line.style, { cursor: "pointer" });
 
-    const tooltipText = this.buildEdgeTooltip(info, maxRequiredDVNsInWeb);
-    const title = document.createElementNS(svgNS, "title");
-    title.textContent = tooltipText;
-    line.appendChild(title);
-
-    line.addEventListener("click", (e) => {
-      e.stopPropagation();
-      showPersistentTooltip(tooltipText, e.pageX + 10, e.pageY + 10);
+    Object.entries(style).forEach(([key, value]) => {
+      const attrMap = { color: "stroke", width: "stroke-width", opacity: "opacity", dashArray: "stroke-dasharray" };
+      line.setAttribute(attrMap[key], value);
     });
-
-    edgesGroup.appendChild(line);
-
-    // Arrow
-    const dx = toPos.x - fromPos.x;
-    const dy = toPos.y - fromPos.y;
-    const angle = Math.atan2(dy, dx);
-    const arrowX = fromPos.x + dx * 0.75;
-    const arrowY = fromPos.y + dy * 0.75;
-
-    const arrow = this.createArrowMarker(
-      svgNS,
-      arrowX,
-      arrowY,
-      angle,
-      8,
-      style.color,
-    );
-    edgesGroup.appendChild(arrow);
-  }
-
-  renderBidirectionalEdge(
-    svgNS,
-    edgesGroup,
-    fromPos,
-    toPos,
-    forwardInfo,
-    reverseInfo,
-    maxRequiredDVNsInWeb,
-    showPersistentTooltip,
-  ) {
-    const forwardStyle = this.getEdgeStyle(
-      forwardInfo.isBlocked,
-      forwardInfo.requiredDVNCount,
-      maxRequiredDVNsInWeb,
-    );
-    const reverseStyle = this.getEdgeStyle(
-      reverseInfo.isBlocked,
-      reverseInfo.requiredDVNCount,
-      maxRequiredDVNsInWeb,
-    );
-
-    const midX = (fromPos.x + toPos.x) / 2;
-    const midY = (fromPos.y + toPos.y) / 2;
-
-    // Render two halves
-    this.renderHalfEdge(
-      svgNS,
-      edgesGroup,
-      fromPos.x,
-      fromPos.y,
-      midX,
-      midY,
-      reverseStyle,
-      reverseInfo,
-      maxRequiredDVNsInWeb,
-      showPersistentTooltip,
-    );
-    this.renderHalfEdge(
-      svgNS,
-      edgesGroup,
-      midX,
-      midY,
-      toPos.x,
-      toPos.y,
-      forwardStyle,
-      forwardInfo,
-      maxRequiredDVNsInWeb,
-      showPersistentTooltip,
-    );
-
-    // Arrows
-    const dx = toPos.x - fromPos.x;
-    const dy = toPos.y - fromPos.y;
-    const angle = Math.atan2(dy, dx);
-
-    edgesGroup.appendChild(
-      this.createArrowMarker(
-        svgNS,
-        fromPos.x + dx * 0.75,
-        fromPos.y + dy * 0.75,
-        angle,
-        8,
-        forwardStyle.color,
-      ),
-    );
-    edgesGroup.appendChild(
-      this.createArrowMarker(
-        svgNS,
-        fromPos.x + dx * 0.25,
-        fromPos.y + dy * 0.25,
-        angle + Math.PI,
-        8,
-        reverseStyle.color,
-      ),
-    );
-  }
-
-  renderHalfEdge(
-    svgNS,
-    edgesGroup,
-    x1,
-    y1,
-    x2,
-    y2,
-    style,
-    info,
-    maxRequiredDVNsInWeb,
-    showPersistentTooltip,
-  ) {
-    const line = document.createElementNS(svgNS, "line");
-    line.setAttribute("x1", x1);
-    line.setAttribute("y1", y1);
-    line.setAttribute("x2", x2);
-    line.setAttribute("y2", y2);
-    line.setAttribute("stroke", style.color);
-    line.setAttribute("stroke-width", style.width);
-    line.setAttribute("stroke-dasharray", style.dashArray);
-    line.setAttribute("opacity", style.opacity);
-    line.style.cursor = "pointer";
 
     const tooltipText = this.buildEdgeTooltip(info, maxRequiredDVNsInWeb);
     const title = document.createElementNS(svgNS, "title");
@@ -398,46 +302,21 @@ export class SecurityGraphRenderer {
   }
 
   buildEdgeTooltip(info, maxRequiredDVNsInWeb) {
-    const {
-      edge,
-      isBlocked,
-      requiredDVNCount,
-      requiredDVNs,
-      peerResolved,
-      peerRaw,
-    } = info;
-
-    const lines = [`${edge.from} → ${edge.to}`, `Src EID: ${edge.srcEid}`];
-
-    if (edge.linkType === "peer") {
-      lines.push("Link: PeerSet");
-    }
-
-    if (isBlocked) {
-      lines.push("STATUS: BLOCKED (dead address in DVNs)");
-    } else if (maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb) {
-      lines.push(
+    const { edge, isBlocked, requiredDVNCount, requiredDVNs, peerResolved, peerRaw } = info;
+    const lines = [
+      `${edge.from} → ${edge.to}`,
+      `Src EID: ${edge.srcEid}`,
+      edge.linkType === "peer" && "Link: PeerSet",
+      isBlocked && "STATUS: BLOCKED (dead address in DVNs)",
+      !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb &&
         `WARNING: Lower security (${requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`,
-      );
-    }
-
-    if (requiredDVNs.length > 0) {
-      lines.push(`Required DVNs: ${requiredDVNs.join(", ")}`);
-      lines.push(`Required Count: ${requiredDVNCount}`);
-    } else if (requiredDVNCount > 0) {
-      lines.push(`Required DVN Count: ${requiredDVNCount}`);
-    } else {
-      lines.push("Required DVN Count: 0 (WARNING: No required DVNs!)");
-    }
-
-    if (peerResolved === false) {
-      lines.push("Peer unresolved (non-EVM or unknown address)");
-      if (peerRaw) {
-        lines.push(`Peer Raw: ${peerRaw}`);
-      }
-    } else if (peerResolved === true) {
-      lines.push("Peer resolved");
-    }
+      requiredDVNs.length > 0 ? `Required DVNs: ${requiredDVNs.join(", ")}` : requiredDVNCount > 0 && `Required DVN Count: ${requiredDVNCount}`,
+      requiredDVNs.length > 0 && `Required Count: ${requiredDVNCount}`,
+      requiredDVNCount === 0 && "Required DVN Count: 0 (WARNING: No required DVNs!)",
+      peerResolved === false && "Peer unresolved (non-EVM or unknown address)",
+      peerResolved === false && peerRaw && `Peer Raw: ${peerRaw}`,
+      peerResolved === true && "Peer resolved",
+    ].filter(Boolean);
 
     return lines.join("\n");
   }
@@ -461,13 +340,7 @@ export class SecurityGraphRenderer {
     return arrowGroup;
   }
 
-  renderNodes(
-    svgNS,
-    nodes,
-    nodePositions,
-    maxMinRequiredDVNsForNodes,
-    showPersistentTooltip,
-  ) {
+  renderNodes(svgNS, nodes, nodePositions, maxMinRequiredDVNsForNodes, showPersistentTooltip) {
     const nodesGroup = document.createElementNS(svgNS, "g");
     nodesGroup.setAttribute("class", "nodes");
 
@@ -475,23 +348,7 @@ export class SecurityGraphRenderer {
       const pos = nodePositions.get(node.id);
       if (!pos) continue;
 
-      const nonBlockedConfigs =
-        node.securityConfigs?.filter((cfg) => {
-          const dvns = cfg.requiredDVNs || [];
-          return !dvns.some((addr) => this.isDeadAddress(addr));
-        }) || [];
-
-      const minRequiredDVNs =
-        nonBlockedConfigs.length > 0
-          ? Math.min(...nonBlockedConfigs.map((c) => c.requiredDVNCount))
-          : 0;
-
-      const hasBlockedConfig =
-        node.securityConfigs?.some((cfg) => {
-          const dvns = cfg.requiredDVNs || [];
-          return dvns.some((addr) => this.isDeadAddress(addr));
-        }) || false;
-
+      const { minRequiredDVNs, hasBlockedConfig } = this.getNodeSecurityMetrics(node);
       const radius = node.isTracked
         ? this.nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
         : this.nodeRadius * 0.5;
@@ -737,6 +594,21 @@ export class SecurityGraphRenderer {
 
   isDeadAddress(address) {
     return String(address).toLowerCase() === this.deadAddress.toLowerCase();
+  }
+
+  getNodeSecurityMetrics(node) {
+    const nonBlockedConfigs = node.securityConfigs?.filter((cfg) =>
+      !(cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr))
+    ) || [];
+
+    return {
+      minRequiredDVNs: nonBlockedConfigs.length > 0
+        ? Math.min(...nonBlockedConfigs.map((c) => c.requiredDVNCount))
+        : 0,
+      hasBlockedConfig: node.securityConfigs?.some((cfg) =>
+        (cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr))
+      ) || false,
+    };
   }
 
   /**
