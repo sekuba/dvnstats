@@ -620,33 +620,21 @@ export class QueryManager {
 
   aggregatePopularOapps(packets, options = {}) {
     const resultLimit = clampInteger(options.resultLimit, 1, 200, 20);
-    const fromTimestamp = options.fromTimestamp ?? 0;
-    const toTimestamp = options.nowTimestamp ?? Math.floor(Date.now() / 1000);
     const windowLabel = options.windowLabel || "";
     const fetchLimit = options.fetchLimit ?? null;
 
     const groups = new Map();
-    let sampledPackets = 0;
-
     packets.forEach((packet) => {
       if (!packet) return;
-      sampledPackets += 1;
 
-      const inferredKey =
-        packet.oappId ||
-        (packet.chainId && packet.receiver
-          ? `${packet.chainId}_${packet.receiver.toLowerCase()}`
-          : null);
+      const inferredKey = packet.oappId || (packet.chainId && packet.receiver ? `${packet.chainId}_${packet.receiver.toLowerCase()}` : null);
       if (!inferredKey) return;
 
       const [chainPart, addressPart] = inferredKey.split("_");
-      const normalizedAddress = (packet.receiver || addressPart || "").toLowerCase();
-      const chainId = chainPart || String((packet.chainId ?? ""));
-
       const group = groups.get(inferredKey) ?? {
         oappId: inferredKey,
-        chainId,
-        address: normalizedAddress,
+        chainId: chainPart || String(packet.chainId ?? ""),
+        address: (packet.receiver || addressPart || "").toLowerCase(),
         count: 0,
         eids: new Set(),
         lastTimestamp: 0,
@@ -655,27 +643,17 @@ export class QueryManager {
       };
 
       group.count += 1;
-
-      if (packet.srcEid !== undefined && packet.srcEid !== null) {
-        group.eids.add(String(packet.srcEid));
-      }
+      if (packet.srcEid !== undefined && packet.srcEid !== null) group.eids.add(String(packet.srcEid));
 
       const timestamp = Number(packet.blockTimestamp ?? 0);
       if (Number.isFinite(timestamp)) {
-        if (timestamp > group.lastTimestamp) {
-          group.lastTimestamp = timestamp;
-        }
-        if (timestamp < group.firstTimestamp) {
-          group.firstTimestamp = timestamp;
-        }
+        group.lastTimestamp = Math.max(group.lastTimestamp, timestamp);
+        group.firstTimestamp = Math.min(group.firstTimestamp, timestamp);
       }
 
-      const blockNumber =
-        packet.blockNumber !== undefined ? Number(packet.blockNumber) : null;
-      if (Number.isFinite(blockNumber)) {
-        if (group.lastBlock === null || blockNumber > group.lastBlock) {
-          group.lastBlock = blockNumber;
-        }
+      const blockNumber = packet.blockNumber !== undefined ? Number(packet.blockNumber) : null;
+      if (Number.isFinite(blockNumber) && (group.lastBlock === null || blockNumber > group.lastBlock)) {
+        group.lastBlock = blockNumber;
       }
 
       groups.set(inferredKey, group);
@@ -739,23 +717,19 @@ export class QueryManager {
       };
     });
 
-    const summary = {
-      windowLabel,
-      fromTimestamp,
-      toTimestamp,
-      totalOapps: groups.size,
-      sampledPackets,
-      returnedCount: rows.length,
-      fetchLimit: fetchLimit ?? "∞",
-    };
-
-    const summaryLabel = `Top ${rows.length} • last ${windowLabel || "window"}`;
-
     return {
       rows,
       meta: {
-        summary: summaryLabel,
-        popularOappsSummary: summary,
+        summary: `Top ${rows.length} • last ${windowLabel || "window"}`,
+        popularOappsSummary: {
+          windowLabel,
+          fromTimestamp: options.fromTimestamp ?? 0,
+          toTimestamp: options.nowTimestamp ?? Math.floor(Date.now() / 1000),
+          totalOapps: groups.size,
+          sampledPackets: packets.length,
+          returnedCount: rows.length,
+          fetchLimit: fetchLimit ?? "∞",
+        },
       },
     };
   }
@@ -805,31 +779,28 @@ export class QueryManager {
     if (row.usesRequiredDVNSentinel) {
       return this.createFormattedCell(["optional-only (sentinel)"]);
     }
-
-    const addresses = Array.isArray(row.effectiveRequiredDVNs)
-      ? row.effectiveRequiredDVNs.filter(Boolean)
-      : [];
-    const count = row.effectiveRequiredDVNCount ?? addresses.length ?? 0;
-    const lines = [`Count ${count}`];
-    if (addresses.length) {
-      lines.push(...this.resolveDvnLabels(addresses, meta, row.chainId ?? meta.chainId));
-    }
-
-    return this.createFormattedCell(lines, addresses.join(", ") || String(count));
+    return this.formatDvnSet(row.effectiveRequiredDVNs, row.effectiveRequiredDVNCount, meta, row.chainId);
   }
 
   formatOptionalDvns(row, meta) {
-    const addresses = Array.isArray(row.effectiveOptionalDVNs)
-      ? row.effectiveOptionalDVNs.filter(Boolean)
-      : [];
-    const count = row.effectiveOptionalDVNCount ?? addresses.length ?? 0;
+    const count = row.effectiveOptionalDVNCount ?? 0;
     const threshold = row.effectiveOptionalDVNThreshold ?? "—";
-    const lines = [`Count ${count}`, `Threshold ${threshold}`];
-    if (addresses.length) {
-      lines.push(...this.resolveDvnLabels(addresses, meta, row.chainId ?? meta.chainId));
-    }
+    return this.formatDvnSet(
+      row.effectiveOptionalDVNs,
+      count,
+      meta,
+      row.chainId,
+      [`Threshold ${threshold}`]
+    );
+  }
 
-    return this.createFormattedCell(lines, addresses.join(", ") || `${count}/${threshold}`);
+  formatDvnSet(addresses, count, meta, chainId, extraLines = []) {
+    const addrs = Array.isArray(addresses) ? addresses.filter(Boolean) : [];
+    const lines = [`Count ${count ?? addrs.length ?? 0}`, ...extraLines];
+    if (addrs.length) {
+      lines.push(...this.resolveDvnLabels(addrs, meta, chainId ?? meta.chainId));
+    }
+    return this.createFormattedCell(lines, addrs.join(", ") || String(count));
   }
 
   derivePeerContext(row) {
@@ -903,29 +874,12 @@ export class QueryManager {
   }
 
   formatPeerUpdate(row) {
-    const lines = [];
-    if (row.peerLastUpdatedBlock !== undefined && row.peerLastUpdatedBlock !== null) {
-      lines.push(`Block ${row.peerLastUpdatedBlock}`);
-    }
-    if (row.peerLastUpdatedTimestamp !== undefined && row.peerLastUpdatedTimestamp !== null) {
-      const ts = formatTimestampValue(row.peerLastUpdatedTimestamp);
-      if (ts) {
-        lines.push(ts.primary);
-      }
-    }
-    if (row.peerLastUpdatedEventId) {
-      lines.push(row.peerLastUpdatedEventId);
-    }
-    if (row.peerTransactionHash) {
-      lines.push(row.peerTransactionHash);
-    }
-
-    const copyValue =
-      row.peerTransactionHash ||
-      row.peerLastUpdatedEventId ||
-      lines.join(" | ");
-
-    return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);
+    return this.formatUpdateInfo({
+      block: row.peerLastUpdatedBlock,
+      timestamp: row.peerLastUpdatedTimestamp,
+      eventId: row.peerLastUpdatedEventId,
+      txHash: row.peerTransactionHash,
+    });
   }
 
   formatConfirmations(row) {
@@ -966,27 +920,25 @@ export class QueryManager {
   }
 
   formatLastComputed(row) {
-    const lines = [];
-    if (row.lastComputedBlock !== undefined && row.lastComputedBlock !== null) {
-      lines.push(`Block ${row.lastComputedBlock}`);
-    }
-    if (
-      row.lastComputedTimestamp !== undefined &&
-      row.lastComputedTimestamp !== null
-    ) {
-      const ts = formatTimestampValue(row.lastComputedTimestamp);
-      if (ts) {
-        lines.push(ts.primary);
-      }
-    }
-    if (row.lastComputedByEventId) {
-      lines.push(row.lastComputedByEventId);
-    }
-    if (row.lastComputedTransactionHash) {
-      lines.push(row.lastComputedTransactionHash);
-    }
+    return this.formatUpdateInfo({
+      block: row.lastComputedBlock,
+      timestamp: row.lastComputedTimestamp,
+      eventId: row.lastComputedByEventId,
+      txHash: row.lastComputedTransactionHash,
+    });
+  }
 
-    const copyValue = lines.join(" | ");
+  formatUpdateInfo({ block, timestamp, eventId, txHash }) {
+    const lines = [];
+    if (block !== undefined && block !== null) lines.push(`Block ${block}`);
+    if (timestamp !== undefined && timestamp !== null) {
+      const ts = formatTimestampValue(timestamp);
+      if (ts) lines.push(ts.primary);
+    }
+    if (eventId) lines.push(eventId);
+    if (txHash) lines.push(txHash);
+
+    const copyValue = txHash || eventId || lines.join(" | ");
     return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);
   }
 
