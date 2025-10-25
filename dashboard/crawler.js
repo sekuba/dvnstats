@@ -84,9 +84,11 @@ export class SecurityWebCrawler {
         nodeData.securityConfigs.push({
           srcEid: config.eid,
           requiredDVNCount: config.effectiveRequiredDVNCount || 0,
-          requiredDVNs: requiredDVNNames,
+          requiredDVNs: requiredDVNs,
+          requiredDVNLabels: requiredDVNNames,
           optionalDVNCount: config.effectiveOptionalDVNCount || 0,
-          optionalDVNs: optionalDVNNames,
+          optionalDVNs: optionalDVNs,
+          optionalDVNLabels: optionalDVNNames,
           optionalDVNThreshold: config.effectiveOptionalDVNThreshold || 0,
           usesRequiredDVNSentinel: config.usesRequiredDVNSentinel || false,
           isConfigTracked: config.isConfigTracked || false,

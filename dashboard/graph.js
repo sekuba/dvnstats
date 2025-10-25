@@ -38,10 +38,32 @@ export class SecurityGraphRenderer {
     const summary = this.renderSummary(webData);
     container.appendChild(summary);
 
-    const svg = this.renderSVG(webData);
+    const nodesById = new Map(webData.nodes.map((n) => [n.id, n]));
+
+    const edgeAnalysis = this.calculateEdgeSecurityInfo(webData.edges, nodesById);
+    const maxMinRequiredDVNsForNodes =
+      this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
+    const blockedNodes = this.findBlockedNodes(
+      webData.nodes,
+      edgeAnalysis.edgeSecurityInfo,
+    );
+
+    const svg = this.renderSVG(webData, {
+      edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
+      maxRequiredDVNsInWeb: edgeAnalysis.maxRequiredDVNsInWeb,
+      dominantCombination: edgeAnalysis.dominantCombination,
+      maxMinRequiredDVNsForNodes,
+      blockedNodes,
+    });
     container.appendChild(svg);
 
-    const nodeList = this.renderNodeList(webData.nodes);
+    const nodeList = this.renderNodeList(webData, {
+      edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
+      combinationStats: edgeAnalysis.combinationStats,
+      dominantCombination: edgeAnalysis.dominantCombination,
+      blockedNodes,
+      maxRequiredDVNsInWeb: edgeAnalysis.maxRequiredDVNsInWeb,
+    });
     container.appendChild(nodeList);
 
     return container;
@@ -88,8 +110,9 @@ export class SecurityGraphRenderer {
         </dd>
         <dt style="margin-top: 0.5rem;">Edge Color</dt>
         <dd>
-          <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Maximum security (DVN count = web max)<br>
-          <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower security (DVN count &lt; web max)<br>
+          <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Matches dominant DVN combo and highest requirement<br>
+          <span style="color: #ff1df5; opacity: 0.8; font-weight: bold;">Magenta</span>: DVN combo deviates from dominant (names/count/sentinel)<br>
+          <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower required DVN count vs web max (still dominant mix)<br>
           <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer or dead DVN)
         </dd>
         <dt style="margin-top: 0.5rem;">Node Border</dt>
@@ -102,7 +125,7 @@ export class SecurityGraphRenderer {
     return summary;
   }
 
-  renderSVG(webData) {
+  renderSVG(webData, context) {
     const svgNS = "http://www.w3.org/2000/svg";
     const svg = document.createElementNS(svgNS, "svg");
     svg.setAttribute("width", "100%");
@@ -120,15 +143,14 @@ export class SecurityGraphRenderer {
     const showPersistentTooltip = this.setupPersistentTooltips(svg);
 
     const nodePositions = this.layoutNodes(webData.nodes);
-    const nodesById = new Map(webData.nodes.map((n) => [n.id, n]));
 
-    const { edgeSecurityInfo, maxRequiredDVNsInWeb } =
-      this.calculateEdgeSecurityInfo(webData.edges, nodesById);
-    const maxMinRequiredDVNsForNodes =
-      this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
-
-    // Determine which nodes are blocked (cannot send packets to monitored nodes)
-    const blockedNodes = this.findBlockedNodes(webData.nodes, edgeSecurityInfo);
+    const {
+      edgeSecurityInfo,
+      maxRequiredDVNsInWeb,
+      dominantCombination,
+      maxMinRequiredDVNsForNodes,
+      blockedNodes,
+    } = context;
 
     // Render edges
     const edgesGroup = this.renderEdges(
@@ -136,6 +158,7 @@ export class SecurityGraphRenderer {
       edgeSecurityInfo,
       nodePositions,
       maxRequiredDVNsInWeb,
+      dominantCombination,
       showPersistentTooltip,
     );
     contentGroup.appendChild(edgesGroup);
@@ -160,6 +183,7 @@ export class SecurityGraphRenderer {
     edgeSecurityInfo,
     nodePositions,
     maxRequiredDVNsInWeb,
+    dominantCombination,
     showPersistentTooltip,
   ) {
     const edgesGroup = document.createElementNS(svgNS, "g");
@@ -209,6 +233,7 @@ export class SecurityGraphRenderer {
           edgePair.forward,
           edgePair.reverse,
           maxRequiredDVNsInWeb,
+          dominantCombination,
           showPersistentTooltip,
         );
       } else {
@@ -219,6 +244,7 @@ export class SecurityGraphRenderer {
           toPos,
           info,
           maxRequiredDVNsInWeb,
+          dominantCombination,
           showPersistentTooltip,
         );
       }
@@ -234,15 +260,27 @@ export class SecurityGraphRenderer {
     toPos,
     info,
     maxRequiredDVNsInWeb,
+    dominantCombination,
     showPersistentTooltip,
   ) {
-    const style = this.getEdgeStyle(
-      info.isBlocked,
-      info.requiredDVNCount,
+    const style = this.getEdgeStyle({
+      isBlocked: info.isBlocked,
+      requiredDVNCount: info.requiredDVNCount,
       maxRequiredDVNsInWeb,
-    );
+      differsFromPopular: info.differsFromPopular,
+    });
 
-    this.createEdgeLine(svgNS, edgesGroup, fromPos, toPos, style, info, maxRequiredDVNsInWeb, showPersistentTooltip);
+    this.createEdgeLine(
+      svgNS,
+      edgesGroup,
+      fromPos,
+      toPos,
+      style,
+      info,
+      maxRequiredDVNsInWeb,
+      dominantCombination,
+      showPersistentTooltip,
+    );
 
     const dx = toPos.x - fromPos.x;
     const dy = toPos.y - fromPos.y;
@@ -253,9 +291,19 @@ export class SecurityGraphRenderer {
     );
   }
 
-  renderBidirectionalEdge(svgNS, edgesGroup, fromPos, toPos, forwardInfo, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip) {
-    const forwardStyle = this.getEdgeStyle(forwardInfo.isBlocked, forwardInfo.requiredDVNCount, maxRequiredDVNsInWeb);
-    const reverseStyle = this.getEdgeStyle(reverseInfo.isBlocked, reverseInfo.requiredDVNCount, maxRequiredDVNsInWeb);
+  renderBidirectionalEdge(svgNS, edgesGroup, fromPos, toPos, forwardInfo, reverseInfo, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip) {
+    const forwardStyle = this.getEdgeStyle({
+      isBlocked: forwardInfo.isBlocked,
+      requiredDVNCount: forwardInfo.requiredDVNCount,
+      maxRequiredDVNsInWeb,
+      differsFromPopular: forwardInfo.differsFromPopular,
+    });
+    const reverseStyle = this.getEdgeStyle({
+      isBlocked: reverseInfo.isBlocked,
+      requiredDVNCount: reverseInfo.requiredDVNCount,
+      maxRequiredDVNsInWeb,
+      differsFromPopular: reverseInfo.differsFromPopular,
+    });
     const midX = (fromPos.x + toPos.x) / 2;
     const midY = (fromPos.y + toPos.y) / 2;
     const dx = toPos.x - fromPos.x;
@@ -263,19 +311,19 @@ export class SecurityGraphRenderer {
     const angle = Math.atan2(dy, dx);
 
     // Render two halves
-    this.renderHalfEdge(svgNS, edgesGroup, fromPos.x, fromPos.y, midX, midY, reverseStyle, reverseInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
-    this.renderHalfEdge(svgNS, edgesGroup, midX, midY, toPos.x, toPos.y, forwardStyle, forwardInfo, maxRequiredDVNsInWeb, showPersistentTooltip);
+    this.renderHalfEdge(svgNS, edgesGroup, fromPos.x, fromPos.y, midX, midY, reverseStyle, reverseInfo, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip);
+    this.renderHalfEdge(svgNS, edgesGroup, midX, midY, toPos.x, toPos.y, forwardStyle, forwardInfo, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip);
 
     // Arrows
     edgesGroup.appendChild(this.createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, forwardStyle.color));
     edgesGroup.appendChild(this.createArrowMarker(svgNS, fromPos.x + dx * 0.25, fromPos.y + dy * 0.25, angle + Math.PI, 8, reverseStyle.color));
   }
 
-  renderHalfEdge(svgNS, edgesGroup, x1, y1, x2, y2, style, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
-    this.createEdgeLine(svgNS, edgesGroup, { x: x1, y: y1 }, { x: x2, y: y2 }, style, info, maxRequiredDVNsInWeb, showPersistentTooltip);
+  renderHalfEdge(svgNS, edgesGroup, x1, y1, x2, y2, style, info, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip) {
+    this.createEdgeLine(svgNS, edgesGroup, { x: x1, y: y1 }, { x: x2, y: y2 }, style, info, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip);
   }
 
-  createEdgeLine(svgNS, edgesGroup, fromPos, toPos, style, info, maxRequiredDVNsInWeb, showPersistentTooltip) {
+  createEdgeLine(svgNS, edgesGroup, fromPos, toPos, style, info, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip) {
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", fromPos.x);
     line.setAttribute("y1", fromPos.y);
@@ -288,7 +336,7 @@ export class SecurityGraphRenderer {
       line.setAttribute(attrMap[key], value);
     });
 
-    const tooltipText = this.buildEdgeTooltip(info, maxRequiredDVNsInWeb);
+    const tooltipText = this.buildEdgeTooltip(info, maxRequiredDVNsInWeb, dominantCombination);
     const title = document.createElementNS(svgNS, "title");
     title.textContent = tooltipText;
     line.appendChild(title);
@@ -301,18 +349,35 @@ export class SecurityGraphRenderer {
     edgesGroup.appendChild(line);
   }
 
-  getEdgeStyle(isBlocked, requiredDVNCount, maxRequiredDVNsInWeb) {
+  getEdgeStyle({ isBlocked, requiredDVNCount, maxRequiredDVNsInWeb, differsFromPopular }) {
     if (isBlocked) {
       return { color: "#ff0000", width: "1", opacity: "0.6", dashArray: "8,4" };
     }
-    if (requiredDVNCount < maxRequiredDVNsInWeb) {
-      return { color: "#ff6666", width: "2", opacity: "0.5", dashArray: "none" };
+    if (differsFromPopular) {
+      return { color: "#ff1df5", width: "3", opacity: "0.75", dashArray: "none" };
     }
-    return { color: "#000000ff", width: "3", opacity: "0.5", dashArray: "none" };
+    if (requiredDVNCount < maxRequiredDVNsInWeb) {
+      return { color: "#ff6666", width: "2", opacity: "0.55", dashArray: "none" };
+    }
+    return { color: "#000000ff", width: "3", opacity: "0.65", dashArray: "none" };
   }
 
-  buildEdgeTooltip(info, maxRequiredDVNsInWeb) {
-    const { edge, isBlocked, blockReason, requiredDVNCount, requiredDVNs, peerResolved, peerRaw } = info;
+  buildEdgeTooltip(info, maxRequiredDVNsInWeb, dominantCombination) {
+    const {
+      edge,
+      isBlocked,
+      blockReason,
+      requiredDVNCount,
+      requiredDVNLabels,
+      optionalDVNLabels,
+      optionalDVNCount,
+      optionalDVNThreshold,
+      usesSentinel,
+      differsFromPopular,
+      differenceReasons,
+      peerResolved,
+      peerRaw,
+    } = info;
 
     let blockMessage = null;
     if (isBlocked && blockReason === "zero-peer") {
@@ -323,16 +388,49 @@ export class SecurityGraphRenderer {
       blockMessage = "STATUS: BLOCKED";
     }
 
+    const requiredLine =
+      requiredDVNLabels && requiredDVNLabels.length > 0
+        ? `Required DVNs (${requiredDVNCount}): ${requiredDVNLabels.join(", ")}`
+        : `Required DVN Count: ${requiredDVNCount}`;
+
+    const optionalLine =
+      optionalDVNCount > 0
+        ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${
+            optionalDVNLabels && optionalDVNLabels.length
+              ? ` → ${optionalDVNLabels.join(", ")}`
+              : ""
+          }`
+        : null;
+
+    const sentinelLine = usesSentinel
+      ? "Required DVN sentinel active (0 mandatory, optional quorum enforced)"
+      : null;
+
+    const anomalyLine =
+      !isBlocked && differsFromPopular
+        ? `ANOMALY: ${differenceReasons?.length ? differenceReasons.join("; ") : "non-standard DVN combo"}`
+        : null;
+
+    const lowerSecurityLine =
+      !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb
+        ? `WARNING: Lower security (${requiredDVNCount} vs web max ${maxRequiredDVNsInWeb})`
+        : null;
+
+    const dominantLine = dominantCombination
+      ? `Dominant combo: ${this.describeCombination(dominantCombination)}`
+      : null;
+
     const lines = [
       `${edge.from} → ${edge.to}`,
       `Src EID: ${edge.srcEid}`,
       edge.linkType === "peer" && "Link: PeerSet",
       blockMessage,
-      !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb &&
-        `WARNING: Lower security (${requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`,
-      requiredDVNs.length > 0 ? `Required DVNs: ${requiredDVNs.join(", ")}` : requiredDVNCount > 0 && `Required DVN Count: ${requiredDVNCount}`,
-      requiredDVNs.length > 0 && `Required Count: ${requiredDVNCount}`,
-      requiredDVNCount === 0 && !isBlocked && "Required DVN Count: 0 (WARNING: No required DVNs!)",
+      anomalyLine,
+      lowerSecurityLine,
+      requiredLine,
+      optionalLine,
+      sentinelLine,
+      dominantLine,
       peerResolved === false && "Peer unresolved (non-EVM or unknown address)",
       peerResolved === false && peerRaw && `Peer Raw: ${peerRaw}`,
       peerResolved === true && "Peer resolved",
@@ -467,96 +565,817 @@ export class SecurityGraphRenderer {
     return nodesGroup;
   }
 
-  renderNodeList(nodes) {
-    const container = document.createElement("div");
-    container.className = "node-list-container";
+  renderNodeList(webData, analysis = {}) {
+    const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
+    const container = document.createElement("section");
+    container.className = "node-detail-board";
     container.style.marginTop = "2rem";
 
     const heading = document.createElement("h3");
-    heading.textContent = "Nodes Detail";
+    heading.textContent = "Node Security Highlights";
     container.appendChild(heading);
 
+    if (!nodes.length) {
+      const placeholder = document.createElement("p");
+      placeholder.textContent = "No nodes returned by the crawl.";
+      container.appendChild(placeholder);
+      return container;
+    }
+
+    const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    const metricsById = new Map();
+
+    const blockedNodes =
+      analysis?.blockedNodes instanceof Set
+        ? analysis.blockedNodes
+        : new Set(
+            Array.isArray(analysis?.blockedNodes) ? analysis.blockedNodes : [],
+          );
+
+    const edgeSecurityInfo = Array.isArray(analysis?.edgeSecurityInfo)
+      ? analysis.edgeSecurityInfo
+      : [];
+    const dominantCombination = analysis?.dominantCombination || null;
+    const combinationFingerprint = dominantCombination?.fingerprint ?? null;
+
+    const edgesByTo = new Map();
+    const edgesByFrom = new Map();
+    for (const info of edgeSecurityInfo) {
+      if (!edgesByTo.has(info.edge.to)) {
+        edgesByTo.set(info.edge.to, []);
+      }
+      edgesByTo.get(info.edge.to).push(info);
+
+      if (!edgesByFrom.has(info.edge.from)) {
+        edgesByFrom.set(info.edge.from, []);
+      }
+      edgesByFrom.get(info.edge.from).push(info);
+    }
+
+    const normalizeNames = (labels) =>
+      Array.isArray(labels)
+        ? labels
+            .map((label) =>
+              label === null || label === undefined ? "" : String(label).trim().toLowerCase(),
+            )
+            .filter(Boolean)
+            .sort()
+        : [];
+
+    const nodeMetrics = nodes.map((node) => {
+      const incoming = edgesByTo.get(node.id) || [];
+      const outgoing = edgesByFrom.get(node.id) || [];
+      const activeIncoming = incoming.filter((edge) => !edge.isBlocked);
+      const blockedIncoming = incoming.filter((edge) => edge.isBlocked);
+      const differenceEdges = activeIncoming.filter((edge) => edge.differsFromPopular);
+      const sentinelEdges = activeIncoming.filter((edge) => edge.usesSentinel);
+
+      const diffReasonSet = new Set();
+      for (const edge of differenceEdges) {
+        if (Array.isArray(edge.differenceReasons)) {
+          for (const reason of edge.differenceReasons) {
+            diffReasonSet.add(reason);
+          }
+        }
+      }
+
+      const blockReasonSet = new Set();
+      for (const edge of blockedIncoming) {
+        if (edge.blockReason === "zero-peer") {
+          blockReasonSet.add("Zero peer (no packets accepted)");
+        } else if (edge.blockReason === "dead-dvn") {
+          blockReasonSet.add("Dead DVN inside required set");
+        } else {
+          blockReasonSet.add("Blocked route");
+        }
+      }
+
+      const configDetails = (node.securityConfigs || []).map((cfg) => {
+        const requiredLabels = cfg.requiredDVNLabels || cfg.requiredDVNs || [];
+        const requiredAddresses = cfg.requiredDVNs || [];
+        const normalized = normalizeNames(requiredLabels);
+        const fingerprint = JSON.stringify({
+          required: cfg.requiredDVNCount || 0,
+          names: normalized,
+          sentinel: Boolean(cfg.usesRequiredDVNSentinel),
+        });
+        const matchesDominant =
+          Boolean(combinationFingerprint) &&
+          !cfg.usesRequiredDVNSentinel &&
+          fingerprint === combinationFingerprint;
+        const differsFromDominant =
+          Boolean(combinationFingerprint) && !matchesDominant;
+        const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
+
+        if (usesSentinel) {
+          diffReasonSet.add(
+            `sentinel quorum ${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount || 0}`,
+          );
+        } else if (differsFromDominant && dominantCombination) {
+          if (cfg.requiredDVNCount !== dominantCombination.requiredDVNCount) {
+            diffReasonSet.add(
+              `required DVN count ${cfg.requiredDVNCount} vs dominant ${dominantCombination.requiredDVNCount ?? "?"}`,
+            );
+          }
+          if (!this.areStringArraysEqual(normalized, dominantCombination.normalizedNames)) {
+            diffReasonSet.add("validator set differs");
+          }
+        }
+
+        const requiredPairs = requiredLabels.map((label, idx) => ({
+          label: label || "(unknown)",
+          address: requiredAddresses[idx] || null,
+        }));
+
+        const optionalLabels = cfg.optionalDVNLabels || cfg.optionalDVNs || [];
+        const optionalAddresses = cfg.optionalDVNs || [];
+        const optionalPairs = optionalLabels.map((label, idx) => ({
+          label: label || "(unknown)",
+          address: optionalAddresses[idx] || null,
+        }));
+        const optionalSummary =
+          cfg.optionalDVNCount && cfg.optionalDVNCount > 0
+            ? `${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount}`
+            : cfg.optionalDVNThreshold
+              ? `${cfg.optionalDVNThreshold}`
+              : null;
+
+        return {
+          srcEid: cfg.srcEid,
+          requiredDVNCount: cfg.requiredDVNCount || 0,
+          requiredPairs,
+          optionalPairs,
+          optionalSummary,
+          usesSentinel,
+          matchesDominant,
+          differsFromDominant,
+        };
+      });
+
+      const hasConfigDifference =
+        differenceEdges.length > 0 ||
+        configDetails.some((detail) => detail.differsFromDominant);
+      const hasSentinel =
+        sentinelEdges.length > 0 || configDetails.some((detail) => detail.usesSentinel);
+
+      const notes = new Set();
+      if (blockedNodes.has(node.id)) {
+        notes.add("Blocked");
+      }
+      if (!node.isTracked) {
+        notes.add("Untracked");
+      }
+      if (node.isDangling) {
+        notes.add("Dangling");
+      }
+      if (hasConfigDifference) {
+        notes.add("Non-standard DVNs");
+      }
+      if (hasSentinel) {
+        notes.add("Sentinel quorum");
+      }
+      if (node.isTracked && activeIncoming.length === 0) {
+        notes.add("No active inbound edges");
+      }
+
+      const blockReasons = Array.from(blockReasonSet);
+      if (blockedNodes.has(node.id) && blockReasons.length === 0 && node.isDangling) {
+        blockReasons.push("Dangling peer (no config crawled)");
+      }
+
+      return {
+        id: node.id,
+        node,
+        alias: this.getOAppAlias(node.id),
+        chainLabel: this.getChainDisplayLabel(node.chainId) || node.chainId,
+        depth: node.depth >= 0 ? node.depth : "—",
+        isTracked: Boolean(node.isTracked),
+        isDangling: Boolean(node.isDangling),
+        isBlocked: blockedNodes.has(node.id),
+        totalPackets: node.totalPacketsReceived || 0,
+        incoming,
+        outgoing,
+        activeIncoming,
+        blockedIncoming,
+        activeIncomingCount: activeIncoming.length,
+        blockedIncomingCount: blockedIncoming.length,
+        differenceEdges,
+        sentinelEdges,
+        diffReasonSummary: Array.from(diffReasonSet),
+        blockReasons,
+        configDetails,
+        hasConfigDifference,
+        hasSentinel,
+        notes: Array.from(notes),
+      };
+    });
+
+    nodeMetrics.forEach((metric) => metricsById.set(metric.id, metric));
+
+    const formatNodeDescriptor = (metric) => {
+      if (!metric) {
+        return "";
+      }
+      const alias = metric.alias || metric.id;
+      return `${alias} (${metric.chainLabel})`;
+    };
+
+    const formatNodeShort = (id) => {
+      if (!id) {
+        return "";
+      }
+      const metric = metricsById.get(id);
+      if (metric) {
+        return metric.alias || metric.id;
+      }
+      const alias = this.getOAppAlias(id);
+      return alias || id;
+    };
+
+    const formatRoute = (info) => {
+      const from = formatNodeShort(info.edge.from);
+      const to = formatNodeShort(info.edge.to);
+      return `${from} → ${to}`;
+    };
+
+    const eligibleNodes = nodeMetrics.filter(
+      (metric) => metric.isTracked && !metric.isBlocked,
+    );
+
+    const computeMedian = (values) => {
+      const filtered = values.filter((value) => Number.isFinite(value));
+      if (!filtered.length) {
+        return 0;
+      }
+      const sorted = [...filtered].sort((a, b) => a - b);
+      const mid = Math.floor(sorted.length / 2);
+      if (sorted.length % 2 === 0) {
+        return (sorted[mid - 1] + sorted[mid]) / 2;
+      }
+      return sorted[mid];
+    };
+
+    const pickExtremes = (metrics, accessor, medianValue) => {
+      let low = null;
+      let lowDelta = -1;
+      let high = null;
+      let highDelta = -1;
+      for (const metric of metrics) {
+        const value = accessor(metric);
+        const diff = value - medianValue;
+        const absDiff = Math.abs(diff);
+        if (diff <= 0 && absDiff >= lowDelta) {
+          low = metric;
+          lowDelta = absDiff;
+        }
+        if (diff >= 0 && absDiff >= highDelta) {
+          high = metric;
+          highDelta = absDiff;
+        }
+      }
+      return { low, high };
+    };
+
+    const edgeMedian = computeMedian(
+      eligibleNodes.map((metric) => metric.activeIncomingCount),
+    );
+    const packetMedian = computeMedian(
+      eligibleNodes.map((metric) => metric.totalPackets),
+    );
+    const edgeExtremes = pickExtremes(
+      eligibleNodes,
+      (metric) => metric.activeIncomingCount,
+      edgeMedian,
+    );
+    const packetExtremes = pickExtremes(
+      eligibleNodes,
+      (metric) => metric.totalPackets,
+      packetMedian,
+    );
+
+    const formatMedianValue = (value) => {
+      if (!Number.isFinite(value)) {
+        return "—";
+      }
+      const rounded = Math.round(value * 10) / 10;
+      return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+    };
+
+    const formatNumber = (value) =>
+      Number(value || 0).toLocaleString("en-US");
+
+    const edgeLowId = edgeExtremes.low?.id ?? null;
+    const edgeHighId = edgeExtremes.high?.id ?? null;
+    const packetLowId = packetExtremes.low?.id ?? null;
+    const packetHighId = packetExtremes.high?.id ?? null;
+
+    const insightGrid = document.createElement("div");
+    insightGrid.className = "node-insight-grid";
+    container.appendChild(insightGrid);
+
+    const dominantCard = document.createElement("div");
+    dominantCard.className = "insight-card";
+    const domTitle = document.createElement("h4");
+    domTitle.textContent = "Dominant DVN Combo";
+    dominantCard.appendChild(domTitle);
+
+    if (dominantCombination) {
+      const lead = document.createElement("p");
+      lead.className = "insight-lead";
+      lead.textContent = this.describeCombination(dominantCombination);
+      dominantCard.appendChild(lead);
+
+      const dl = document.createElement("dl");
+      dl.className = "insight-list";
+      const shareText =
+        typeof dominantCombination.share === "number"
+          ? ` (${(dominantCombination.share * 100).toFixed(1)}%)`
+          : "";
+      this.appendSummaryRow(
+        dl,
+        "Edges Using Combo",
+        `${dominantCombination.count}${shareText}`,
+      );
+
+      const destIds = Array.from(dominantCombination.toNodes || []);
+      if (destIds.length) {
+        const sample = destIds.slice(0, 3).map((id) => formatNodeShort(id)).join(", ");
+        const destinations =
+          destIds.length > 3
+            ? `${destIds.length} nodes (${sample}, ...)`
+            : `${destIds.length} node${destIds.length === 1 ? "" : "s"} (${sample})`;
+        this.appendSummaryRow(dl, "Destination Nodes", destinations);
+      }
+
+      const chains = Array.from(dominantCombination.srcChains || []).map((chainId) =>
+        this.getChainDisplayLabel(chainId) || chainId,
+      );
+      this.appendSummaryRow(
+        dl,
+        "Source Chains",
+        chains.length ? chains.join(", ") : "—",
+      );
+
+      const routeExamples = dominantCombination.edges
+        ? dominantCombination.edges.slice(0, 3).map((info) => formatRoute(info))
+        : [];
+      if (routeExamples.length) {
+        const routes =
+          routeExamples.length >= 3 &&
+          dominantCombination.edges &&
+          dominantCombination.edges.length > 3
+            ? `${routeExamples.join("; ")}, ...`
+            : routeExamples.join("; ");
+        this.appendSummaryRow(dl, "Sample Routes", routes);
+      }
+
+      dominantCard.appendChild(dl);
+    } else {
+      const empty = document.createElement("p");
+      empty.textContent = "No dominant DVN combination detected.";
+      dominantCard.appendChild(empty);
+    }
+
+    insightGrid.appendChild(dominantCard);
+
+    const anomaliesCard = document.createElement("div");
+    anomaliesCard.className = "insight-card insight-card--alert";
+    const anomaliesTitle = document.createElement("h4");
+    anomaliesTitle.textContent = "Special Cases";
+    anomaliesCard.appendChild(anomaliesTitle);
+
+    const anomalyContainer = document.createElement("div");
+    anomalyContainer.className = "anomaly-groups";
+    anomaliesCard.appendChild(anomalyContainer);
+
+    const appendAnomalyGroup = (label, items) => {
+      if (!items.length) {
+        return;
+      }
+      const group = document.createElement("div");
+      group.className = "anomaly-group";
+      const groupTitle = document.createElement("h5");
+      groupTitle.textContent = label;
+      group.appendChild(groupTitle);
+
+      const list = document.createElement("ul");
+      list.className = "anomaly-list";
+      items.forEach((item) => {
+        const li = document.createElement("li");
+        const nodeSpan = document.createElement("span");
+        nodeSpan.className = "anomaly-node";
+        nodeSpan.textContent = formatNodeDescriptor(item.metric);
+        li.appendChild(nodeSpan);
+        if (item.detail) {
+          const detailSpan = document.createElement("span");
+          detailSpan.className = "anomaly-detail";
+          detailSpan.textContent = item.detail;
+          li.appendChild(detailSpan);
+        }
+        list.appendChild(li);
+      });
+
+      group.appendChild(list);
+      anomalyContainer.appendChild(group);
+    };
+
+    const blockedItems = nodeMetrics
+      .filter((metric) => metric.isBlocked)
+      .map((metric) => ({
+        metric,
+        detail: metric.blockReasons.length
+          ? metric.blockReasons.join("; ")
+          : "All inbound edges blocked",
+      }));
+    appendAnomalyGroup("Blocked", blockedItems);
+
+    const variantItems = nodeMetrics
+      .filter((metric) => metric.hasConfigDifference)
+      .map((metric) => ({
+        metric,
+        detail: metric.diffReasonSummary.length
+          ? metric.diffReasonSummary.join("; ")
+          : "DVN mix differs from dominant",
+      }));
+    appendAnomalyGroup("Non-standard DVNs", variantItems);
+
+    const sentinelItems = nodeMetrics
+      .filter((metric) => metric.hasSentinel)
+      .map((metric) => {
+        const quorumNotes = metric.configDetails
+          .filter((detail) => detail.usesSentinel || detail.optionalSummary)
+          .map((detail) => {
+            const eidText =
+              detail.srcEid !== undefined && detail.srcEid !== null
+                ? `EID ${detail.srcEid}: `
+                : "";
+            return `${eidText}${
+              detail.optionalSummary
+                ? `quorum ${detail.optionalSummary}`
+                : "sentinel"
+            }`;
+          });
+        return {
+          metric,
+          detail: quorumNotes.length ? quorumNotes.join("; ") : "Optional-only quorum",
+        };
+      });
+    appendAnomalyGroup("Sentinel DVNs", sentinelItems);
+
+    const untrackedItems = nodeMetrics
+      .filter((metric) => !metric.isTracked)
+      .map((metric) => ({
+        metric,
+        detail: metric.isDangling ? "Dangling / unresolved peer" : "Not crawled in window",
+      }));
+    appendAnomalyGroup("Untracked Nodes", untrackedItems);
+
+    if (!anomalyContainer.childElementCount) {
+      const emptyAnomaly = document.createElement("p");
+      emptyAnomaly.textContent = "No anomalies detected in this crawl.";
+      anomalyContainer.appendChild(emptyAnomaly);
+    }
+
+    insightGrid.appendChild(anomaliesCard);
+
+    const statsCard = document.createElement("div");
+    statsCard.className = "insight-card";
+    const statsTitle = document.createElement("h4");
+    statsTitle.textContent = "Connectivity Stats";
+    statsCard.appendChild(statsTitle);
+
+    const statsList = document.createElement("dl");
+    statsList.className = "insight-list";
+    this.appendSummaryRow(
+      statsList,
+      "Median inbound edges",
+      eligibleNodes.length ? formatMedianValue(edgeMedian) : "—",
+    );
+    if (edgeExtremes.low) {
+      this.appendSummaryRow(
+        statsList,
+        "Lowest connectivity",
+        `${formatNodeDescriptor(edgeExtremes.low)} • ${edgeExtremes.low.activeIncomingCount}`,
+      );
+    }
+    if (edgeExtremes.high) {
+      this.appendSummaryRow(
+        statsList,
+        "Highest connectivity",
+        `${formatNodeDescriptor(edgeExtremes.high)} • ${edgeExtremes.high.activeIncomingCount}`,
+      );
+    }
+    this.appendSummaryRow(
+      statsList,
+      "Median packets",
+      eligibleNodes.length ? formatMedianValue(packetMedian) : "—",
+    );
+    if (packetExtremes.low) {
+      this.appendSummaryRow(
+        statsList,
+        "Lightest traffic",
+        `${formatNodeDescriptor(packetExtremes.low)} • ${formatNumber(packetExtremes.low.totalPackets)}`,
+      );
+    }
+    if (packetExtremes.high) {
+      this.appendSummaryRow(
+        statsList,
+        "Heaviest traffic",
+        `${formatNodeDescriptor(packetExtremes.high)} • ${formatNumber(packetExtremes.high.totalPackets)}`,
+      );
+    }
+
+    statsCard.appendChild(statsList);
+    insightGrid.appendChild(statsCard);
+
+    const createBadge = (label, tone = "default", tooltip = null) => {
+      const span = document.createElement("span");
+      span.className = `badge badge--${tone}`;
+      span.textContent = label;
+      if (tooltip) {
+        span.title = tooltip;
+      }
+      return span;
+    };
+
     const table = document.createElement("table");
+    table.className = "node-detail-table";
     const thead = document.createElement("thead");
     thead.innerHTML = `
       <tr>
-        <th>OApp ID</th>
+        <th>Node</th>
         <th>Chain</th>
-        <th>Tracked</th>
-        <th>Depth</th>
-        <th>Security Configs</th>
-        <th>Total Packets</th>
+        <th>Status</th>
+        <th>DVN Configs</th>
+        <th>Optional Quorum</th>
+        <th>Inbound Edges</th>
+        <th>Packets</th>
+        <th>Notes</th>
       </tr>
     `;
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
-    for (const node of nodes) {
+    nodeMetrics.forEach((metric) => {
       const tr = document.createElement("tr");
-
-      const alias = this.getOAppAlias(node.id);
-      const oappIdCell = document.createElement("td");
-      const oappDiv = document.createElement("div");
-      oappDiv.className = "copyable";
-      oappDiv.dataset.copyValue = node.id;
-      oappDiv.dataset.oappId = node.id;
-
-      if (alias) {
-        const aliasSpan = document.createElement("span");
-        aliasSpan.textContent = alias;
-        oappDiv.appendChild(aliasSpan);
-        const idSpan = document.createElement("span");
-        idSpan.textContent = `ID ${node.id}`;
-        oappDiv.appendChild(idSpan);
-      } else {
-        const span = document.createElement("span");
-        span.textContent = node.id;
-        oappDiv.appendChild(span);
+      if (metric.isBlocked) {
+        tr.classList.add("row-blocked");
       }
-      oappIdCell.appendChild(oappDiv);
-      tr.appendChild(oappIdCell);
+      if (!metric.isTracked) {
+        tr.classList.add("row-untracked");
+      }
+      if (metric.hasConfigDifference) {
+        tr.classList.add("row-variant");
+      }
+
+      const nodeCell = document.createElement("td");
+      const nodeBlock = document.createElement("div");
+      nodeBlock.className = "node-identity";
+      if (metric.alias) {
+        const aliasSpan = document.createElement("span");
+        aliasSpan.className = "node-alias";
+        aliasSpan.textContent = metric.alias;
+        nodeBlock.appendChild(aliasSpan);
+      }
+      const idSpan = document.createElement("span");
+      idSpan.className = "node-id copyable";
+      idSpan.dataset.copyValue = metric.id;
+      idSpan.textContent = metric.id;
+      nodeBlock.appendChild(idSpan);
+      nodeCell.appendChild(nodeBlock);
+      tr.appendChild(nodeCell);
 
       const chainCell = document.createElement("td");
-      chainCell.textContent =
-        this.getChainDisplayLabel(node.chainId) || node.chainId;
+      chainCell.textContent = metric.chainLabel;
       tr.appendChild(chainCell);
 
-      const trackedCell = document.createElement("td");
-      trackedCell.textContent = node.isTracked
-        ? "Yes"
-        : node.isDangling
-          ? "No (Dangling)"
-          : "No";
-      tr.appendChild(trackedCell);
-
-      const depthCell = document.createElement("td");
-      depthCell.textContent = node.depth >= 0 ? node.depth : "—";
-      tr.appendChild(depthCell);
-
-      const configsCell = document.createElement("td");
-      if (node.securityConfigs && node.securityConfigs.length > 0) {
-        const configSummaries = node.securityConfigs.map((cfg) => {
-          const requiredDVNs =
-            cfg.requiredDVNs.length > 0
-              ? cfg.requiredDVNs.join(", ")
-              : `${cfg.requiredDVNCount} DVNs`;
-          return `EID ${cfg.srcEid}: ${requiredDVNs} (${cfg.requiredDVNCount} required)`;
-        });
-        configsCell.innerHTML = `<div style="font-size: 0.85em">${configSummaries.slice(0, 3).join("<br>")}</div>`;
-        if (configSummaries.length > 3) {
-          configsCell.innerHTML += `<div style="font-size: 0.85em; opacity: 0.6">...and ${configSummaries.length - 3} more</div>`;
-        }
-      } else {
-        configsCell.textContent = "—";
+      const statusCell = document.createElement("td");
+      statusCell.className = "status-cell";
+      const statusBadges = [];
+      statusBadges.push(
+        metric.isTracked
+          ? createBadge("Tracked")
+          : createBadge("Untracked", "muted"),
+      );
+      if (metric.isDangling) {
+        statusBadges.push(createBadge("Dangling", "alert"));
       }
-      tr.appendChild(configsCell);
+      if (metric.isBlocked) {
+        statusBadges.push(
+          createBadge(
+            "Blocked",
+            "danger",
+            metric.blockReasons.length ? metric.blockReasons.join("; ") : null,
+          ),
+        );
+      }
+      statusBadges.forEach((badge) => statusCell.appendChild(badge));
+      tr.appendChild(statusCell);
+
+      const configCell = document.createElement("td");
+      configCell.className = "config-cell";
+      if (!metric.configDetails.length) {
+        configCell.textContent = "—";
+      } else {
+        const stack = document.createElement("div");
+        stack.className = "config-stack";
+        metric.configDetails.forEach((detail) => {
+          const line = document.createElement("div");
+          line.className = "config-line";
+          if (detail.differsFromDominant) {
+            line.classList.add("config-line--variant");
+          }
+          if (detail.usesSentinel) {
+            line.classList.add("config-line--sentinel");
+          }
+          const header = document.createElement("div");
+          header.className = "config-line-header";
+          const eidText =
+            detail.srcEid !== undefined && detail.srcEid !== null
+              ? `EID ${detail.srcEid}`
+              : "EID —";
+          header.textContent = `${eidText} • ${detail.requiredDVNCount} required`;
+          line.appendChild(header);
+
+          if (detail.requiredPairs.length) {
+            const list = document.createElement("div");
+            list.className = "dvn-pill-row";
+            detail.requiredPairs.forEach((pair) => {
+              const pill = document.createElement("span");
+              pill.className = "dvn-pill copyable";
+              const copyValue = pair.address || pair.label;
+              pill.dataset.copyValue = copyValue;
+              pill.title = pair.address || pair.label;
+              pill.textContent = pair.label;
+              if (pair.address && !pair.label) {
+                pill.textContent = this.shortenAddress(pair.address);
+              }
+              list.appendChild(pill);
+            });
+            line.appendChild(list);
+          } else {
+            const placeholder = document.createElement("div");
+            placeholder.className = "dvn-pill-row";
+            placeholder.textContent = "—";
+            line.appendChild(placeholder);
+          }
+
+          stack.appendChild(line);
+        });
+        configCell.appendChild(stack);
+      }
+      if (metric.hasConfigDifference) {
+        configCell.classList.add("cell-variant");
+      }
+      tr.appendChild(configCell);
+
+      const optionalCell = document.createElement("td");
+      optionalCell.className = "optional-cell";
+      const optionalChunks = metric.configDetails.filter(
+        (detail) =>
+          (detail.optionalSummary && detail.optionalSummary !== "0") ||
+          detail.optionalPairs.length,
+      );
+      if (!optionalChunks.length) {
+        optionalCell.textContent = "—";
+      } else {
+        const stack = document.createElement("div");
+        stack.className = "optional-stack";
+        optionalChunks.forEach((detail) => {
+          const block = document.createElement("div");
+          block.className = "optional-line";
+          const header = document.createElement("div");
+          header.className = "optional-line-header";
+          const eidText =
+            detail.srcEid !== undefined && detail.srcEid !== null
+              ? `EID ${detail.srcEid}`
+              : "EID —";
+          const labelParts = [
+            eidText,
+            detail.optionalSummary
+              ? `quorum ${detail.optionalSummary}`
+              : detail.usesSentinel
+                ? "sentinel"
+                : "optional DVNs",
+          ];
+          header.textContent = labelParts.join(" • ");
+          block.appendChild(header);
+
+          if (detail.optionalPairs.length) {
+            const list = document.createElement("div");
+            list.className = "dvn-pill-row";
+            detail.optionalPairs.forEach((pair) => {
+              const pill = document.createElement("span");
+              pill.className = "dvn-pill dvn-pill--optional copyable";
+              const copyValue = pair.address || pair.label;
+              pill.dataset.copyValue = copyValue;
+              pill.title = pair.address || pair.label;
+              pill.textContent = pair.label || this.shortenAddress(pair.address);
+              list.appendChild(pill);
+            });
+            block.appendChild(list);
+          }
+
+          stack.appendChild(block);
+        });
+        optionalCell.appendChild(stack);
+      }
+      if (metric.hasSentinel) {
+        optionalCell.classList.add("cell-sentinel");
+      }
+      tr.appendChild(optionalCell);
+
+      const edgesCell = document.createElement("td");
+      edgesCell.className = "metric-cell";
+      const edgeParts = [`${metric.activeIncomingCount} active`];
+      if (metric.blockedIncomingCount > 0) {
+        edgeParts.push(`${metric.blockedIncomingCount} blocked`);
+      }
+      edgesCell.textContent = edgeParts.join(" / ");
+      if (
+        metric.id === edgeLowId &&
+        metric.isTracked &&
+        !metric.isBlocked
+      ) {
+        edgesCell.classList.add("cell-extreme-low");
+      } else if (
+        metric.id === edgeHighId &&
+        metric.isTracked &&
+        !metric.isBlocked
+      ) {
+        edgesCell.classList.add("cell-extreme-high");
+      }
+      tr.appendChild(edgesCell);
 
       const packetsCell = document.createElement("td");
-      packetsCell.textContent = node.totalPacketsReceived || "—";
+      packetsCell.className = "metric-cell";
+      packetsCell.textContent = formatNumber(metric.totalPackets);
+      if (
+        metric.id === packetLowId &&
+        metric.isTracked &&
+        !metric.isBlocked
+      ) {
+        packetsCell.classList.add("cell-extreme-low");
+      } else if (
+        metric.id === packetHighId &&
+        metric.isTracked &&
+        !metric.isBlocked
+      ) {
+        packetsCell.classList.add("cell-extreme-high");
+      }
       tr.appendChild(packetsCell);
 
+      const notesCell = document.createElement("td");
+      notesCell.className = "notes-cell";
+      const noteBadges = [];
+
+      if (metric.diffReasonSummary.length) {
+        noteBadges.push(
+          createBadge(
+            "Δ DVN mix",
+            "alert",
+            metric.diffReasonSummary.join("; "),
+          ),
+        );
+      }
+      if (metric.blockReasons.length) {
+        noteBadges.push(
+          createBadge("Blocked", "danger", metric.blockReasons.join("; ")),
+        );
+      }
+      if (metric.hasSentinel) {
+        const sentinelDetails = metric.configDetails
+          .filter((detail) => detail.usesSentinel || detail.optionalSummary)
+          .map((detail) =>
+            detail.optionalSummary
+              ? `EID ${detail.srcEid}: quorum ${detail.optionalSummary}`
+              : `EID ${detail.srcEid}: sentinel`,
+          );
+        noteBadges.push(
+          createBadge(
+            "Sentinel quorum",
+            "info",
+            sentinelDetails.length ? sentinelDetails.join("; ") : null,
+          ),
+        );
+      }
+      metric.notes.forEach((note) => {
+        if (note === "Blocked" || note === "Sentinel quorum") {
+          return;
+        }
+        noteBadges.push(createBadge(note, "muted"));
+      });
+
+      if (!noteBadges.length) {
+        notesCell.textContent = "—";
+      } else {
+        noteBadges.forEach((badge) => notesCell.appendChild(badge));
+      }
+      tr.appendChild(notesCell);
+
       tbody.appendChild(tr);
-    }
+    });
+
     table.appendChild(tbody);
     container.appendChild(table);
 
@@ -566,11 +1385,17 @@ export class SecurityGraphRenderer {
   calculateEdgeSecurityInfo(edges, nodesById) {
     const edgeSecurityInfo = [];
     let maxRequiredDVNsInWeb = 0;
+    const combinationStatsMap = new Map();
 
     for (const edge of edges) {
       const toNode = nodesById.get(edge.to);
       let requiredDVNCount = 0;
-      let requiredDVNs = [];
+      let requiredDVNAddresses = [];
+      let requiredDVNLabels = [];
+      let optionalDVNLabels = [];
+      let optionalDVNCount = 0;
+      let optionalDVNThreshold = 0;
+      let usesSentinel = false;
       let isBlocked = false;
       let blockReason = null;
 
@@ -586,10 +1411,20 @@ export class SecurityGraphRenderer {
         );
         if (config) {
           requiredDVNCount = config.requiredDVNCount || 0;
-          requiredDVNs = config.requiredDVNs || [];
+          requiredDVNAddresses = config.requiredDVNs || [];
+          requiredDVNLabels = config.requiredDVNLabels || config.requiredDVNs || [];
+          optionalDVNLabels = config.optionalDVNLabels || config.optionalDVNs || [];
+          optionalDVNCount =
+            config.optionalDVNCount ||
+            (Array.isArray(optionalDVNLabels) ? optionalDVNLabels.length : 0);
+          optionalDVNThreshold = config.optionalDVNThreshold || 0;
+          usesSentinel = Boolean(config.usesRequiredDVNSentinel);
 
           // Check for dead address in DVNs
-          if (!isBlocked && requiredDVNs.some((addr) => this.isDeadAddress(addr))) {
+          if (
+            !isBlocked &&
+            requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))
+          ) {
             isBlocked = true;
             blockReason = "dead-dvn";
           }
@@ -600,18 +1435,181 @@ export class SecurityGraphRenderer {
         maxRequiredDVNsInWeb = requiredDVNCount;
       }
 
-      edgeSecurityInfo.push({
+      const normalizedRequiredNames = (requiredDVNLabels || [])
+        .map((name) =>
+          name === null || name === undefined ? "" : String(name).trim().toLowerCase(),
+        )
+        .filter(Boolean)
+        .sort();
+
+      const combinationFingerprint = JSON.stringify({
+        required: requiredDVNCount,
+        names: normalizedRequiredNames,
+        sentinel: usesSentinel,
+      });
+
+      const info = {
         edge,
         requiredDVNCount,
-        requiredDVNs,
+        requiredDVNAddresses,
+        requiredDVNLabels,
+        normalizedRequiredNames,
+        optionalDVNLabels,
+        optionalDVNCount,
+        optionalDVNThreshold,
+        usesSentinel,
+        combinationFingerprint,
         isBlocked,
         blockReason,
         peerResolved: edge.peerResolved ?? null,
         peerRaw: edge.peerRaw ?? null,
-      });
+        differsFromPopular: false,
+        matchesPopularCombination: false,
+        differenceReasons: [],
+      };
+
+      edgeSecurityInfo.push(info);
+
+      if (!isBlocked) {
+        let entry = combinationStatsMap.get(combinationFingerprint);
+        if (!entry) {
+          entry = {
+            fingerprint: combinationFingerprint,
+            count: 0,
+            requiredDVNCount,
+            normalizedNames: normalizedRequiredNames,
+            labelsSample: requiredDVNLabels.slice(),
+            usesSentinel,
+            edges: [],
+            toNodes: new Set(),
+            fromNodes: new Set(),
+            srcChains: new Set(),
+            optionalCounts: new Set(),
+            optionalThresholds: new Set(),
+            sampleInfo: {
+              requiredDVNLabels: requiredDVNLabels.slice(),
+              requiredDVNCount,
+              optionalDVNLabels: optionalDVNLabels.slice(),
+              optionalDVNCount,
+              optionalDVNThreshold,
+              usesSentinel,
+            },
+          };
+          combinationStatsMap.set(combinationFingerprint, entry);
+        }
+        entry.count += 1;
+        entry.edges.push(info);
+        entry.toNodes.add(edge.to);
+        entry.fromNodes.add(edge.from);
+        if (edge.srcChainId !== undefined && edge.srcChainId !== null) {
+          entry.srcChains.add(String(edge.srcChainId));
+        }
+        entry.optionalCounts.add(optionalDVNCount || 0);
+        entry.optionalThresholds.add(optionalDVNThreshold || 0);
+      }
     }
 
-    return { edgeSecurityInfo, maxRequiredDVNsInWeb };
+    const combinationStatsList = Array.from(combinationStatsMap.values());
+    const totalActiveEdges = combinationStatsList.reduce(
+      (sum, entry) => sum + entry.count,
+      0,
+    );
+
+    // Determine dominant combination (prefer non-sentinel combos)
+    let dominantEntry = null;
+    const primaryPool = combinationStatsList.filter((entry) => !entry.usesSentinel);
+    const fallbackPool = primaryPool.length > 0 ? primaryPool : combinationStatsList;
+    if (fallbackPool.length > 0) {
+      dominantEntry = [...fallbackPool].sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        if (b.requiredDVNCount !== a.requiredDVNCount) {
+          return b.requiredDVNCount - a.requiredDVNCount;
+        }
+        return a.fingerprint.localeCompare(b.fingerprint);
+      })[0];
+      dominantEntry.share =
+        totalActiveEdges > 0 ? dominantEntry.count / totalActiveEdges : 0;
+    }
+
+    const dominantFingerprint = dominantEntry?.fingerprint ?? null;
+
+    for (const info of edgeSecurityInfo) {
+      const matchesPopular =
+        Boolean(dominantFingerprint) &&
+        !info.isBlocked &&
+        !info.usesSentinel &&
+        info.combinationFingerprint === dominantFingerprint;
+
+      info.matchesPopularCombination = matchesPopular;
+
+      const differsDueToSentinel = info.usesSentinel;
+      const differsDueToCombination =
+        Boolean(dominantFingerprint) &&
+        !info.isBlocked &&
+        info.combinationFingerprint !== dominantFingerprint;
+
+      info.differsFromPopular =
+        !info.isBlocked && (differsDueToSentinel || differsDueToCombination);
+
+      if (differsDueToCombination && dominantEntry) {
+        if (info.requiredDVNCount !== dominantEntry.requiredDVNCount) {
+          info.differenceReasons.push(
+            `required DVN count ${info.requiredDVNCount} vs dominant ${dominantEntry.requiredDVNCount}`,
+          );
+        }
+        if (
+          !this.areStringArraysEqual(
+            info.normalizedRequiredNames,
+            dominantEntry.normalizedNames,
+          )
+        ) {
+          info.differenceReasons.push("validator set differs");
+        }
+      }
+
+      if (differsDueToSentinel) {
+        const quorumLabel =
+          info.optionalDVNCount > 0
+            ? `${info.optionalDVNThreshold}/${info.optionalDVNCount}`
+            : `${info.optionalDVNThreshold}`;
+        info.differenceReasons.push(`sentinel quorum ${quorumLabel}`);
+      }
+
+      if (
+        !info.isBlocked &&
+        maxRequiredDVNsInWeb > 0 &&
+        info.requiredDVNCount < maxRequiredDVNsInWeb
+      ) {
+        info.differenceReasons.push(
+          `requires ${info.requiredDVNCount} vs web max ${maxRequiredDVNsInWeb}`,
+        );
+      }
+    }
+
+    const combinationStats = combinationStatsList.map((entry) => ({
+      fingerprint: entry.fingerprint,
+      count: entry.count,
+      share: totalActiveEdges > 0 ? entry.count / totalActiveEdges : 0,
+      requiredDVNCount: entry.requiredDVNCount,
+      normalizedNames: entry.normalizedNames,
+      labelsSample: entry.labelsSample,
+      usesSentinel: entry.usesSentinel,
+      edges: entry.edges,
+      toNodes: Array.from(entry.toNodes),
+      fromNodes: Array.from(entry.fromNodes),
+      srcChains: Array.from(entry.srcChains),
+      optionalCounts: Array.from(entry.optionalCounts),
+      optionalThresholds: Array.from(entry.optionalThresholds),
+      optionalLabelsSample: entry.sampleInfo?.optionalDVNLabels ?? [],
+      sampleInfo: entry.sampleInfo,
+    }));
+
+    return {
+      edgeSecurityInfo,
+      maxRequiredDVNsInWeb,
+      combinationStats,
+      dominantCombination: dominantEntry,
+    };
   }
 
   calculateMaxMinRequiredDVNsForNodes(nodes) {
@@ -674,6 +1672,92 @@ export class SecurityGraphRenderer {
     }
 
     return blocked;
+  }
+
+  areStringArraysEqual(a = [], b = []) {
+    if (!Array.isArray(a) || !Array.isArray(b)) {
+      return Array.isArray(a) === Array.isArray(b);
+    }
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i += 1) {
+      if (a[i] !== b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  appendSummaryRow(list, label, value) {
+    if (!list || value === undefined || value === null || value === "") {
+      return;
+    }
+    const dt = document.createElement("dt");
+    dt.textContent = label;
+    list.appendChild(dt);
+
+    const dd = document.createElement("dd");
+    dd.textContent = String(value);
+    list.appendChild(dd);
+  }
+
+  describeCombination(combination) {
+    if (!combination) {
+      return "";
+    }
+
+    const sample = combination.sampleInfo || {};
+    const requiredCount =
+      combination.requiredDVNCount ??
+      sample.requiredDVNCount ??
+      0;
+    const requiredLabels =
+      (Array.isArray(sample.requiredDVNLabels) && sample.requiredDVNLabels.length
+        ? sample.requiredDVNLabels
+        : combination.labelsSample) || [];
+
+    const base =
+      requiredLabels.length > 0
+        ? `${requiredCount} required: ${requiredLabels.join(", ")}`
+        : `${requiredCount} required DVNs`;
+
+    if (!combination.usesSentinel) {
+      return base;
+    }
+
+    const optionalLabels =
+      (Array.isArray(sample.optionalDVNLabels) && sample.optionalDVNLabels.length
+        ? sample.optionalDVNLabels
+        : combination.optionalLabelsSample) || [];
+    const optionalCount =
+      sample.optionalDVNCount ??
+      (Array.isArray(combination.optionalCounts) && combination.optionalCounts.length
+        ? combination.optionalCounts[0]
+        : 0);
+    const optionalThreshold =
+      sample.optionalDVNThreshold ??
+      (Array.isArray(combination.optionalThresholds) && combination.optionalThresholds.length
+        ? combination.optionalThresholds[0]
+        : 0);
+
+    const quorumLabel =
+      optionalCount > 0 ? `${optionalThreshold}/${optionalCount}` : `${optionalThreshold}`;
+    const optionalText =
+      optionalLabels.length > 0 ? ` → ${optionalLabels.join(", ")}` : "";
+
+    return `${base} (sentinel, quorum ${quorumLabel}${optionalText})`;
+  }
+
+  shortenAddress(value) {
+    if (!value) {
+      return "";
+    }
+    const str = String(value);
+    if (str.length <= 12) {
+      return str;
+    }
+    return `${str.slice(0, 6)}..${str.slice(-4)}`;
   }
 
   getNodeSecurityMetrics(node) {
