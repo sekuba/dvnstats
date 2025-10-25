@@ -981,7 +981,17 @@ EndpointV2.DefaultReceiveLibrarySet.handler(async ({ event, context }) => {
   const transactionHash = event.transaction.hash;
   const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
   const id = makeDefaultScopedId(event.chainId, event.params.eid);
-  const normalizedLibrary = normalizeAddress(event.params.newLib)!;
+  const normalizedLibrary = normalizeAddress(event.params.newLib);
+  if (!normalizedLibrary) {
+    context.log.warn("DefaultReceiveLibrarySet missing newLib", {
+      chainId: event.chainId,
+      eid: event.params.eid,
+      rawValue: event.params.newLib,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
 
   const entity: DefaultReceiveLibrary = {
     id,
@@ -1137,10 +1147,31 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const receiver = normalizeAddress(event.params.receiver)!;
+  const receiver = normalizeAddress(event.params.receiver);
+  if (!receiver) {
+    context.log.warn("ReceiveLibrarySet missing receiver", {
+      chainId: event.chainId,
+      eid: event.params.eid,
+      rawValue: event.params.receiver,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
   const oappId = makeOAppId(event.chainId, receiver);
   const configId = makeSecurityConfigId(oappId, event.params.eid);
-  const normalizedLibrary = normalizeAddress(event.params.newLib)!;
+  const normalizedLibrary = normalizeAddress(event.params.newLib);
+  if (!normalizedLibrary) {
+    context.log.warn("ReceiveLibrarySet missing newLib", {
+      chainId: event.chainId,
+      eid: event.params.eid,
+      receiver: event.params.receiver,
+      rawValue: event.params.newLib,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
 
   const oappDefaults: OApp = {
     id: oappId,
@@ -1202,7 +1233,17 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const receiver = normalizeAddress(event.params.oapp)!;
+  const receiver = normalizeAddress(event.params.oapp);
+  if (!receiver) {
+    context.log.warn("UlnConfigSet missing oapp address", {
+      chainId: event.chainId,
+      eid: event.params.eid,
+      rawValue: event.params.oapp,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
   const oappId = makeOAppId(event.chainId, receiver);
   const configId = makeSecurityConfigId(oappId, event.params.eid);
 
@@ -1325,7 +1366,18 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
     const blockTimestamp = toBigInt(event.block.timestamp);
     const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
     const transactionHash = event.transaction.hash;
-    const receiver = normalizeAddress(event.params.receiver)!;
+    const receiver = normalizeAddress(event.params.receiver);
+    if (!receiver) {
+      context.log.error("PacketDelivered missing receiver", {
+        chainId: event.chainId,
+        blockNumber: event.block.number,
+        logIndex: event.logIndex,
+        rawValue: event.params.receiver,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
     const oappId = makeOAppId(event.chainId, receiver);
 
     const oappDefaults: OApp = {
@@ -1437,7 +1489,16 @@ OAppOFT.PeerSet.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const oappAddress = normalizeAddress(event.srcAddress)!;
+  const oappAddress = normalizeAddress(event.srcAddress);
+  if (!oappAddress) {
+    context.log.warn("PeerSet missing srcAddress", {
+      chainId: event.chainId,
+      rawValue: event.srcAddress,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
   const oappId = makeOAppId(event.chainId, oappAddress);
   const eid = event.params.eid;
   const configId = makeSecurityConfigId(oappId, eid);
@@ -1503,7 +1564,7 @@ OAppOFT.PeerSet.handler(async ({ event, context }) => {
     peerTransactionHash: transactionHash,
   };
   context.OAppSecurityConfig.set(updatedSecurityConfig);
-},{ wildcard: true });
+}, { wildcard: true });
 
 OAppOFT.RateLimiterSet.handler(async ({ event, context }) => {
   if (context.isPreload) return;
@@ -1513,7 +1574,16 @@ OAppOFT.RateLimiterSet.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const oappAddress = normalizeAddress(event.srcAddress)!;
+  const oappAddress = normalizeAddress(event.srcAddress);
+  if (!oappAddress) {
+    context.log.warn("RateLimiterSet missing srcAddress", {
+      chainId: event.chainId,
+      rawValue: event.srcAddress,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
   const oappId = makeOAppId(event.chainId, oappAddress);
   const normalizedRateLimiter = normalizeAddress(event.params.rateLimiter);
 
@@ -1552,7 +1622,7 @@ OAppOFT.RateLimiterSet.handler(async ({ event, context }) => {
     eventId,
   };
   context.OAppRateLimiterVersion.set(rateLimiterVersion);
-},{ wildcard: true });
+}, { wildcard: true });
 
 OAppOFT.RateLimitsChanged.handler(async ({ event, context }) => {
   if (context.isPreload) return;
@@ -1562,7 +1632,16 @@ OAppOFT.RateLimitsChanged.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(event.chainId, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const oappAddress = normalizeAddress(event.srcAddress)!;
+  const oappAddress = normalizeAddress(event.srcAddress);
+  if (!oappAddress) {
+    context.log.warn("RateLimitsChanged missing srcAddress", {
+      chainId: event.chainId,
+      rawValue: event.srcAddress,
+      eventId,
+      transactionHash,
+    });
+    return;
+  }
   const oappId = makeOAppId(event.chainId, oappAddress);
 
   const oappDefaults: OApp = {
@@ -1612,4 +1691,4 @@ OAppOFT.RateLimitsChanged.handler(async ({ event, context }) => {
     };
     context.OAppRateLimitVersion.set(rateLimitVersion);
   }
-},{ wildcard: true });
+}, { wildcard: true });
