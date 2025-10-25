@@ -565,9 +565,9 @@ export class QueryManager {
 
           const isCrawl = !!seedOAppId;
 
-          if (isCrawl && fileInput) {
-            fileInput.value = "";
-          }
+        if (file && seedOAppIdInput) {
+          seedOAppIdInput.value = "";
+        }
 
           return {
             variables: {
