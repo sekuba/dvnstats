@@ -321,6 +321,67 @@ WHERE effectiveRequiredDVNCount = 0
 
 ---
 
+### 6. OAppOFT.PeerSet
+
+**Purpose**: Records cross-chain peer registrations emitted by any OAppOFT contract.
+
+**Source**: `OAppOFT` (wildcard capture across chains)  
+**Event**: `PeerSet(uint32 eid, bytes32 peer)`
+
+**Processing Flow**:
+```typescript
+1. Normalize emitting contract (`event.srcAddress`) into oappId
+2. getOrCreate OApp metadata (keeps packet stats aligned)
+3. Persist latest peer in OAppPeer (id: oappId_eid)
+4. Append immutable snapshot in OAppPeerVersion (id: eventId)
+5. Recompute effective security config for this scope
+6. Update OAppSecurityConfig.peer* fields (value + timestamps + tx hash)
+```
+
+**Important**: Peer bytes are stored verbatim (zero address remains `0x00…00`), matching on-chain semantics.
+
+---
+
+### 7. OAppOFT.RateLimiterSet
+
+**Purpose**: Tracks the rate limiter contract configured for an OApp.
+
+**Source**: `OAppOFT`  
+**Event**: `RateLimiterSet(address indexed rateLimiter)`
+
+**Processing Flow**:
+```typescript
+1. Normalize emitting contract into oappId
+2. Upsert OApp metadata
+3. Store latest limiter in OAppRateLimiter (id: oappId)
+4. Record history via OAppRateLimiterVersion (id: eventId)
+```
+
+**Note**: Zero address is stored as-is (no sentinel interpretation).
+
+---
+
+### 8. OAppOFT.RateLimitsChanged
+
+**Purpose**: Captures per-destination rate limit windows.
+
+**Source**: `OAppOFT`  
+**Event**: `RateLimitsChanged((uint32,uint256,uint256)[] rateLimitConfigs)`
+
+**Processing Flow**:
+```typescript
+1. Normalize emitting contract into oappId
+2. Upsert OApp metadata
+3. Iterate each tuple (dstEid, limit, window)
+   a. Build id = `${oappId}_${dstEid}`
+   b. Store current values in OAppRateLimit
+   c. Store immutable history in OAppRateLimitVersion (id: `${eventId}_${dstEid}`)
+```
+
+**Data Fidelity**: Limits/windows stored as `BigInt`; zero/empty values preserved without defaults.
+
+---
+
 ## Configuration Merge Logic
 
 ### The mergeSecurityConfig Function
@@ -573,13 +634,19 @@ if (requiredDVNCount === SENTINEL_REQUIRED_DVN_COUNT) {
 - `OApp` - OApp metadata and aggregate stats
 - `OAppReceiveLibrary` - Current library override per (oapp, eid)
 - `OAppUlnConfig` - Current config override per (oapp, eid)
+- `OAppPeer` - Latest peer address per (oapp, eid)
+- `OAppRateLimiter` - Current rate limiter address per oapp
+- `OAppRateLimit` - Current rate limit window per (oapp, dstEid)
 
 **4. OApp History (Immutable Versions)**
 - `OAppReceiveLibraryVersion` - Every library change
 - `OAppUlnConfigVersion` - Every config change
+- `OAppPeerVersion` - Every peer update per (oapp, eid)
+- `OAppRateLimiterVersion` - Every rate limiter change per oapp
+- `OAppRateLimitVersion` - Every rate limit change per (oapp, dstEid)
 
 **5. Computed State**
-- `OAppSecurityConfig` - Effective merged config per (oapp, eid)
+- `OAppSecurityConfig` - Effective merged config per (oapp, eid) + latest peer snapshot
 - `OAppEidPacketStats` - Packet statistics per (oapp, srcEid)
 
 **6. Events**
@@ -609,12 +676,16 @@ otherVersionId = eventId  // Simple
 ```
 OApp (1) ──< (N) OAppSecurityConfig (per source eid)
 OApp (1) ──< (N) OAppEidPacketStats (per source eid)
+OApp (1) ──< (N) OAppPeer (per destination eid)
+OApp (1) ──< (1) OAppRateLimiter
+OApp (1) ──< (N) OAppRateLimit (per destination eid)
 OApp (1) ──< (N) PacketDelivered
 
 OAppSecurityConfig (1) ──> (1) DefaultReceiveLibrary (via chain+eid)
 OAppSecurityConfig (1) ──> (1) DefaultUlnConfig (via chain+eid)
 OAppSecurityConfig (1) ──> (0..1) OAppReceiveLibrary (if override exists)
 OAppSecurityConfig (1) ──> (0..1) OAppUlnConfig (if override exists)
+OAppSecurityConfig (1) ──> (0..1) OAppPeer (latest peer state)
 
 OAppSecurityConfig (1) ──> (1) DefaultReceiveLibraryVersion (via ID reference)
 OAppSecurityConfig (1) ──> (1) DefaultUlnConfigVersion (via ID reference)
@@ -632,6 +703,11 @@ All entities have appropriate indexes on:
 - `oappId` / `oapp` - for filtering by application
 - `eventId` - for tracing changes
 - Foreign key references
+
+### Transaction Hash Tracking
+
+- All event-driven entities (`Default*`, `OApp*`, `PacketDelivered`, etc.) capture `transactionHash` for traceability.
+- `OAppSecurityConfig` records `lastComputedTransactionHash` alongside the latest peer metadata (`peer`, `peerTransactionHash`, timestamps).
 
 ---
 
@@ -901,6 +977,13 @@ event ReceiveLibrarySet(address receiver, uint32 eid, address newLib)
 ```solidity
 event UlnConfigSet(address oapp, uint32 eid, (uint64,uint8,uint8,uint8,address[],address[]) config)
 event DefaultUlnConfigsSet((uint32,(uint64,uint8,uint8,uint8,address[],address[]))[] params)
+```
+
+**OAppOFT** (3 events, wildcard indexed):
+```solidity
+event PeerSet(uint32 eid, bytes32 peer)
+event RateLimiterSet(address indexed rateLimiter)
+event RateLimitsChanged((uint32,uint256,uint256)[] rateLimitConfigs)
 ```
 
 ---
