@@ -739,6 +739,19 @@ export class SecurityGraphRenderer {
     return String(address).toLowerCase() === this.deadAddress.toLowerCase();
   }
 
+  /**
+   * Simple string hash function for deterministic variation
+   */
+  hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  }
+
   layoutNodes(nodes) {
     const positions = new Map();
 
@@ -753,36 +766,92 @@ export class SecurityGraphRenderer {
       nodesByDepth.get(depth).push(node);
     }
 
-    // Split depth 1 nodes into multiple columns for better layout
+    // Sort nodes within each depth: tracked first (by packet count), then untracked (by packet count)
+    for (const [depth, depthNodes] of nodesByDepth.entries()) {
+      depthNodes.sort((a, b) => {
+        // Tracked nodes come first
+        if (a.isTracked !== b.isTracked) {
+          return a.isTracked ? -1 : 1;
+        }
+        // Within tracked or untracked groups, sort by packet count (descending)
+        const packetsA = a.totalPacketsReceived || 0;
+        const packetsB = b.totalPacketsReceived || 0;
+        if (packetsA !== packetsB) {
+          return packetsB - packetsA;
+        }
+        // Stable sort by id
+        return a.id.localeCompare(b.id);
+      });
+    }
+
+    // Split depth 1 nodes into tracked (left) and untracked (right) with multiple columns
     if (nodesByDepth.has(1)) {
       const depth1Nodes = nodesByDepth.get(1);
       if (depth1Nodes.length > 1) {
-        const numColumns = Math.max(2, Math.min(6, Math.ceil(nodes.length / 15)));
-        const nodesPerColumn = Math.ceil(depth1Nodes.length / numColumns);
+        // Separate into tracked and untracked
+        const trackedNodes = depth1Nodes.filter(n => n.isTracked);
+        const untrackedNodes = depth1Nodes.filter(n => !n.isTracked);
 
-        for (let i = 0; i < numColumns; i++) {
-          const start = i * nodesPerColumn;
-          const end = Math.min(start + nodesPerColumn, depth1Nodes.length);
-          if (start < depth1Nodes.length) {
-            const columnNodes = depth1Nodes.slice(start, end);
-            if (columnNodes.length > 0) {
-              nodesByDepth.set(1.1 + i * 0.1, columnNodes);
+        // Process tracked nodes (left side, mirrored)
+        if (trackedNodes.length > 0) {
+          const numColumnsTracked = Math.max(1, Math.min(10, Math.ceil(trackedNodes.length / 8)));
+          const nodesPerColumnTracked = Math.ceil(trackedNodes.length / numColumnsTracked);
+
+          for (let i = 0; i < numColumnsTracked; i++) {
+            const start = i * nodesPerColumnTracked;
+            const end = Math.min(start + nodesPerColumnTracked, trackedNodes.length);
+            if (start < trackedNodes.length) {
+              const columnNodes = trackedNodes.slice(start, end);
+              if (columnNodes.length > 0) {
+                // Use negative depths for left side: -0.1, -0.2, -0.3, etc.
+                // When sorted, these appear left of seed (depth 0)
+                nodesByDepth.set(-0.1 - i * 0.1, columnNodes);
+              }
             }
           }
         }
+
+        // Process untracked nodes (right side)
+        if (untrackedNodes.length > 0) {
+          const numColumnsUntracked = Math.max(1, Math.min(10, Math.ceil(untrackedNodes.length / 8)));
+          const nodesPerColumnUntracked = Math.ceil(untrackedNodes.length / numColumnsUntracked);
+
+          for (let i = 0; i < numColumnsUntracked; i++) {
+            const start = i * nodesPerColumnUntracked;
+            const end = Math.min(start + nodesPerColumnUntracked, untrackedNodes.length);
+            if (start < untrackedNodes.length) {
+              const columnNodes = untrackedNodes.slice(start, end);
+              if (columnNodes.length > 0) {
+                // Use positive offsets for right side: 1.1, 1.2, 1.3, etc.
+                nodesByDepth.set(1.1 + i * 0.1, columnNodes);
+              }
+            }
+          }
+        }
+
         nodesByDepth.delete(1);
       }
     }
 
     const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
-    const maxDepth = Math.max(...depths.filter((d) => d < 999));
-    const totalColumns = depths.filter((d) => d < 999).length;
+    const totalColumns = depths.filter((d) => d < 999 && d > -999).length;
 
-    const depthSpacing = (this.width - 2 * this.padding) / Math.max(totalColumns - 1, 1);
+    const depthSpacing = 2 * (this.width - 2 * this.padding) / Math.max(totalColumns - 1, 1);
 
     for (const [depthIndex, depth] of depths.entries()) {
       const nodesAtDepth = nodesByDepth.get(depth);
-      const baseX = this.padding + depthSpacing * depthIndex;
+      let baseX = this.padding + depthSpacing * depthIndex;
+
+      // Add extra spacing between seed and all columns on either side
+      const seedGap = 250; // pixels of extra space on each side of seed
+      if (depth > 1) {
+        // Right side columns (depth >= 1.1)
+        baseX += seedGap;
+      } else if (depth < 0) {
+        // Left side columns (depth <= -0.1)
+        baseX -= seedGap;
+      }
+
       const verticalSpacing =
         (this.height - 2 * this.padding) / Math.max(nodesAtDepth.length - 1, 1);
 
@@ -805,8 +874,13 @@ export class SecurityGraphRenderer {
         const arcIntensity = 200;
         const xOffset = arcIntensity * normalizedPosition * normalizedPosition;
 
-        const x = baseX - xOffset;
-        const y = baseY;
+        // Add deterministic y-variation to prevent perfect vertical alignment
+        const nodeHash = this.hashString(node.id);
+        const yJitter = (nodeHash % 31) - 15; // -15 to +15 pixel variation
+
+        // Mirror arc direction: left side (negative depth) arcs left, right side arcs right
+        const x = depth < 0 ? baseX + xOffset : baseX - xOffset;
+        const y = baseY + yJitter;
 
         positions.set(node.id, { x, y });
       }
