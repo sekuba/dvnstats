@@ -34,7 +34,4 @@ logs
 *.gen.ts
 build
 .env
-hyperindex-llm-docs.mdx
-hypersync-llm-docs.mdx
-packet_security_summary.json
-dashboard/my-web.json
+hyperindex-complete.mdx

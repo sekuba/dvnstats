@@ -3,6 +3,7 @@ type DefaultReceiveLibrary {
   chainId: BigInt! @index
   eid: BigInt! @index
   library: String
+  transactionHash: String @index
   lastUpdatedBlock: BigInt
   lastUpdatedTimestamp: BigInt
   lastUpdatedByEventId: String
@@ -16,6 +17,7 @@ type DefaultReceiveLibraryVersion {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   eventId: String! @index
+  transactionHash: String! @index
 }
 
 type DefaultUlnConfig {
@@ -28,6 +30,7 @@ type DefaultUlnConfig {
   optionalDVNThreshold: Int
   requiredDVNs: [String!]!
   optionalDVNs: [String!]!
+  transactionHash: String @index
   lastUpdatedBlock: BigInt
   lastUpdatedTimestamp: BigInt
   lastUpdatedByEventId: String
@@ -46,6 +49,7 @@ type DefaultUlnConfigVersion {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   eventId: String! @index
+  transactionHash: String! @index
 }
 
 type OApp {
@@ -64,6 +68,7 @@ type OAppReceiveLibrary {
   oapp: String! @index
   eid: BigInt! @index
   library: String
+  transactionHash: String @index
   lastUpdatedBlock: BigInt!
   lastUpdatedTimestamp: BigInt!
   lastUpdatedByEventId: String! @index
@@ -79,6 +84,7 @@ type OAppReceiveLibraryVersion {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   eventId: String! @index
+  transactionHash: String! @index
 }
 
 type OAppUlnConfig {
@@ -93,6 +99,7 @@ type OAppUlnConfig {
   optionalDVNThreshold: Int
   requiredDVNs: [String!]!
   optionalDVNs: [String!]!
+  transactionHash: String @index
   lastUpdatedBlock: BigInt!
   lastUpdatedTimestamp: BigInt!
   lastUpdatedByEventId: String! @index
@@ -113,6 +120,7 @@ type OAppUlnConfigVersion {
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   eventId: String! @index
+  transactionHash: String! @index
 }
 
 type OAppSecurityConfig {
@@ -137,9 +145,15 @@ type OAppSecurityConfig {
   defaultConfigVersionId: String
   libraryOverrideVersionId: String
   configOverrideVersionId: String
+  lastComputedTransactionHash: String @index
   lastComputedBlock: BigInt!
   lastComputedTimestamp: BigInt!
   lastComputedByEventId: String! @index
+  peer: String
+  peerLastUpdatedBlock: BigInt
+  peerLastUpdatedTimestamp: BigInt
+  peerLastUpdatedEventId: String @index
+  peerTransactionHash: String @index
 }
 
 type OAppEidPacketStats {
@@ -165,6 +179,7 @@ type PacketDelivered {
   nonce: BigInt!
   oappId: String! @index
   securityConfigId: String
+  transactionHash: String! @index
   effectiveReceiveLibrary: String
   effectiveConfirmations: BigInt
   effectiveRequiredDVNCount: Int
@@ -188,4 +203,82 @@ type DvnMetadata {
   chainId: Int! @index
   address: String! @index
   name: String! @index
+}
+
+type OAppPeer {
+  id: ID!
+  oappId: String! @index
+  chainId: BigInt! @index
+  oapp: String! @index
+  eid: BigInt! @index
+  peer: String
+  transactionHash: String! @index
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+  lastUpdatedByEventId: String! @index
+}
+
+type OAppPeerVersion {
+  id: ID!
+  oappId: String! @index
+  chainId: BigInt! @index
+  oapp: String! @index
+  eid: BigInt! @index
+  peer: String
+  transactionHash: String! @index
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  eventId: String! @index
+}
+
+type OAppRateLimiter {
+  id: ID!
+  oappId: String! @index
+  chainId: BigInt! @index
+  oapp: String! @index
+  rateLimiter: String
+  transactionHash: String! @index
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+  lastUpdatedByEventId: String! @index
+}
+
+type OAppRateLimiterVersion {
+  id: ID!
+  oappId: String! @index
+  chainId: BigInt! @index
+  oapp: String! @index
+  rateLimiter: String
+  transactionHash: String! @index
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  eventId: String! @index
+}
+
+type OAppRateLimit {
+  id: ID!
+  oappId: String! @index
+  chainId: BigInt! @index
+  oapp: String! @index
+  dstEid: BigInt! @index
+  limit: BigInt!
+  window: BigInt!
+  transactionHash: String! @index
+  lastUpdatedBlock: BigInt!
+  lastUpdatedTimestamp: BigInt!
+  lastUpdatedByEventId: String! @index
+}
+
+type OAppRateLimitVersion {
+  id: ID!
+  oappId: String! @index
+  chainId: BigInt! @index
+  oapp: String! @index
+  dstEid: BigInt! @index
+  limit: BigInt!
+  window: BigInt!
+  transactionHash: String! @index
+  blockNumber: BigInt!
+  blockTimestamp: BigInt!
+  eventId: String! @index
 }

@@ -1,44 +1,39 @@
-# Repository Guidelines
+# AGENTS // Indexer Primer
 
-## Project Structure & Module Organization
-- `config.yaml` defines all chains and blockchain events we are indexing.
-- `src/` holds TypeScript event handlers (see `EventHandlers.ts`) orchestrating indexer persistence.
-- `generated/` stores Envio codegen outputs; treat as read-only and refresh with `pnpm codegen`.
-- `scripts/` reserved for ad-hoc operational tooling.
-- `test/` mirrors handler behaviour with ts-mocha specs; align filenames with the contracts under test.
-- Config assets sit at the repo root (`config.yaml`, `schema.graphql`, `layerzero.json`); `build/` and `generated/` artifacts may be recreated freely.
+This note gives agents a fast mental model for the LayerZero security indexer. For deeper dives, consult `docs/layerzero-indexer.md` (full theory) and `dashboard/MAINTAINER-GUIDE.md` (ops/runtime).
 
-## Build, Test, and Development Commands
-- `pnpm dev` starts the local Envio stack with a GraphQL endpoint at `http://localhost:8080/v1/graphql`.
-- `pnpm start` runs the compiled indexer against configured endpoints for production-style verification.
-- `pnpm codegen` rebuilds TypeScript types from `config.yaml` and `schema.graphql`.
-- `pnpm build` compiles TypeScript; `pnpm clean` resets project references.
-- `pnpm test` executes the mocha suite (alias of `pnpm mocha`); append `--watch` when iterating.
+## What We Index
+- **Contracts**: `EndpointV2`, `ReceiveUln302`, and wildcard `OAppOFT` across all configured networks (see `config.yaml`). Wildcards let us capture every OApp even when addresses are unknown ahead of time.
+- **Events**:
+  - `EndpointV2`: `DefaultReceiveLibrarySet`, `ReceiveLibrarySet`, `PacketDelivered`
+  - `ReceiveUln302`: `DefaultUlnConfigsSet`, `UlnConfigSet`
+  - `OAppOFT`: `PeerSet`, `RateLimiterSet`, `RateLimitsChanged`
+- **Transaction hashes** are requested via `field_selection` and persisted on every mutable entity for traceability.
 
-## Coding Style & Naming Conventions
-- Use TypeScript with 2-space indentation, trailing commas, and `const`; prefer arrow functions for handlers.
-- Entity identifiers follow `${chainId}_${blockNumber}_${logIndex}`; reuse helpers in `EventHandlers.ts`.
-- Normalize blockchain addresses with `normalizeAddress` to enforce lowercase; avoid duplicating this logic.
-- Import models from `"generated"` and never edit generated files manually to preserve codegen parity.
+## Data Model Highlights
+- **Defaults (protocol scope)**: `DefaultReceiveLibrary`, `DefaultUlnConfig` + `*Version` history.
+- **Overrides (oapp scope)**: `OAppReceiveLibrary`, `OAppUlnConfig`, `OAppPeer`, `OAppRateLimiter`, `OAppRateLimit` + their `*Version` tables.
+- **Effective view**: `OAppSecurityConfig` (one row per `(oappId, eid)`) merges defaults + overrides and denormalizes the latest peer snapshot and recompute metadata.
+- **Usage stats**: `OAppEidPacketStats` (per source eid) and `PacketDelivered` (per delivery, with full effective config frozen in time).
+- **Metadata**: `DvnMetadata` enriches DVN addresses with human names.
 
-## Testing Guidelines
-- Store specs in `test/*.ts`; `describe` blocks should match the contract or handler names.
-- Rely on `TestHelpers.MockDb` to simulate persistence and assert entity snapshots.
-- Cover new handlers with at least one happy-path and one edge-case test before submitting changes.
-- Run `pnpm test`; document external dependencies (e.g., live RPC) in the PR description.
+IDs follow the pattern described in `docs/layerzero-indexer.md`: scoped IDs (`chainId_eid`, `oappId_eid`), event IDs (`chain_block_log`), and composite version IDs where a single event mutates multiple rows.
 
-## Data & Configuration Notes
-- Maintain parity between `config.yaml` and `schema.graphql`; rerun `pnpm codegen` after edits.
+## Handler Lifecycles (see `src/EventHandlers.ts`)
+1. **Normalize** incoming addresses (`toLowerCase`, zero handling) except for peer bytes, which are stored verbatim.
+2. **Persist current state** in the relevant table (`Default*`, `OApp*`, etc.) and append a `*Version` snapshot with block/timestamp/tx hash.
+3. **Recompute effective configs** when a change could affect security posture:
+   - `computeAndPersistEffectiveConfig` merges defaults and overrides, enforces sentinel logic (`255`, `2^64-1`), dedupes DVNs, and writes `OAppSecurityConfig`.
+   - `recomputeSecurityConfigsForScope` refreshes every OApp on the same `(chainId, eid)` when defaults move.
+4. **PacketDelivered** flow:
+   - Touches cumulative stats (`OApp`, `OAppEidPacketStats`), recomputes the current effective config, and writes a denormalized `PacketDelivered` record for analytics.
 
-## LayerZero Security Config Indexing Spec
-- **Scope**: Track only incoming packets delivered through EndpointV2 contracts.
-- **Security Config Definition**: A packet's security posture is determined by its `receiveLibrary` address and that library's configuration tuple (`confirmations`, DVN counts, DVN thresholds, DVN address arrays).
-- **Receive Library Coverage**: Persist full configuration history for the `ReceiveUln302` library. For packets delivered through other libraries, capture the library address and flag that detailed config data is unavailable.
-- **Configuration Scoping**: Security configs are owned by OApp deployers and keyed by the tuple `(chainId of the OApp, oappAddress, originEid)`. Each origin EID can point to a distinct config for a given OApp on a given chain.
-- **Fallback Semantics**: Resolve effective configs by overlaying custom settings onto per-chain/per-origin defaults. Any zero or empty field (`requiredDVNCount`, `optionalDVNCount`, `optionalDVNThreshold`, `requiredDVNs`, `optionalDVNs`) inherits from the corresponding default. Defaults also supply the receive library address when none is set.
-- **Special Cases**:
-  - `requiredDVNCount = 255` signals that no required DVNs are enforced; validation falls back to optional DVNs governed by `optionalDVNThreshold`.
-  - For non-255 values, `requiredDVNCount` must equal the length of `requiredDVNs`, and all listed required addresses must sign a packet.
-  - Optional DVNs may exceed the threshold, but at least `optionalDVNThreshold` of them must sign any packet validated with optional-only configs.
-- **Reference Data**:
-  - `layerzero.json` supplies DVN metadata (names, chain/address mappings) and ancillary protocol information.
+`computeAndPersistEffectiveConfig` is the core algorithm: it filters out zero addresses, normalizes arrays, applies fallback tracking, resolves DVN metadata, and exposes whether an OApp relies on defaults or sentinels. Peer data and recompute hashes are stitched onto the result so consumers always see the exact state that produced an event.
+
+## Mental Map
+- **Defaults drive cascades**: any default event triggers recomputation for all affected OApps (same chain/eid).
+- **Overrides are surgical**: only the specific `(oappId, eid)` recomputes.
+- **Peers & rate controls**: stored separately for clarity, but `OAppSecurityConfig` mirrors the latest peer so security snapshots stay self-contained.
+- **Tx hashes everywhere**: debug and backfill work well because every mutation carries the transaction source.
+
+With this structure you can answer: “What is this OApp’s verification posture right now?”, “What changed and when?”, and “Which peer routes are live?” directly from HyperIndex without on-chain RPC.
