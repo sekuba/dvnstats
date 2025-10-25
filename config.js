@@ -12,6 +12,9 @@ export const CONFIG = {
   // Dead address used for blocked DVN detection
   DEAD_ADDRESS: "0x000000000000000000000000000000000000dead",
 
+  // Zero address (bytes32) for blocked peer detection
+  ZERO_PEER: "0x0000000000000000000000000000000000000000000000000000000000000000",
+
   // SVG graph rendering constants
   SVG: {
     WIDTH: 1600,

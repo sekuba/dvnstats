@@ -19,6 +19,7 @@ export class SecurityGraphRenderer {
     this.maxNodesPerColumn = CONFIG.SVG.MAX_NODES_PER_COLUMN;
     this.maxColumns = CONFIG.SVG.MAX_COLUMNS;
     this.deadAddress = CONFIG.DEAD_ADDRESS;
+    this.zeroPeer = CONFIG.ZERO_PEER;
     this.getOAppAlias = getOAppAlias;
     this.getChainDisplayLabel = getChainDisplayLabel;
   }
@@ -82,13 +83,14 @@ export class SecurityGraphRenderer {
         <dt>Node Color</dt>
         <dd>
           <span style="display: inline-block; background: #ffff99; padding: 2px 6px; border: 1px solid #000; margin-right: 4px;">Yellow</span>: Maximum security (min DVN count ≥ web max, excl. blocked configs)<br>
-          <span style="display: inline-block; background: #ff9999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Red</span>: Weak link (min DVN count &lt; web max)
+          <span style="display: inline-block; background: #ff9999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Red</span>: Weak link (min DVN count &lt; web max)<br>
+          <span style="display: inline-block; background: #999999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Grey</span>: Blocked (cannot send packets to monitored nodes)
         </dd>
         <dt style="margin-top: 0.5rem;">Edge Color</dt>
         <dd>
           <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Maximum security (DVN count = web max)<br>
           <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower security (DVN count &lt; web max)<br>
-          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (dead address in DVNs)
+          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer or dead DVN)
         </dd>
         <dt style="margin-top: 0.5rem;">Node Border</dt>
         <dd>
@@ -125,6 +127,9 @@ export class SecurityGraphRenderer {
     const maxMinRequiredDVNsForNodes =
       this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
 
+    // Determine which nodes are blocked (cannot send packets to monitored nodes)
+    const blockedNodes = this.findBlockedNodes(webData.nodes, edgeSecurityInfo);
+
     // Render edges
     const edgesGroup = this.renderEdges(
       svgNS,
@@ -141,6 +146,7 @@ export class SecurityGraphRenderer {
       webData.nodes,
       nodePositions,
       maxMinRequiredDVNsForNodes,
+      blockedNodes,
       showPersistentTooltip,
     );
     contentGroup.appendChild(nodesGroup);
@@ -306,17 +312,27 @@ export class SecurityGraphRenderer {
   }
 
   buildEdgeTooltip(info, maxRequiredDVNsInWeb) {
-    const { edge, isBlocked, requiredDVNCount, requiredDVNs, peerResolved, peerRaw } = info;
+    const { edge, isBlocked, blockReason, requiredDVNCount, requiredDVNs, peerResolved, peerRaw } = info;
+
+    let blockMessage = null;
+    if (isBlocked && blockReason === "zero-peer") {
+      blockMessage = "STATUS: BLOCKED (peer set to zero address - no packets accepted)";
+    } else if (isBlocked && blockReason === "dead-dvn") {
+      blockMessage = "STATUS: BLOCKED (dead address in DVNs)";
+    } else if (isBlocked) {
+      blockMessage = "STATUS: BLOCKED";
+    }
+
     const lines = [
       `${edge.from} → ${edge.to}`,
       `Src EID: ${edge.srcEid}`,
       edge.linkType === "peer" && "Link: PeerSet",
-      isBlocked && "STATUS: BLOCKED (dead address in DVNs)",
+      blockMessage,
       !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb &&
         `WARNING: Lower security (${requiredDVNCount} vs max ${maxRequiredDVNsInWeb})`,
       requiredDVNs.length > 0 ? `Required DVNs: ${requiredDVNs.join(", ")}` : requiredDVNCount > 0 && `Required DVN Count: ${requiredDVNCount}`,
       requiredDVNs.length > 0 && `Required Count: ${requiredDVNCount}`,
-      requiredDVNCount === 0 && "Required DVN Count: 0 (WARNING: No required DVNs!)",
+      requiredDVNCount === 0 && !isBlocked && "Required DVN Count: 0 (WARNING: No required DVNs!)",
       peerResolved === false && "Peer unresolved (non-EVM or unknown address)",
       peerResolved === false && peerRaw && `Peer Raw: ${peerRaw}`,
       peerResolved === true && "Peer resolved",
@@ -344,7 +360,7 @@ export class SecurityGraphRenderer {
     return arrowGroup;
   }
 
-  renderNodes(svgNS, nodes, nodePositions, maxMinRequiredDVNsForNodes, showPersistentTooltip) {
+  renderNodes(svgNS, nodes, nodePositions, maxMinRequiredDVNsForNodes, blockedNodes, showPersistentTooltip) {
     const nodesGroup = document.createElementNS(svgNS, "g");
     nodesGroup.setAttribute("class", "nodes");
 
@@ -353,6 +369,8 @@ export class SecurityGraphRenderer {
       if (!pos) continue;
 
       const { minRequiredDVNs, hasBlockedConfig } = this.getNodeSecurityMetrics(node);
+      const isBlocked = blockedNodes.has(node.id);
+
       const radius = node.isTracked
         ? this.nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
         : this.nodeRadius * 0.5;
@@ -361,7 +379,10 @@ export class SecurityGraphRenderer {
       nodeGroup.setAttribute("class", "node");
 
       let fillColor;
-      if (node.isDangling) {
+      if (isBlocked) {
+        // Grey color for nodes that cannot send packets to monitored nodes
+        fillColor = "#999999";
+      } else if (node.isDangling) {
         fillColor = "none";
       } else if (minRequiredDVNs >= maxMinRequiredDVNsForNodes) {
         fillColor = "#ffff99";
@@ -386,6 +407,10 @@ export class SecurityGraphRenderer {
         `Min Required DVNs: ${minRequiredDVNs}`,
       ];
 
+      if (isBlocked) {
+        titleLines.push(`BLOCKED: Cannot send packets to monitored nodes (zero-peer or dead DVN)`);
+      }
+
       const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peer) || [];
       if (peerConfigs.length > 0) {
         const resolvedPeers = peerConfigs.filter((cfg) => cfg.peerResolved).length;
@@ -396,7 +421,7 @@ export class SecurityGraphRenderer {
         titleLines.push(`WARNING: Has blocked config(s) with dead address`);
       }
 
-      if (minRequiredDVNs < maxMinRequiredDVNsForNodes) {
+      if (!isBlocked && minRequiredDVNs < maxMinRequiredDVNsForNodes) {
         if (node.isTracked) {
           titleLines.push(
             `WEAK LINK: Lower than best node security (${minRequiredDVNs} vs ${maxMinRequiredDVNsForNodes})`,
@@ -547,6 +572,13 @@ export class SecurityGraphRenderer {
       let requiredDVNCount = 0;
       let requiredDVNs = [];
       let isBlocked = false;
+      let blockReason = null;
+
+      // Check if peer is zero address (blocks all traffic from that EID)
+      if (edge.peerRaw && this.isZeroPeer(edge.peerRaw)) {
+        isBlocked = true;
+        blockReason = "zero-peer";
+      }
 
       if (toNode?.securityConfigs) {
         const config = toNode.securityConfigs.find(
@@ -555,7 +587,12 @@ export class SecurityGraphRenderer {
         if (config) {
           requiredDVNCount = config.requiredDVNCount || 0;
           requiredDVNs = config.requiredDVNs || [];
-          isBlocked = requiredDVNs.some((addr) => this.isDeadAddress(addr));
+
+          // Check for dead address in DVNs
+          if (!isBlocked && requiredDVNs.some((addr) => this.isDeadAddress(addr))) {
+            isBlocked = true;
+            blockReason = "dead-dvn";
+          }
         }
       }
 
@@ -568,6 +605,7 @@ export class SecurityGraphRenderer {
         requiredDVNCount,
         requiredDVNs,
         isBlocked,
+        blockReason,
         peerResolved: edge.peerResolved ?? null,
         peerRaw: edge.peerRaw ?? null,
       });
@@ -598,6 +636,44 @@ export class SecurityGraphRenderer {
 
   isDeadAddress(address) {
     return String(address).toLowerCase() === this.deadAddress.toLowerCase();
+  }
+
+  isZeroPeer(peerAddress) {
+    return String(peerAddress).toLowerCase() === this.zeroPeer.toLowerCase();
+  }
+
+  findBlockedNodes(nodes, edgeSecurityInfo) {
+    // Build a map of nodeId -> incoming edges (edges pointing TO this node)
+    const incomingEdges = new Map();
+    for (const info of edgeSecurityInfo) {
+      const toNodeId = info.edge.to;
+      if (!incomingEdges.has(toNodeId)) {
+        incomingEdges.set(toNodeId, []);
+      }
+      incomingEdges.get(toNodeId).push(info);
+    }
+
+    // Find nodes that cannot send packets to monitored nodes (all incoming edges blocked)
+    const blocked = new Set();
+    for (const node of nodes) {
+      const incoming = incomingEdges.get(node.id) || [];
+
+      // Skip the seed node
+      if (node.depth === 0) continue;
+
+      // If the node has incoming edges, check if ALL are blocked
+      if (incoming.length > 0) {
+        const allBlocked = incoming.every(info => info.isBlocked);
+        if (allBlocked) {
+          blocked.add(node.id);
+        }
+      } else if (node.isDangling) {
+        // Dangling nodes with no incoming edges are also blocked
+        blocked.add(node.id);
+      }
+    }
+
+    return blocked;
   }
 
   getNodeSecurityMetrics(node) {
