@@ -244,13 +244,7 @@ export class SecurityGraphRenderer {
     line.setAttribute("opacity", style.opacity);
     line.style.cursor = "pointer";
 
-    const tooltipText = this.buildEdgeTooltip(
-      edge,
-      isBlocked,
-      requiredDVNCount,
-      requiredDVNs,
-      maxRequiredDVNsInWeb,
-    );
+    const tooltipText = this.buildEdgeTooltip(info, maxRequiredDVNsInWeb);
     const title = document.createElementNS(svgNS, "title");
     title.textContent = tooltipText;
     line.appendChild(title);
@@ -380,13 +374,7 @@ export class SecurityGraphRenderer {
     line.setAttribute("opacity", style.opacity);
     line.style.cursor = "pointer";
 
-    const tooltipText = this.buildEdgeTooltip(
-      info.edge,
-      info.isBlocked,
-      info.requiredDVNCount,
-      info.requiredDVNs,
-      maxRequiredDVNsInWeb,
-    );
+    const tooltipText = this.buildEdgeTooltip(info, maxRequiredDVNsInWeb);
     const title = document.createElementNS(svgNS, "title");
     title.textContent = tooltipText;
     line.appendChild(title);
@@ -409,14 +397,21 @@ export class SecurityGraphRenderer {
     return { color: "#000000ff", width: "3", opacity: "0.5", dashArray: "none" };
   }
 
-  buildEdgeTooltip(
-    edge,
-    isBlocked,
-    requiredDVNCount,
-    requiredDVNs,
-    maxRequiredDVNsInWeb,
-  ) {
+  buildEdgeTooltip(info, maxRequiredDVNsInWeb) {
+    const {
+      edge,
+      isBlocked,
+      requiredDVNCount,
+      requiredDVNs,
+      peerResolved,
+      peerRaw,
+    } = info;
+
     const lines = [`${edge.from} → ${edge.to}`, `Src EID: ${edge.srcEid}`];
+
+    if (edge.linkType === "peer") {
+      lines.push("Link: PeerSet");
+    }
 
     if (isBlocked) {
       lines.push("STATUS: BLOCKED (dead address in DVNs)");
@@ -433,6 +428,15 @@ export class SecurityGraphRenderer {
       lines.push(`Required DVN Count: ${requiredDVNCount}`);
     } else {
       lines.push("Required DVN Count: 0 (WARNING: No required DVNs!)");
+    }
+
+    if (peerResolved === false) {
+      lines.push("Peer unresolved (non-EVM or unknown address)");
+      if (peerRaw) {
+        lines.push(`Peer Raw: ${peerRaw}`);
+      }
+    } else if (peerResolved === true) {
+      lines.push("Peer resolved");
     }
 
     return lines.join("\n");
@@ -520,6 +524,12 @@ export class SecurityGraphRenderer {
         `Total Packets: ${node.totalPacketsReceived}`,
         `Min Required DVNs: ${minRequiredDVNs}`,
       ];
+
+      const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peer) || [];
+      if (peerConfigs.length > 0) {
+        const resolvedPeers = peerConfigs.filter((cfg) => cfg.peerResolved).length;
+        titleLines.push(`Peers: ${resolvedPeers}/${peerConfigs.length} resolved`);
+      }
 
       if (hasBlockedConfig) {
         titleLines.push(`WARNING: Has blocked config(s) with dead address`);
@@ -692,7 +702,14 @@ export class SecurityGraphRenderer {
         maxRequiredDVNsInWeb = requiredDVNCount;
       }
 
-      edgeSecurityInfo.push({ edge, requiredDVNCount, requiredDVNs, isBlocked });
+      edgeSecurityInfo.push({
+        edge,
+        requiredDVNCount,
+        requiredDVNs,
+        isBlocked,
+        peerResolved: edge.peerResolved ?? null,
+        peerRaw: edge.peerRaw ?? null,
+      });
     }
 
     return { edgeSecurityInfo, maxRequiredDVNsInWeb };

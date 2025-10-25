@@ -14,6 +14,7 @@ import {
   chainPreferenceFromColumn,
   normalizeAddress,
   normalizeOAppId,
+  bytes32ToAddress,
 } from "./core.js";
 
 /**
@@ -182,35 +183,6 @@ export class QueryManager {
     };
   }
 
-  buildDvnLookup(dvnMetadata) {
-    const map = new Map();
-    if (!Array.isArray(dvnMetadata)) {
-      return map;
-    }
-
-    for (const entry of dvnMetadata) {
-      if (!entry || !entry.address) continue;
-
-      const addressKey = String(entry.address).toLowerCase();
-      const chainKey =
-        entry.chainId !== undefined && entry.chainId !== null
-          ? String(entry.chainId)
-          : null;
-      const label = entry.name || entry.address;
-
-      if (!addressKey) continue;
-
-      if (chainKey) {
-        map.set(`${chainKey}_${addressKey}`, label);
-      }
-      if (!map.has(addressKey)) {
-        map.set(addressKey, label);
-      }
-    }
-
-    return map;
-  }
-
   resolveDvnLabels(addresses, meta, chainIdOverride) {
     if (!Array.isArray(addresses) || !addresses.length) {
       return [];
@@ -226,24 +198,21 @@ export class QueryManager {
     return addresses.map((address) => {
       if (!address) return "";
 
-      const key = String(address).toLowerCase();
-
       if (chainId) {
-        const lookupKey = `${chainId}_${key}`;
-        if (meta?.dvnLookup && meta.dvnLookup.has(lookupKey)) {
-          return meta.dvnLookup.get(lookupKey);
+        const label = this.dvnRegistry.resolve(address, chainId);
+        if (label && label !== address) {
+          return label;
         }
 
-        // Try ChainMetadata DVN lookup
-        const layerKey = `${chainId}:${key}`;
         const layerName = this.chainMetadata.resolveDvnName(address, chainId);
-        if (layerName !== address) {
+        if (layerName && layerName !== address) {
           return layerName;
         }
       }
 
-      if (meta?.dvnLookup instanceof Map && meta.dvnLookup.has(key)) {
-        return meta.dvnLookup.get(key);
+      const fallback = this.dvnRegistry.resolve(address);
+      if (fallback && fallback !== address) {
+        return fallback;
       }
 
       return address;
@@ -347,11 +316,12 @@ export class QueryManager {
               lastComputedBlock
               lastComputedTimestamp
               lastComputedByEventId
-            }
-            DvnMetadata {
-              address
-              chainId
-              name
+              lastComputedTransactionHash
+              peer
+              peerTransactionHash
+              peerLastUpdatedBlock
+              peerLastUpdatedTimestamp
+              peerLastUpdatedEventId
             }
           }
         `,
@@ -456,7 +426,6 @@ export class QueryManager {
         processResponse: (payload, meta) => {
           const oapp = payload?.data?.OApp?.[0] ?? null;
           const configs = payload?.data?.OAppSecurityConfig ?? [];
-          const dvnMetadata = payload?.data?.DvnMetadata ?? [];
           const enrichedMeta = { ...meta };
 
           if (oapp) {
@@ -471,12 +440,6 @@ export class QueryManager {
             enrichedMeta.summary =
               enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
             enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
-          }
-
-          if (Array.isArray(dvnMetadata) && dvnMetadata.length) {
-            enrichedMeta.dvnLookup = this.buildDvnLookup(dvnMetadata);
-          } else {
-            enrichedMeta.dvnLookup = new Map();
           }
 
           const formattedRows = this.formatSecurityConfigRows(configs, enrichedMeta);
@@ -588,12 +551,10 @@ export class QueryManager {
         buildVariables: (card) => {
           const seedOAppIdInput = card.querySelector('input[name="seedOAppId"]');
           const depthInput = card.querySelector('input[name="depth"]');
-          const limitInput = card.querySelector('input[name="limit"]');
           const fileInput = card.querySelector('input[name="webFile"]');
 
           const seedOAppId = seedOAppIdInput?.value?.trim();
           const depth = parseInt(depthInput?.value) || 10;
-          const limit = parseInt(limitInput?.value) || 1000;
           const file = fileInput?.files?.[0];
 
           if (!seedOAppId && !file) {
@@ -612,7 +573,6 @@ export class QueryManager {
             variables: {
               seedOAppId,
               depth,
-              limit,
               file: isCrawl ? null : file,
               isCrawl,
             },
@@ -810,6 +770,8 @@ export class QueryManager {
     formatted.Library = this.formatLibraryDescriptor(row);
     formatted["Required DVNs"] = this.formatRequiredDvns(row, meta);
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta);
+    formatted.Peer = this.formatPeer(row);
+    formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
     formatted.Fallbacks = this.formatFallbackFields(
       row.fallbackFields,
@@ -870,6 +832,102 @@ export class QueryManager {
     return this.createFormattedCell(lines, addresses.join(", ") || `${count}/${threshold}`);
   }
 
+  derivePeerContext(row) {
+    const peerHex = row.peer;
+    if (!peerHex) {
+      return null;
+    }
+
+    const eid = row.eid ?? null;
+    const resolvedChainId = eid !== null && eid !== undefined ? this.chainMetadata.resolveChainId(eid) : null;
+    const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
+    const chainLabel = chainId ? this.getChainDisplayLabel(chainId) || chainId : null;
+
+    let decodedAddress = bytes32ToAddress(peerHex);
+    let oappId = null;
+    let alias = null;
+    let normalizedAddress = null;
+
+    if (decodedAddress && chainId) {
+      try {
+        normalizedAddress = normalizeAddress(decodedAddress);
+        oappId = `${chainId}_${normalizedAddress}`;
+        alias = this.aliasManager.get(oappId);
+      } catch (error) {
+        console.debug("[QueryManager] Failed to normalize peer address", {
+          peerHex,
+          decodedAddress,
+          error,
+        });
+        normalizedAddress = decodedAddress;
+        oappId = `${chainId}_${decodedAddress}`;
+      }
+    }
+
+    return {
+      peerHex,
+      chainId,
+      chainLabel,
+      address: normalizedAddress || decodedAddress,
+      oappId,
+      alias,
+      copyValue: oappId || peerHex,
+    };
+  }
+
+  formatPeer(row) {
+    const ctx = this.derivePeerContext(row);
+    if (!ctx) {
+      return this.createFormattedCell(["—"], "");
+    }
+
+    const lines = [];
+    if (ctx.alias) {
+      lines.push(ctx.alias);
+    }
+    if (ctx.oappId) {
+      lines.push(`ID ${ctx.oappId}`);
+      if (ctx.address) {
+        lines.push(`Addr ${ctx.address}`);
+      }
+    } else {
+      lines.push(ctx.peerHex);
+    }
+
+    if (ctx.chainLabel) {
+      lines.push(`Chain ${ctx.chainLabel}`);
+    }
+
+    const meta = ctx.oappId ? { oappId: ctx.oappId } : undefined;
+    return this.createFormattedCell(lines, ctx.copyValue, meta);
+  }
+
+  formatPeerUpdate(row) {
+    const lines = [];
+    if (row.peerLastUpdatedBlock !== undefined && row.peerLastUpdatedBlock !== null) {
+      lines.push(`Block ${row.peerLastUpdatedBlock}`);
+    }
+    if (row.peerLastUpdatedTimestamp !== undefined && row.peerLastUpdatedTimestamp !== null) {
+      const ts = formatTimestampValue(row.peerLastUpdatedTimestamp);
+      if (ts) {
+        lines.push(ts.primary);
+      }
+    }
+    if (row.peerLastUpdatedEventId) {
+      lines.push(row.peerLastUpdatedEventId);
+    }
+    if (row.peerTransactionHash) {
+      lines.push(row.peerTransactionHash);
+    }
+
+    const copyValue =
+      row.peerTransactionHash ||
+      row.peerLastUpdatedEventId ||
+      lines.join(" | ");
+
+    return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);
+  }
+
   formatConfirmations(row) {
     const confirmations = row.effectiveConfirmations ?? "—";
     const lines = [String(confirmations)];
@@ -924,6 +982,9 @@ export class QueryManager {
     if (row.lastComputedByEventId) {
       lines.push(row.lastComputedByEventId);
     }
+    if (row.lastComputedTransactionHash) {
+      lines.push(row.lastComputedTransactionHash);
+    }
 
     const copyValue = lines.join(" | ");
     return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);
@@ -976,7 +1037,6 @@ export class QueryManager {
         );
         const webData = await crawler.crawl(variables.seedOAppId, {
           depth: variables.depth,
-          limit: variables.limit,
           onProgress: (status) => this.setStatus(statusEl, status, "loading"),
         });
         payload = { webData };

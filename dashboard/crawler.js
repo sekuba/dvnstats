@@ -4,7 +4,7 @@
  */
 
 import { CONFIG } from "./config.js";
-import { makeOAppId, normalizeAddress } from "./core.js";
+import { makeOAppId, normalizeAddress, bytes32ToAddress } from "./core.js";
 
 /**
  * Crawls the security web starting from a seed OApp
@@ -21,7 +21,6 @@ export class SecurityWebCrawler {
    */
   async crawl(seedOAppId, options = {}) {
     const maxDepth = options.depth || CONFIG.CRAWLER.DEFAULT_DEPTH;
-    const packetLimit = options.limit || CONFIG.CRAWLER.DEFAULT_LIMIT;
     const onProgress = options.onProgress || (() => {});
 
     onProgress("Initializing crawl...");
@@ -64,7 +63,8 @@ export class SecurityWebCrawler {
         securityConfigs: [],
       };
 
-      for (const config of configs) {
+      const configContexts = configs.map((config) => {
+        const peerInfo = this.derivePeerFromConfig(config);
         const requiredDVNs = Array.isArray(config.effectiveRequiredDVNs)
           ? config.effectiveRequiredDVNs
           : [];
@@ -90,60 +90,26 @@ export class SecurityWebCrawler {
           optionalDVNThreshold: config.effectiveOptionalDVNThreshold || 0,
           usesRequiredDVNSentinel: config.usesRequiredDVNSentinel || false,
           isConfigTracked: config.isConfigTracked || false,
+          peer: peerInfo?.rawPeer || null,
+          peerOAppId: peerInfo?.oappId || null,
+          peerChainId: peerInfo?.chainId || null,
+          peerAddress: peerInfo?.address || null,
+          peerResolved: peerInfo?.resolved || false,
         });
-      }
+        return { config, peerInfo };
+      });
 
       nodes.set(oappId, nodeData);
 
-      // Continue crawling if not at max depth
-      if (depth < maxDepth) {
-        const packets = await this.getSenders(oappId, packetLimit);
-
-        const senderSet = new Map();
-        for (const packet of packets) {
-          const key = `${packet.srcEid}_${packet.sender}`;
-          if (!senderSet.has(key)) {
-            senderSet.set(key, packet);
-          }
-        }
-
-        for (const packet of senderSet.values()) {
-          const srcChainId = this.chainMetadata.resolveChainId(packet.srcEid);
-
-          if (!srcChainId) {
-            console.log(
-              `Skipping sender: unknown chainId for srcEid=${packet.srcEid}`,
-            );
-            continue;
-          }
-
-          const senderOAppId = makeOAppId(srcChainId, packet.sender);
-
-          if (!senderOAppId) {
-            console.log(`Skipping sender: invalid address ${packet.sender}`);
-            continue;
-          }
-
-          const edgeKey = `${senderOAppId}->${oappId}`;
-          const existingEdge = edges.get(edgeKey);
-
-          if (existingEdge) {
-            existingEdge.packetCount += 1;
-          } else {
-            edges.set(edgeKey, {
-              from: senderOAppId,
-              to: oappId,
-              srcEid: packet.srcEid,
-              srcChainId,
-              packetCount: 1,
-            });
-          }
-
-          if (!visited.has(senderOAppId)) {
-            queue.push({ oappId: senderOAppId, depth: depth + 1 });
-          }
-        }
-      }
+      this.addPeerEdges({
+        currentOAppId: oappId,
+        depth,
+        maxDepth,
+        queue,
+        visited,
+        edges,
+        configContexts,
+      });
     }
 
     // Add dangling nodes (referenced in edges but not crawled)
@@ -176,34 +142,10 @@ export class SecurityWebCrawler {
     return {
       seed: seedOAppId,
       crawlDepth: maxDepth,
-      packetLimit,
       timestamp: new Date().toISOString(),
       nodes: Array.from(nodes.values()),
       edges: Array.from(edges.values()),
     };
-  }
-
-  /**
-   * Fetches senders (sources) for a given OApp
-   */
-  async getSenders(oappId, limit = 100) {
-    const query = `
-      query GetSenders($oappId: String!, $limit: Int!) {
-        PacketDelivered(
-          where: { oappId: { _eq: $oappId } }
-          order_by: { blockTimestamp: desc }
-          limit: $limit
-        ) {
-          sender
-          srcEid
-          receiver
-          oappId
-        }
-      }
-    `;
-
-    const data = await this.client.query(query, { oappId, limit });
-    return data.PacketDelivered || [];
   }
 
   /**
@@ -225,6 +167,11 @@ export class SecurityWebCrawler {
           effectiveOptionalDVNThreshold
           isConfigTracked
           usesRequiredDVNSentinel
+          peer
+          peerTransactionHash
+          peerLastUpdatedBlock
+          peerLastUpdatedTimestamp
+          peerLastUpdatedEventId
         }
         OApp(where: { id: { _eq: $oappId } }) {
           id
@@ -240,5 +187,91 @@ export class SecurityWebCrawler {
       configs: data.OAppSecurityConfig || [],
       oapp: data.OApp?.[0] || null,
     };
+  }
+
+  derivePeerFromConfig(config) {
+    const peerHex = config.peer;
+    if (!peerHex) {
+      return null;
+    }
+
+    const eid = config.eid ?? null;
+    const resolvedChainId =
+      eid !== null && eid !== undefined ? this.chainMetadata.resolveChainId(eid) : null;
+    const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
+
+    if (!chainId) {
+      return {
+        rawPeer: peerHex,
+        chainId: null,
+        address: null,
+        oappId: null,
+        resolved: false,
+      };
+    }
+
+    let decoded = bytes32ToAddress(peerHex);
+    if (decoded) {
+      try {
+        const normalized = normalizeAddress(decoded);
+        const oappId = makeOAppId(chainId, normalized);
+        return {
+          rawPeer: peerHex,
+          chainId,
+          address: normalized,
+          oappId,
+          resolved: true,
+        };
+      } catch (error) {
+        console.debug("[SecurityWebCrawler] Failed to normalize peer address", {
+          peerHex,
+          decoded,
+          error,
+        });
+        decoded = null;
+      }
+    }
+
+    // Fallback identifier for non-EVM peers; do not attempt to crawl further.
+    return {
+      rawPeer: peerHex,
+      chainId,
+      address: null,
+      oappId: `${chainId}_${peerHex.toLowerCase()}`,
+      resolved: false,
+    };
+  }
+
+  addPeerEdges({
+    currentOAppId,
+    depth,
+    maxDepth,
+    queue,
+    visited,
+    edges,
+    configContexts,
+  }) {
+    for (const { config, peerInfo } of configContexts) {
+      if (!peerInfo || !peerInfo.oappId) {
+        continue;
+      }
+
+      const edgeKey = `${peerInfo.oappId}->${currentOAppId}`;
+      if (!edges.has(edgeKey)) {
+        edges.set(edgeKey, {
+          from: peerInfo.oappId,
+          to: currentOAppId,
+          srcEid: config.eid,
+          srcChainId: peerInfo.chainId,
+          linkType: "peer",
+          peerResolved: peerInfo.resolved,
+          peerRaw: peerInfo.rawPeer,
+        });
+      }
+
+      if (peerInfo.resolved && depth < maxDepth && !visited.has(peerInfo.oappId)) {
+        queue.push({ oappId: peerInfo.oappId, depth: depth + 1 });
+      }
+    }
   }
 }
