@@ -812,7 +812,11 @@ export class QueryManager {
     const eid = row.eid ?? null;
     const resolvedChainId = eid !== null && eid !== undefined ? this.chainMetadata.resolveChainId(eid) : null;
     const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
-    const chainLabel = chainId ? this.getChainDisplayLabel(chainId) || chainId : null;
+    const chainLabel = chainId
+      ? this.getChainDisplayLabel(chainId) || chainId
+      : eid !== null && eid !== undefined
+        ? `EID ${eid} (unmapped)`
+        : null;
 
     let decodedAddress = bytes32ToAddress(peerHex);
     let oappId = null;
@@ -936,7 +940,13 @@ export class QueryManager {
       if (ts) lines.push(ts.primary);
     }
     if (eventId) lines.push(eventId);
-    if (txHash) lines.push(txHash);
+    if (txHash) {
+      const hashStr = String(txHash);
+      const truncated = hashStr.length > 20
+        ? `${hashStr.slice(0, 10)}…${hashStr.slice(-6)}`
+        : hashStr;
+      lines.push(`Tx ${truncated}`);
+    }
 
     const copyValue = txHash || eventId || lines.join(" | ");
     return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);

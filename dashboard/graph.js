@@ -499,7 +499,7 @@ export class SecurityGraphRenderer {
       const alias = this.getOAppAlias(node.id);
       const titleLines = [
         alias ? `${alias} (${node.id})` : node.id,
-        `Chain: ${this.getChainDisplayLabel(node.chainId) || node.chainId}`,
+        `Chain: ${this.formatChainLabel(node.chainId) || node.chainId}`,
         `Tracked: ${node.isTracked ? "Yes" : "No"}`,
         `Total Packets: ${node.totalPacketsReceived}`,
         `Min Required DVNs: ${minRequiredDVNs}`,
@@ -545,7 +545,7 @@ export class SecurityGraphRenderer {
 
       // Chain label
       let chainDisplayLabel =
-        this.getChainDisplayLabel(node.chainId) || `Chain ${node.chainId}`;
+        this.formatChainLabel(node.chainId) || `Chain ${node.chainId}`;
       chainDisplayLabel = chainDisplayLabel.replace(/\s*\(\d+\)$/, "");
       const displayText = chainDisplayLabel.toUpperCase();
 
@@ -709,6 +709,7 @@ export class SecurityGraphRenderer {
           usesSentinel,
           matchesDominant,
           differsFromDominant,
+          fingerprint,
         };
       });
 
@@ -728,13 +729,10 @@ export class SecurityGraphRenderer {
       if (node.isDangling) {
         notes.add("Dangling");
       }
-      if (hasConfigDifference) {
-        notes.add("Non-standard DVNs");
-      }
       if (hasSentinel) {
         notes.add("Sentinel quorum");
       }
-      if (node.isTracked && activeIncoming.length === 0) {
+      if (node.isTracked && activeIncoming.length === 0 && !blockedNodes.has(node.id)) {
         notes.add("No active inbound edges");
       }
 
@@ -743,16 +741,24 @@ export class SecurityGraphRenderer {
         blockReasons.push("Dangling peer (no config crawled)");
       }
 
+      const chainLabel = this.formatChainLabel(node.chainId) || node.chainId;
+      const totalPacketsValue = Number(
+        node.totalPacketsReceived === undefined || node.totalPacketsReceived === null
+          ? 0
+          : node.totalPacketsReceived,
+      );
+      const totalPackets = Number.isFinite(totalPacketsValue) ? totalPacketsValue : 0;
+
       return {
         id: node.id,
         node,
         alias: this.getOAppAlias(node.id),
-        chainLabel: this.getChainDisplayLabel(node.chainId) || node.chainId,
+        chainLabel,
         depth: node.depth >= 0 ? node.depth : "—",
         isTracked: Boolean(node.isTracked),
         isDangling: Boolean(node.isDangling),
         isBlocked: blockedNodes.has(node.id),
-        totalPackets: node.totalPacketsReceived || 0,
+        totalPackets,
         incoming,
         outgoing,
         activeIncoming,
@@ -803,7 +809,18 @@ export class SecurityGraphRenderer {
     );
 
     const computeMedian = (values) => {
-      const filtered = values.filter((value) => Number.isFinite(value));
+      const filtered = [];
+      for (const value of values) {
+        const numeric =
+          typeof value === "number"
+            ? value
+            : value === undefined || value === null
+              ? NaN
+              : Number(value);
+        if (Number.isFinite(numeric)) {
+          filtered.push(numeric);
+        }
+      }
       if (!filtered.length) {
         return 0;
       }
@@ -868,6 +885,14 @@ export class SecurityGraphRenderer {
     const edgeHighId = edgeExtremes.high?.id ?? null;
     const packetLowId = packetExtremes.low?.id ?? null;
     const packetHighId = packetExtremes.high?.id ?? null;
+    const hasEdgeVariation =
+      edgeExtremes.low &&
+      edgeExtremes.high &&
+      edgeExtremes.low.activeIncomingCount !== edgeExtremes.high.activeIncomingCount;
+    const hasPacketVariation =
+      packetExtremes.low &&
+      packetExtremes.high &&
+      packetExtremes.low.totalPackets !== packetExtremes.high.totalPackets;
 
     const insightGrid = document.createElement("div");
     insightGrid.className = "node-insight-grid";
@@ -908,7 +933,7 @@ export class SecurityGraphRenderer {
       }
 
       const chains = Array.from(dominantCombination.srcChains || []).map((chainId) =>
-        this.getChainDisplayLabel(chainId) || chainId,
+        this.formatChainLabel(chainId) || chainId,
       );
       this.appendSummaryRow(
         dl,
@@ -1051,14 +1076,14 @@ export class SecurityGraphRenderer {
       "Median inbound edges",
       eligibleNodes.length ? formatMedianValue(edgeMedian) : "—",
     );
-    if (edgeExtremes.low) {
+    if (hasEdgeVariation && edgeExtremes.low) {
       this.appendSummaryRow(
         statsList,
         "Lowest connectivity",
         `${formatNodeDescriptor(edgeExtremes.low)} • ${edgeExtremes.low.activeIncomingCount}`,
       );
     }
-    if (edgeExtremes.high) {
+    if (hasEdgeVariation && edgeExtremes.high) {
       this.appendSummaryRow(
         statsList,
         "Highest connectivity",
@@ -1070,14 +1095,14 @@ export class SecurityGraphRenderer {
       "Median packets",
       eligibleNodes.length ? formatMedianValue(packetMedian) : "—",
     );
-    if (packetExtremes.low) {
+    if (hasPacketVariation && packetExtremes.low) {
       this.appendSummaryRow(
         statsList,
         "Lightest traffic",
         `${formatNodeDescriptor(packetExtremes.low)} • ${formatNumber(packetExtremes.low.totalPackets)}`,
       );
     }
-    if (packetExtremes.high) {
+    if (hasPacketVariation && packetExtremes.high) {
       this.appendSummaryRow(
         statsList,
         "Heaviest traffic",
@@ -1179,7 +1204,54 @@ export class SecurityGraphRenderer {
       } else {
         const stack = document.createElement("div");
         stack.className = "config-stack";
+
+        const standardGroups = new Map();
+        const variantDetails = [];
+
         metric.configDetails.forEach((detail) => {
+          if (detail.matchesDominant && !detail.usesSentinel && !detail.differsFromDominant) {
+            const key = detail.fingerprint || "dominant";
+            if (!standardGroups.has(key)) {
+              standardGroups.set(key, {
+                count: 0,
+                eids: [],
+                sample: detail,
+              });
+            }
+            const group = standardGroups.get(key);
+            group.count += 1;
+            if (detail.srcEid !== undefined && detail.srcEid !== null) {
+              group.eids.push(detail.srcEid);
+            }
+          } else {
+            variantDetails.push(detail);
+          }
+        });
+
+        const renderDvns = (pairs, container) => {
+          const safePairs = Array.isArray(pairs) ? pairs : [];
+          if (safePairs.length) {
+            const list = document.createElement("div");
+            list.className = "dvn-pill-row";
+            safePairs.forEach((pair) => {
+              const pill = document.createElement("span");
+              pill.className = "dvn-pill copyable";
+              const copyValue = pair.address || pair.label;
+              pill.dataset.copyValue = copyValue || "";
+              pill.title = pair.address || pair.label;
+              pill.textContent = pair.label || (pair.address ? this.shortenAddress(pair.address) : "—");
+              list.appendChild(pill);
+            });
+            container.appendChild(list);
+          } else {
+            const placeholder = document.createElement("div");
+            placeholder.className = "dvn-pill-row";
+            placeholder.textContent = "—";
+            container.appendChild(placeholder);
+          }
+        };
+
+        const renderVariantDetail = (detail) => {
           const line = document.createElement("div");
           line.className = "config-line";
           if (detail.differsFromDominant) {
@@ -1196,32 +1268,40 @@ export class SecurityGraphRenderer {
               : "EID —";
           header.textContent = `${eidText} • ${detail.requiredDVNCount} required`;
           line.appendChild(header);
+          renderDvns(detail.requiredPairs, line);
+          stack.appendChild(line);
+        };
 
-          if (detail.requiredPairs.length) {
-            const list = document.createElement("div");
-            list.className = "dvn-pill-row";
-            detail.requiredPairs.forEach((pair) => {
-              const pill = document.createElement("span");
-              pill.className = "dvn-pill copyable";
-              const copyValue = pair.address || pair.label;
-              pill.dataset.copyValue = copyValue;
-              pill.title = pair.address || pair.label;
-              pill.textContent = pair.label;
-              if (pair.address && !pair.label) {
-                pill.textContent = this.shortenAddress(pair.address);
-              }
-              list.appendChild(pill);
-            });
-            line.appendChild(list);
-          } else {
-            const placeholder = document.createElement("div");
-            placeholder.className = "dvn-pill-row";
-            placeholder.textContent = "—";
-            line.appendChild(placeholder);
+        const renderStandardGroup = (group) => {
+          if (!group?.sample) {
+            return;
+          }
+          const line = document.createElement("div");
+          line.className = "config-line config-line--standard";
+          const header = document.createElement("div");
+          header.className = "config-line-header";
+          header.textContent = `Dominant combo • ${group.count} EID${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
+          line.appendChild(header);
+
+          const uniqueEids = Array.from(new Set(group.eids.filter((eid) => eid !== undefined && eid !== null))).map(
+            (eid) => String(eid),
+          );
+          if (uniqueEids.length) {
+            const preview = uniqueEids.slice(0, 4).join(", ");
+            const note = document.createElement("div");
+            note.className = "config-line-note";
+            note.textContent =
+              uniqueEids.length > 4 ? `EIDs ${preview}, …` : `EIDs ${preview}`;
+            line.appendChild(note);
           }
 
+          renderDvns(group.sample.requiredPairs, line);
           stack.appendChild(line);
-        });
+        };
+
+        variantDetails.forEach(renderVariantDetail);
+        standardGroups.forEach((group) => renderStandardGroup(group));
+
         configCell.appendChild(stack);
       }
       if (metric.hasConfigDifference) {
@@ -1232,9 +1312,10 @@ export class SecurityGraphRenderer {
       const optionalCell = document.createElement("td");
       optionalCell.className = "optional-cell";
       const optionalChunks = metric.configDetails.filter(
-        (detail) =>
-          (detail.optionalSummary && detail.optionalSummary !== "0") ||
-          detail.optionalPairs.length,
+        (detail) => {
+          const pairs = Array.isArray(detail.optionalPairs) ? detail.optionalPairs : [];
+          return (detail.optionalSummary && detail.optionalSummary !== "0") || pairs.length;
+        },
       );
       if (!optionalChunks.length) {
         optionalCell.textContent = "—";
@@ -1261,14 +1342,15 @@ export class SecurityGraphRenderer {
           header.textContent = labelParts.join(" • ");
           block.appendChild(header);
 
-          if (detail.optionalPairs.length) {
+          const optionalPairs = Array.isArray(detail.optionalPairs) ? detail.optionalPairs : [];
+          if (optionalPairs.length) {
             const list = document.createElement("div");
             list.className = "dvn-pill-row";
-            detail.optionalPairs.forEach((pair) => {
+            optionalPairs.forEach((pair) => {
               const pill = document.createElement("span");
               pill.className = "dvn-pill dvn-pill--optional copyable";
               const copyValue = pair.address || pair.label;
-              pill.dataset.copyValue = copyValue;
+              pill.dataset.copyValue = copyValue || "";
               pill.title = pair.address || pair.label;
               pill.textContent = pair.label || this.shortenAddress(pair.address);
               list.appendChild(pill);
@@ -1293,12 +1375,14 @@ export class SecurityGraphRenderer {
       }
       edgesCell.textContent = edgeParts.join(" / ");
       if (
+        hasEdgeVariation &&
         metric.id === edgeLowId &&
         metric.isTracked &&
         !metric.isBlocked
       ) {
         edgesCell.classList.add("cell-extreme-low");
       } else if (
+        hasEdgeVariation &&
         metric.id === edgeHighId &&
         metric.isTracked &&
         !metric.isBlocked
@@ -1311,12 +1395,14 @@ export class SecurityGraphRenderer {
       packetsCell.className = "metric-cell";
       packetsCell.textContent = formatNumber(metric.totalPackets);
       if (
+        hasPacketVariation &&
         metric.id === packetLowId &&
         metric.isTracked &&
         !metric.isBlocked
       ) {
         packetsCell.classList.add("cell-extreme-low");
       } else if (
+        hasPacketVariation &&
         metric.id === packetHighId &&
         metric.isTracked &&
         !metric.isBlocked
@@ -1758,6 +1844,22 @@ export class SecurityGraphRenderer {
       return str;
     }
     return `${str.slice(0, 6)}..${str.slice(-4)}`;
+  }
+
+  formatChainLabel(chainId) {
+    if (chainId === undefined || chainId === null || chainId === "") {
+      return "";
+    }
+    const display = this.getChainDisplayLabel(chainId);
+    if (display) {
+      return display;
+    }
+    const str = String(chainId);
+    if (str.startsWith("eid-")) {
+      const suffix = str.slice(4);
+      return suffix ? `EID ${suffix} (unmapped)` : "EID (unmapped)";
+    }
+    return str;
   }
 
   getNodeSecurityMetrics(node) {
