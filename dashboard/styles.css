@@ -556,6 +556,277 @@ td {
   box-shadow: 3px 3px 0 var(--ink);
 }
 
+.node-detail-board {
+  border: 4px solid var(--ink);
+  background: var(--paper);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  box-shadow: 8px 8px 0 var(--ink);
+}
+
+.node-detail-board h3 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.node-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.insight-card {
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 5px 5px 0 var(--ink);
+}
+
+.insight-card--alert {
+  background: #ffe8f8;
+}
+
+.insight-card h4 {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.9rem;
+}
+
+.insight-lead {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.insight-list {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.insight-list dt {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+.insight-list dd {
+  margin: 0 0 0.4rem;
+}
+
+.anomaly-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.anomaly-group h5 {
+  margin: 0;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+}
+
+.anomaly-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+}
+
+.anomaly-list li {
+  list-style: square;
+}
+
+.anomaly-node {
+  font-weight: 600;
+}
+
+.anomaly-detail {
+  margin-left: 0.35rem;
+  font-style: italic;
+}
+
+.node-detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.node-detail-table th,
+.node-detail-table td {
+  border: 2px solid var(--ink);
+  padding: 0.6rem;
+  vertical-align: top;
+}
+
+.node-detail-table th {
+  background: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+}
+
+.node-detail-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.node-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.node-alias {
+  font-weight: 600;
+}
+
+.node-id {
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+.status-cell,
+.notes-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.config-stack,
+.optional-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.config-line,
+.optional-line {
+  border: 2px solid var(--ink);
+  padding: 0.4rem;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.config-line--variant {
+  background: rgba(255, 29, 245, 0.18);
+}
+
+.config-line--standard {
+  background: rgba(0, 0, 0, 0.04);
+  border-style: dotted;
+}
+
+.config-line--sentinel {
+  border-style: dashed;
+}
+
+.config-line-note {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
+}
+
+.config-line-header,
+.optional-line-header {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.dvn-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.dvn-pill {
+  border: 2px solid var(--ink);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.7rem;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.dvn-pill--optional {
+  background: #e7f4ff;
+}
+
+.metric-cell {
+  font-weight: 600;
+}
+
+.cell-variant {
+  background: rgba(255, 29, 245, 0.18);
+}
+
+.cell-sentinel {
+  background: #f5efff;
+}
+
+.cell-extreme-high {
+  background: #d9ffdb;
+}
+
+.cell-extreme-low {
+  background: #ffe0d6;
+}
+
+.row-blocked {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.row-untracked {
+  opacity: 0.85;
+}
+
+.badge {
+  border: 2px solid var(--ink);
+  padding: 0.15rem 0.4rem;
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  background: var(--paper);
+}
+
+.badge--default {
+  background: var(--paper);
+}
+
+.badge--alert {
+  background: rgba(255, 29, 245, 0.3);
+}
+
+.badge--danger {
+  background: rgba(255, 79, 79, 0.35);
+}
+
+.badge--info {
+  background: rgba(120, 189, 255, 0.35);
+}
+
+.badge--muted {
+  background: rgba(0, 0, 0, 0.07);
+}
+
 @media (max-width: 720px) {
   .page-header,
   main {

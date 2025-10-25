@@ -167,7 +167,6 @@ new SecurityWebCrawler(client, chainMetadata, dvnRegistry)
 ```javascript
 const webData = await crawler.crawl(seedOAppId, {
   depth: 10,           // Max traversal depth
-  limit: 1000,         // Packets per node
   onProgress: (msg) => console.log(msg)
 });
 
@@ -175,7 +174,6 @@ const webData = await crawler.crawl(seedOAppId, {
 {
   seed: "chainId_address",
   crawlDepth: 10,
-  packetLimit: 1000,
   timestamp: "2025-10-24T...",
   nodes: [
     {
@@ -195,18 +193,23 @@ const webData = await crawler.crawl(seedOAppId, {
           optionalDVNs: [],
           optionalDVNThreshold: 0,
           usesRequiredDVNSentinel: false,
-          isConfigTracked: true
+          isConfigTracked: true,
+          peer: "0x…",
+          peerOAppId: "30184_0x...",
+          peerResolved: true
         }
       ]
     }
   ],
   edges: [
     {
-      from: "sender_oappId",
+      from: "peer_oappId",
       to: "receiver_oappId",
       srcEid: "30184",
       srcChainId: "8453",
-      packetCount: 42
+      linkType: "peer",
+      peerResolved: true,
+      peerRaw: "0x0000..."
     }
   ]
 }
@@ -214,14 +217,12 @@ const webData = await crawler.crawl(seedOAppId, {
 
 **Algorithm**:
 1. BFS traversal starting from seed
-2. For each node: fetch security config + packets received
-3. Extract unique senders from packets
-4. Resolve sender EID → chainId → create sender oappId
-5. Queue unvisited senders
-6. Continue until depth limit or no more nodes
-7. Add "dangling" nodes (referenced but not crawled)
+2. For each node: fetch security configs and associated peers
+3. Resolve peer EIDs → chainIds → candidate OApp IDs
+4. Enqueue resolved peers (EVM addresses) until depth limit
+5. Add "dangling" nodes for unresolved peers referenced by edges
 
-**Performance**: Typical crawl (depth=2, limit=100) takes 5-30 seconds depending on node count.
+**Performance**: Typical crawl (depth=2) completes in seconds because it avoids per-packet scans.
 
 ---
 
@@ -740,26 +741,23 @@ http://localhost:3000?endpoint=https://your-hasura.com/v1/graphql
 **In UI** (`index.html`):
 ```html
 <input name="depth" type="number" value="10" />
-<input name="limit" type="number" value="1000" />
 ```
 
 **Defaults** (`config.js`):
 ```javascript
 CRAWLER: {
   DEFAULT_DEPTH: 10,
-  DEFAULT_LIMIT: 1000,
 }
 ```
 
 **Performance Impact**:
-- **Depth**: Exponential growth (depth 1 = ~10 nodes, depth 2 = ~100, depth 3 = ~1000)
-- **Limit**: Linear per-node (higher = more senders found = wider graph)
+- Depth controls breadth exponentially (depth 1 ≈ handful of nodes, depth 2 ≈ few dozen, depth 3 ≈ few hundred).
+- Without per-packet scans, crawls typically finish in a few seconds.
 
 **Recommendations**:
-- **Quick exploration**: depth=1, limit=100 (~5-10 seconds)
-- **Medium crawl**: depth=2, limit=500 (~15-30 seconds)
-- **Deep dive**: depth=3, limit=1000 (~1-2 minutes)
-- **Warning**: depth >3 can take 5+ minutes and crash browser
+- **Quick exploration**: depth = 1
+- **Medium crawl**: depth = 2
+- **Deep dive**: depth = 3 (ensure browser can render larger graphs)
 
 ---
 

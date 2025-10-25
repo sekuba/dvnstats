@@ -14,6 +14,7 @@ import {
   chainPreferenceFromColumn,
   normalizeAddress,
   normalizeOAppId,
+  bytes32ToAddress,
 } from "./core.js";
 
 /**
@@ -182,35 +183,6 @@ export class QueryManager {
     };
   }
 
-  buildDvnLookup(dvnMetadata) {
-    const map = new Map();
-    if (!Array.isArray(dvnMetadata)) {
-      return map;
-    }
-
-    for (const entry of dvnMetadata) {
-      if (!entry || !entry.address) continue;
-
-      const addressKey = String(entry.address).toLowerCase();
-      const chainKey =
-        entry.chainId !== undefined && entry.chainId !== null
-          ? String(entry.chainId)
-          : null;
-      const label = entry.name || entry.address;
-
-      if (!addressKey) continue;
-
-      if (chainKey) {
-        map.set(`${chainKey}_${addressKey}`, label);
-      }
-      if (!map.has(addressKey)) {
-        map.set(addressKey, label);
-      }
-    }
-
-    return map;
-  }
-
   resolveDvnLabels(addresses, meta, chainIdOverride) {
     if (!Array.isArray(addresses) || !addresses.length) {
       return [];
@@ -226,24 +198,21 @@ export class QueryManager {
     return addresses.map((address) => {
       if (!address) return "";
 
-      const key = String(address).toLowerCase();
-
       if (chainId) {
-        const lookupKey = `${chainId}_${key}`;
-        if (meta?.dvnLookup && meta.dvnLookup.has(lookupKey)) {
-          return meta.dvnLookup.get(lookupKey);
+        const label = this.dvnRegistry.resolve(address, chainId);
+        if (label && label !== address) {
+          return label;
         }
 
-        // Try ChainMetadata DVN lookup
-        const layerKey = `${chainId}:${key}`;
         const layerName = this.chainMetadata.resolveDvnName(address, chainId);
-        if (layerName !== address) {
+        if (layerName && layerName !== address) {
           return layerName;
         }
       }
 
-      if (meta?.dvnLookup instanceof Map && meta.dvnLookup.has(key)) {
-        return meta.dvnLookup.get(key);
+      const fallback = this.dvnRegistry.resolve(address);
+      if (fallback && fallback !== address) {
+        return fallback;
       }
 
       return address;
@@ -347,11 +316,12 @@ export class QueryManager {
               lastComputedBlock
               lastComputedTimestamp
               lastComputedByEventId
-            }
-            DvnMetadata {
-              address
-              chainId
-              name
+              lastComputedTransactionHash
+              peer
+              peerTransactionHash
+              peerLastUpdatedBlock
+              peerLastUpdatedTimestamp
+              peerLastUpdatedEventId
             }
           }
         `,
@@ -456,7 +426,6 @@ export class QueryManager {
         processResponse: (payload, meta) => {
           const oapp = payload?.data?.OApp?.[0] ?? null;
           const configs = payload?.data?.OAppSecurityConfig ?? [];
-          const dvnMetadata = payload?.data?.DvnMetadata ?? [];
           const enrichedMeta = { ...meta };
 
           if (oapp) {
@@ -471,12 +440,6 @@ export class QueryManager {
             enrichedMeta.summary =
               enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
             enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
-          }
-
-          if (Array.isArray(dvnMetadata) && dvnMetadata.length) {
-            enrichedMeta.dvnLookup = this.buildDvnLookup(dvnMetadata);
-          } else {
-            enrichedMeta.dvnLookup = new Map();
           }
 
           const formattedRows = this.formatSecurityConfigRows(configs, enrichedMeta);
@@ -588,12 +551,10 @@ export class QueryManager {
         buildVariables: (card) => {
           const seedOAppIdInput = card.querySelector('input[name="seedOAppId"]');
           const depthInput = card.querySelector('input[name="depth"]');
-          const limitInput = card.querySelector('input[name="limit"]');
           const fileInput = card.querySelector('input[name="webFile"]');
 
           const seedOAppId = seedOAppIdInput?.value?.trim();
           const depth = parseInt(depthInput?.value) || 10;
-          const limit = parseInt(limitInput?.value) || 1000;
           const file = fileInput?.files?.[0];
 
           if (!seedOAppId && !file) {
@@ -604,15 +565,14 @@ export class QueryManager {
 
           const isCrawl = !!seedOAppId;
 
-          if (isCrawl && fileInput) {
-            fileInput.value = "";
-          }
+        if (file && seedOAppIdInput) {
+          seedOAppIdInput.value = "";
+        }
 
           return {
             variables: {
               seedOAppId,
               depth,
-              limit,
               file: isCrawl ? null : file,
               isCrawl,
             },
@@ -660,33 +620,21 @@ export class QueryManager {
 
   aggregatePopularOapps(packets, options = {}) {
     const resultLimit = clampInteger(options.resultLimit, 1, 200, 20);
-    const fromTimestamp = options.fromTimestamp ?? 0;
-    const toTimestamp = options.nowTimestamp ?? Math.floor(Date.now() / 1000);
     const windowLabel = options.windowLabel || "";
     const fetchLimit = options.fetchLimit ?? null;
 
     const groups = new Map();
-    let sampledPackets = 0;
-
     packets.forEach((packet) => {
       if (!packet) return;
-      sampledPackets += 1;
 
-      const inferredKey =
-        packet.oappId ||
-        (packet.chainId && packet.receiver
-          ? `${packet.chainId}_${packet.receiver.toLowerCase()}`
-          : null);
+      const inferredKey = packet.oappId || (packet.chainId && packet.receiver ? `${packet.chainId}_${packet.receiver.toLowerCase()}` : null);
       if (!inferredKey) return;
 
       const [chainPart, addressPart] = inferredKey.split("_");
-      const normalizedAddress = (packet.receiver || addressPart || "").toLowerCase();
-      const chainId = chainPart || String((packet.chainId ?? ""));
-
       const group = groups.get(inferredKey) ?? {
         oappId: inferredKey,
-        chainId,
-        address: normalizedAddress,
+        chainId: chainPart || String(packet.chainId ?? ""),
+        address: (packet.receiver || addressPart || "").toLowerCase(),
         count: 0,
         eids: new Set(),
         lastTimestamp: 0,
@@ -695,27 +643,17 @@ export class QueryManager {
       };
 
       group.count += 1;
-
-      if (packet.srcEid !== undefined && packet.srcEid !== null) {
-        group.eids.add(String(packet.srcEid));
-      }
+      if (packet.srcEid !== undefined && packet.srcEid !== null) group.eids.add(String(packet.srcEid));
 
       const timestamp = Number(packet.blockTimestamp ?? 0);
       if (Number.isFinite(timestamp)) {
-        if (timestamp > group.lastTimestamp) {
-          group.lastTimestamp = timestamp;
-        }
-        if (timestamp < group.firstTimestamp) {
-          group.firstTimestamp = timestamp;
-        }
+        group.lastTimestamp = Math.max(group.lastTimestamp, timestamp);
+        group.firstTimestamp = Math.min(group.firstTimestamp, timestamp);
       }
 
-      const blockNumber =
-        packet.blockNumber !== undefined ? Number(packet.blockNumber) : null;
-      if (Number.isFinite(blockNumber)) {
-        if (group.lastBlock === null || blockNumber > group.lastBlock) {
-          group.lastBlock = blockNumber;
-        }
+      const blockNumber = packet.blockNumber !== undefined ? Number(packet.blockNumber) : null;
+      if (Number.isFinite(blockNumber) && (group.lastBlock === null || blockNumber > group.lastBlock)) {
+        group.lastBlock = blockNumber;
       }
 
       groups.set(inferredKey, group);
@@ -779,23 +717,19 @@ export class QueryManager {
       };
     });
 
-    const summary = {
-      windowLabel,
-      fromTimestamp,
-      toTimestamp,
-      totalOapps: groups.size,
-      sampledPackets,
-      returnedCount: rows.length,
-      fetchLimit: fetchLimit ?? "∞",
-    };
-
-    const summaryLabel = `Top ${rows.length} • last ${windowLabel || "window"}`;
-
     return {
       rows,
       meta: {
-        summary: summaryLabel,
-        popularOappsSummary: summary,
+        summary: `Top ${rows.length} • last ${windowLabel || "window"}`,
+        popularOappsSummary: {
+          windowLabel,
+          fromTimestamp: options.fromTimestamp ?? 0,
+          toTimestamp: options.nowTimestamp ?? Math.floor(Date.now() / 1000),
+          totalOapps: groups.size,
+          sampledPackets: packets.length,
+          returnedCount: rows.length,
+          fetchLimit: fetchLimit ?? "∞",
+        },
       },
     };
   }
@@ -810,6 +744,8 @@ export class QueryManager {
     formatted.Library = this.formatLibraryDescriptor(row);
     formatted["Required DVNs"] = this.formatRequiredDvns(row, meta);
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta);
+    formatted.Peer = this.formatPeer(row);
+    formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
     formatted.Fallbacks = this.formatFallbackFields(
       row.fallbackFields,
@@ -843,31 +779,111 @@ export class QueryManager {
     if (row.usesRequiredDVNSentinel) {
       return this.createFormattedCell(["optional-only (sentinel)"]);
     }
-
-    const addresses = Array.isArray(row.effectiveRequiredDVNs)
-      ? row.effectiveRequiredDVNs.filter(Boolean)
-      : [];
-    const count = row.effectiveRequiredDVNCount ?? addresses.length ?? 0;
-    const lines = [`Count ${count}`];
-    if (addresses.length) {
-      lines.push(...this.resolveDvnLabels(addresses, meta, row.chainId ?? meta.chainId));
-    }
-
-    return this.createFormattedCell(lines, addresses.join(", ") || String(count));
+    return this.formatDvnSet(row.effectiveRequiredDVNs, row.effectiveRequiredDVNCount, meta, row.chainId);
   }
 
   formatOptionalDvns(row, meta) {
-    const addresses = Array.isArray(row.effectiveOptionalDVNs)
-      ? row.effectiveOptionalDVNs.filter(Boolean)
-      : [];
-    const count = row.effectiveOptionalDVNCount ?? addresses.length ?? 0;
+    const count = row.effectiveOptionalDVNCount ?? 0;
     const threshold = row.effectiveOptionalDVNThreshold ?? "—";
-    const lines = [`Count ${count}`, `Threshold ${threshold}`];
-    if (addresses.length) {
-      lines.push(...this.resolveDvnLabels(addresses, meta, row.chainId ?? meta.chainId));
+    return this.formatDvnSet(
+      row.effectiveOptionalDVNs,
+      count,
+      meta,
+      row.chainId,
+      [`Threshold ${threshold}`]
+    );
+  }
+
+  formatDvnSet(addresses, count, meta, chainId, extraLines = []) {
+    const addrs = Array.isArray(addresses) ? addresses.filter(Boolean) : [];
+    const lines = [`Count ${count ?? addrs.length ?? 0}`, ...extraLines];
+    if (addrs.length) {
+      lines.push(...this.resolveDvnLabels(addrs, meta, chainId ?? meta.chainId));
+    }
+    return this.createFormattedCell(lines, addrs.join(", ") || String(count));
+  }
+
+  derivePeerContext(row) {
+    const peerHex = row.peer;
+    if (!peerHex) {
+      return null;
     }
 
-    return this.createFormattedCell(lines, addresses.join(", ") || `${count}/${threshold}`);
+    const eid = row.eid ?? null;
+    const resolvedChainId = eid !== null && eid !== undefined ? this.chainMetadata.resolveChainId(eid) : null;
+    const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
+    const chainLabel = chainId
+      ? this.getChainDisplayLabel(chainId) || chainId
+      : eid !== null && eid !== undefined
+        ? `EID ${eid} (unmapped)`
+        : null;
+
+    let decodedAddress = bytes32ToAddress(peerHex);
+    let oappId = null;
+    let alias = null;
+    let normalizedAddress = null;
+
+    if (decodedAddress && chainId) {
+      try {
+        normalizedAddress = normalizeAddress(decodedAddress);
+        oappId = `${chainId}_${normalizedAddress}`;
+        alias = this.aliasManager.get(oappId);
+      } catch (error) {
+        console.debug("[QueryManager] Failed to normalize peer address", {
+          peerHex,
+          decodedAddress,
+          error,
+        });
+        normalizedAddress = decodedAddress;
+        oappId = `${chainId}_${decodedAddress}`;
+      }
+    }
+
+    return {
+      peerHex,
+      chainId,
+      chainLabel,
+      address: normalizedAddress || decodedAddress,
+      oappId,
+      alias,
+      copyValue: oappId || peerHex,
+    };
+  }
+
+  formatPeer(row) {
+    const ctx = this.derivePeerContext(row);
+    if (!ctx) {
+      return this.createFormattedCell(["—"], "");
+    }
+
+    const lines = [];
+    if (ctx.alias) {
+      lines.push(ctx.alias);
+    }
+    if (ctx.oappId) {
+      lines.push(`ID ${ctx.oappId}`);
+      if (ctx.address) {
+        lines.push(`Addr ${ctx.address}`);
+      }
+    } else {
+      lines.push(ctx.peerHex);
+    }
+
+    if (ctx.chainLabel) {
+      lines.push(`Chain ${ctx.chainLabel}`);
+    }
+
+    const meta = ctx.oappId ? { oappId: ctx.oappId } : undefined;
+    return this.createFormattedCell(lines, ctx.copyValue, meta);
+  }
+
+  formatPeerUpdate(row) {
+    return this.formatUpdateInfo({
+      block: row.peerLastUpdatedBlock,
+      timestamp: row.peerLastUpdatedTimestamp,
+      eventId: row.peerLastUpdatedEventId,
+      txHash: row.peerTransactionHash,
+    });
   }
 
   formatConfirmations(row) {
@@ -908,24 +924,31 @@ export class QueryManager {
   }
 
   formatLastComputed(row) {
+    return this.formatUpdateInfo({
+      block: row.lastComputedBlock,
+      timestamp: row.lastComputedTimestamp,
+      eventId: row.lastComputedByEventId,
+      txHash: row.lastComputedTransactionHash,
+    });
+  }
+
+  formatUpdateInfo({ block, timestamp, eventId, txHash }) {
     const lines = [];
-    if (row.lastComputedBlock !== undefined && row.lastComputedBlock !== null) {
-      lines.push(`Block ${row.lastComputedBlock}`);
+    if (block !== undefined && block !== null) lines.push(`Block ${block}`);
+    if (timestamp !== undefined && timestamp !== null) {
+      const ts = formatTimestampValue(timestamp);
+      if (ts) lines.push(ts.primary);
     }
-    if (
-      row.lastComputedTimestamp !== undefined &&
-      row.lastComputedTimestamp !== null
-    ) {
-      const ts = formatTimestampValue(row.lastComputedTimestamp);
-      if (ts) {
-        lines.push(ts.primary);
-      }
-    }
-    if (row.lastComputedByEventId) {
-      lines.push(row.lastComputedByEventId);
+    if (eventId) lines.push(eventId);
+    if (txHash) {
+      const hashStr = String(txHash);
+      const truncated = hashStr.length > 20
+        ? `${hashStr.slice(0, 10)}…${hashStr.slice(-6)}`
+        : hashStr;
+      lines.push(`Tx ${truncated}`);
     }
 
-    const copyValue = lines.join(" | ");
+    const copyValue = txHash || eventId || lines.join(" | ");
     return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);
   }
 
@@ -976,7 +999,6 @@ export class QueryManager {
         );
         const webData = await crawler.crawl(variables.seedOAppId, {
           depth: variables.depth,
-          limit: variables.limit,
           onProgress: (status) => this.setStatus(statusEl, status, "loading"),
         });
         payload = { webData };

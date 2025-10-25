@@ -12,18 +12,24 @@ export const CONFIG = {
   // Dead address used for blocked DVN detection
   DEAD_ADDRESS: "0x000000000000000000000000000000000000dead",
 
+  // Zero address (bytes32) for blocked peer detection
+  ZERO_PEER: "0x0000000000000000000000000000000000000000000000000000000000000000",
+
   // SVG graph rendering constants
   SVG: {
     WIDTH: 1600,
     HEIGHT: 1200,
     NODE_RADIUS: 40,
     PADDING: 150,
+    SEED_GAP: 400,           // Distance from seed to first column (left/right)
+    COLUMN_SPACING: 300,     // Distance between subsequent columns
+    MAX_NODES_PER_COLUMN: 8, // Max nodes in a single column before splitting
+    MAX_COLUMNS: 20,         // Max number of columns per side
   },
 
   // Security web crawler settings
   CRAWLER: {
     DEFAULT_DEPTH: 10,
-    DEFAULT_LIMIT: 1000,
   },
 
   // UI interaction settings
