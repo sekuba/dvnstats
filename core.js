@@ -113,13 +113,13 @@ export function bytes32ToAddress(value) {
 /**
  * Creates a normalized OApp ID from chain ID and address
  */
-export function makeOAppId(chainId, address) {
-  if (!chainId) {
-    throw new Error("Chain ID is required.");
+export function makeOAppId(localEid, address) {
+  if (!localEid && localEid !== 0) {
+    throw new Error("localEid is required.");
   }
 
   const normalized = normalizeAddress(address);
-  return `${chainId}_${normalized}`;
+  return `${localEid}_${normalized}`;
 }
 
 /**
@@ -134,17 +134,17 @@ export function normalizeOAppId(value) {
   const parts = trimmed.split("_");
 
   if (parts.length !== 2) {
-    throw new Error("OApp ID must follow 'chainId_address' format.");
+    throw new Error("OApp ID must follow 'localEid_address' format.");
   }
 
-  const chainId = parts[0]?.trim();
+  const localEid = parts[0]?.trim();
   const address = normalizeAddress(parts[1]);
 
-  if (!chainId) {
-    throw new Error("OApp ID must include a chainId.");
+  if (!localEid) {
+    throw new Error("OApp ID must include a localEid.");
   }
 
-  return `${chainId}_${address}`;
+  return `${localEid}_${address}`;
 }
 
 /**
@@ -152,10 +152,8 @@ export function normalizeOAppId(value) {
  */
 export class ChainMetadata {
   constructor() {
-    this.eidToChainId = new Map();
-    this.chainIdToEid = new Map();
-    this.nativeChainLabels = new Map();
-    this.eidLabels = new Map();
+    this.localEidLabels = new Map();
+    this.localEidInfo = new Map();
     this.dvnLookup = new Map();
     this.loaded = false;
   }
@@ -183,7 +181,7 @@ export class ChainMetadata {
     }
 
     console.warn(
-      "[ChainMetadata] No metadata found; chain names will not be resolved",
+      "[ChainMetadata] No metadata found; endpoint names will not be resolved",
     );
     this.loaded = true;
   }
@@ -194,9 +192,24 @@ export class ChainMetadata {
       return;
     }
 
-    // Process LayerZero chain metadata format
-    let processedChains = 0;
     let processedDeployments = 0;
+
+    const storeDvn = (localEid, dvns) => {
+      if (!localEid || !dvns || typeof dvns !== "object") return;
+      Object.entries(dvns).forEach(([address, info]) => {
+        if (!address) return;
+        const normalized = String(address).toLowerCase();
+        const label =
+          info?.canonicalName || info?.name || info?.id || address;
+        if (!normalized) return;
+
+        this.dvnLookup.set(`local:${localEid}:${normalized}`, label);
+        const fallbackKey = `fallback:${normalized}`;
+        if (!this.dvnLookup.has(fallbackKey)) {
+          this.dvnLookup.set(fallbackKey, label);
+        }
+      });
+    };
 
     Object.entries(data).forEach(([key, entry]) => {
       if (!entry || typeof entry !== "object") {
@@ -204,52 +217,35 @@ export class ChainMetadata {
       }
 
       const baseLabel = this.deriveChainLabel(entry, key);
-      const chainDetails = entry.chainDetails || {};
-      const nativeId = chainDetails.nativeChainId;
 
-      if (nativeId !== undefined && nativeId !== null) {
-        const nativeIdStr = String(nativeId);
-        this.nativeChainLabels.set(nativeIdStr, baseLabel);
-        processedChains++;
-
-        // Store DVN metadata for this chain
-        if (entry.dvns && typeof entry.dvns === "object") {
-          Object.entries(entry.dvns).forEach(([address, info]) => {
-            if (!address) return;
-
-            const lowerAddress = String(address).toLowerCase();
-            const name =
-              info?.canonicalName || info?.name || info?.id || address;
-            this.dvnLookup.set(`${nativeIdStr}:${lowerAddress}`, name);
-          });
-        }
-      }
-
-      // Store EID mappings
       if (Array.isArray(entry.deployments)) {
         entry.deployments.forEach((deployment) => {
           if (!deployment || !deployment.eid) {
             return;
           }
 
-          const eid = String(deployment.eid);
-          const chainId = String(nativeId);
-
-          this.eidToChainId.set(eid, chainId);
-          this.chainIdToEid.set(chainId, eid);
-          processedDeployments++;
-
+          const localEid = String(deployment.eid);
           const stage =
             deployment.stage && deployment.stage !== "mainnet"
               ? ` (${deployment.stage})`
               : "";
-          this.eidLabels.set(eid, `${baseLabel}${stage}`);
+          const label = `${baseLabel}${stage}`;
+
+          this.localEidLabels.set(localEid, label);
+          this.localEidInfo.set(localEid, {
+            label,
+            stage: deployment.stage || "mainnet",
+            chainKey: entry.chainKey || null,
+          });
+
+          storeDvn(localEid, entry.dvns);
+          processedDeployments++;
         });
       }
     });
 
     console.log(
-      `[ChainMetadata] Processed ${processedChains} chains, ${processedDeployments} deployments, ${this.eidToChainId.size} EID mappings`,
+      `[ChainMetadata] Processed ${processedDeployments} deployments, ${this.localEidLabels.size} local EIDs`,
     );
   }
 
@@ -260,171 +256,47 @@ export class ChainMetadata {
     );
   }
 
-  resolveChainId(eid) {
-    const result = this.eidToChainId.get(String(eid)) || null;
-    if (!result && eid) {
-      console.debug(`[ChainMetadata] No chainId for EID ${eid} (map size: ${this.eidToChainId.size})`);
-    }
-    return result;
+  getChainLabel(localEid) {
+    if (localEid === undefined || localEid === null) return null;
+    return this.localEidLabels.get(String(localEid)) || null;
   }
 
-  resolveEid(chainId) {
-    return this.chainIdToEid.get(String(chainId)) || null;
-  }
-
-  getChainLabel(chainId, preference = "native") {
-    const key = String(chainId);
-
-    if (preference === "native") {
-      return this.nativeChainLabels.get(key) || this.eidLabels.get(key) || null;
-    }
-
-    if (preference === "eid") {
-      return this.eidLabels.get(key) || this.nativeChainLabels.get(key) || null;
-    }
-
-    return this.nativeChainLabels.get(key) || this.eidLabels.get(key) || null;
-  }
-
-  getChainInfo(value, preference = "auto") {
+  getChainInfo(value) {
     const key = String(value);
-
-    const getNativeEntry = () => {
-      const label = this.nativeChainLabels.get(key);
-      return label
-        ? {
-            primary: label,
-            secondary: `chainId ${key}`,
-            copyValue: key,
-          }
-        : null;
-    };
-
-    const getEidEntry = () => {
-      const label = this.eidLabels.get(key);
-      return label
-        ? {
-            primary: label,
-            secondary: `eid ${key}`,
-            copyValue: key,
-          }
-        : null;
-    };
-
-    if (preference === "native") {
-      return getNativeEntry() || getEidEntry();
-    }
-    if (preference === "eid") {
-      return getEidEntry() || getNativeEntry();
-    }
-    return getNativeEntry() || getEidEntry();
-  }
-
-  resolveDvnName(address, chainId) {
-    if (!address || !chainId) return address;
-
-    const lowerAddress = String(address).toLowerCase();
-    const key = `${chainId}:${lowerAddress}`;
-
-    return this.dvnLookup.get(key) || address;
-  }
-}
-
-/**
- * Manages DVN (Decentralized Verifier Network) metadata
- */
-export class DvnRegistry {
-  constructor(client) {
-    this.client = client;
-    this.lookup = new Map();
-    this.loaded = false;
-  }
-
-  async load() {
-    if (this.loaded) {
-      return;
-    }
-
-    try {
-      const query = `
-        query GetDvnMetadata {
-          DvnMetadata {
-            id
-            chainId
-            address
-            name
-          }
+    const info = this.localEidInfo.get(key);
+    return info
+      ? {
+          primary: info.label,
+          secondary: `eid ${key}`,
+          copyValue: key,
         }
-      `;
-
-      const data = await this.client.query(query, {});
-      const dvnMetadata = data.DvnMetadata || [];
-
-      this.hydrate(dvnMetadata);
-      console.log(`[DvnRegistry] Loaded ${dvnMetadata.length} DVN entries`);
-      this.loaded = true;
-    } catch (error) {
-      console.warn("[DvnRegistry] Failed to load DVN metadata", error);
-      this.loaded = true;
-    }
+      : null;
   }
 
-  hydrate(entries) {
-    if (!Array.isArray(entries)) {
-      return;
-    }
-
-    for (const entry of entries) {
-      if (!entry || !entry.address) {
-        continue;
-      }
-
-      const addressKey = String(entry.address).toLowerCase();
-      const chainKey =
-        entry.chainId !== undefined && entry.chainId !== null
-          ? String(entry.chainId)
-          : null;
-      const label = entry.name || entry.address;
-
-      if (!addressKey) {
-        continue;
-      }
-
-      // Store with chain-specific key
-      if (chainKey) {
-        this.lookup.set(`${chainKey}_${addressKey}`, label);
-      }
-
-      // Store with address-only key as fallback
-      if (!this.lookup.has(addressKey)) {
-        this.lookup.set(addressKey, label);
-      }
-    }
+  resolveLocalEidInfo(localEid) {
+    return this.localEidInfo.get(String(localEid)) || null;
   }
 
-  resolve(address, chainId = null) {
-    if (!address) {
-      return address;
+  resolveDvnName(address, { localEid } = {}) {
+    if (!address) return address;
+
+    const normalized = String(address).toLowerCase();
+    if (localEid !== undefined && localEid !== null) {
+      const key = `local:${localEid}:${normalized}`;
+      const match = this.dvnLookup.get(key);
+      if (match) return match;
     }
 
-    const key = String(address).toLowerCase();
-
-    if (chainId) {
-      const chainKey = `${chainId}_${key}`;
-      if (this.lookup.has(chainKey)) {
-        return this.lookup.get(chainKey);
-      }
-    }
-
-    return this.lookup.get(key) || address;
+    return this.dvnLookup.get(`fallback:${normalized}`) || address;
   }
 
-  resolveMany(addresses, chainId = null) {
+  resolveDvnNames(addresses, context = {}) {
     if (!Array.isArray(addresses)) {
       return [];
     }
-
-    return addresses.map((addr) => this.resolve(addr, chainId));
+    return addresses.map((address) =>
+      this.resolveDvnName(address, context),
+    );
   }
 }
 

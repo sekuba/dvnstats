@@ -14,6 +14,7 @@ import {
   chainPreferenceFromColumn,
   normalizeAddress,
   normalizeOAppId,
+  makeOAppId,
   bytes32ToAddress,
 } from "./core.js";
 
@@ -127,7 +128,6 @@ export class QueryManager {
   constructor(client, metadata, aliasManager, onResultsUpdate) {
     this.client = client;
     this.chainMetadata = metadata.chain;
-    this.dvnRegistry = metadata.dvn;
     this.oappChainOptions = metadata.oappChainOptions;
     this.aliasManager = aliasManager;
     this.onResultsUpdate = onResultsUpdate;
@@ -183,40 +183,21 @@ export class QueryManager {
     };
   }
 
-  resolveDvnLabels(addresses, meta, chainIdOverride) {
+  resolveDvnLabels(addresses, meta, localEidOverride) {
     if (!Array.isArray(addresses) || !addresses.length) {
       return [];
     }
 
-    const chainId =
-      chainIdOverride !== undefined && chainIdOverride !== null
-        ? String(chainIdOverride)
-        : meta?.chainId !== undefined && meta?.chainId !== null
-          ? String(meta.chainId)
-          : null;
+    const candidateLocal =
+      localEidOverride !== undefined && localEidOverride !== null
+        ? localEidOverride
+        : meta?.localEid ?? meta?.eid ?? null;
+    const context =
+      candidateLocal !== undefined && candidateLocal !== null && candidateLocal !== ""
+        ? { localEid: String(candidateLocal) }
+        : {};
 
-    return addresses.map((address) => {
-      if (!address) return "";
-
-      if (chainId) {
-        const label = this.dvnRegistry.resolve(address, chainId);
-        if (label && label !== address) {
-          return label;
-        }
-
-        const layerName = this.chainMetadata.resolveDvnName(address, chainId);
-        if (layerName && layerName !== address) {
-          return layerName;
-        }
-      }
-
-      const fallback = this.dvnRegistry.resolve(address);
-      if (fallback && fallback !== address) {
-        return fallback;
-      }
-
-      return address;
-    });
+    return this.chainMetadata.resolveDvnNames(addresses, context);
   }
 
   buildQueryRegistry() {
@@ -232,7 +213,7 @@ export class QueryManager {
               where: { totalPacketsReceived: { _gte: $minPackets } }
             ) {
               id
-              chainId
+              localEid
               address
               totalPacketsReceived
               lastPacketBlock
@@ -283,7 +264,7 @@ export class QueryManager {
           query CurrentSecurityConfig($oappId: String!) {
             OApp(where: { id: { _eq: $oappId } }) {
               id
-              chainId
+              localEid
               address
               totalPacketsReceived
               lastPacketBlock
@@ -295,7 +276,7 @@ export class QueryManager {
             ) {
               id
               eid
-              chainId
+              localEid
               oapp
               effectiveReceiveLibrary
               effectiveConfirmations
@@ -326,7 +307,7 @@ export class QueryManager {
           }
         `,
         initialize: ({ card }) => {
-          const chainInput = card.querySelector("[data-chain-input]");
+          const endpointInput = card.querySelector("[data-chain-input]");
           const chainLabel = card.querySelector("[data-chain-label]");
           const datalist = card.querySelector("[data-chain-datalist]");
 
@@ -334,15 +315,15 @@ export class QueryManager {
             this.populateChainDatalist(datalist);
           }
 
-          if (chainInput && chainLabel) {
+          if (endpointInput && chainLabel) {
             const updateLabel = () => {
-              const chainId = chainInput.value.trim();
-              const display = this.getChainDisplayLabel(chainId);
+              const localEid = endpointInput.value.trim();
+              const display = this.getChainDisplayLabel(localEid);
               chainLabel.textContent = display
-                ? `Chain: ${display}`
-                : "Chain not selected.";
+                ? `Endpoint: ${display}`
+                : "Endpoint not selected.";
             };
-            chainInput.addEventListener("input", updateLabel);
+            endpointInput.addEventListener("input", updateLabel);
             updateLabel();
           }
 
@@ -363,23 +344,23 @@ export class QueryManager {
         },
         buildVariables: (card) => {
           const idInput = card.querySelector('input[name="oappId"]');
-          const chainInput = card.querySelector('input[name="chainId"]');
+          const eidInput = card.querySelector('input[name="localEid"]');
           const addressInput = card.querySelector('input[name="oappAddress"]');
 
           const rawId = idInput?.value?.trim() ?? "";
           let oappId = "";
-          let chainId = "";
+          let localEid = "";
           let address = "";
 
           if (rawId) {
             const normalizedId = normalizeOAppId(rawId);
             const parts = normalizedId.split("_");
-            chainId = parts[0];
+            localEid = parts[0];
             address = parts[1];
             oappId = normalizedId;
-            if (chainInput) {
-              chainInput.value = chainId;
-              chainInput.dispatchEvent(new Event("input"));
+            if (eidInput) {
+              eidInput.value = localEid;
+              eidInput.dispatchEvent(new Event("input"));
             }
             if (addressInput) {
               addressInput.value = address;
@@ -388,38 +369,36 @@ export class QueryManager {
               idInput.value = oappId;
             }
           } else {
-            chainId = chainInput?.value?.trim() ?? "";
+            localEid = eidInput?.value?.trim() ?? "";
             address = addressInput?.value?.trim() ?? "";
-            if (!chainId || !address) {
-              throw new Error("Provide an OApp ID or destination chain plus address.");
+            if (!localEid || !address) {
+              throw new Error("Provide an OApp ID or local EID plus address.");
             }
             address = normalizeAddress(address);
-            oappId = `${chainId}_${address}`;
+            oappId = `${localEid}_${address}`;
             if (idInput) {
               idInput.value = oappId;
             }
             if (addressInput) {
               addressInput.value = address;
             }
-            if (chainInput) {
-              chainInput.dispatchEvent(new Event("input"));
+            if (eidInput) {
+              eidInput.dispatchEvent(new Event("input"));
             }
           }
 
-          const chainDisplay = this.getChainDisplayLabel(chainId) || chainId;
-          const summary = chainId ? `${chainDisplay} • ${address}` : `${address}`;
-
+          const localLabel =
+            this.getChainDisplayLabel(localEid) || `EID ${localEid}`;
+          const summary = `${localLabel} • ${address}`;
           return {
             variables: { oappId },
             meta: {
               limitLabel: `oappId=${oappId}`,
               summary,
-              chainId,
-              chainLabel: chainDisplay,
+              localEid,
+              chainLabel: localLabel,
               oappAddress: address,
-              resultLabel: chainId
-                ? `OApp Security Config – ${chainDisplay}`
-                : "OApp Security Config",
+              resultLabel: `OApp Security Config – ${localLabel}`,
             },
           };
         },
@@ -429,14 +408,14 @@ export class QueryManager {
           const enrichedMeta = { ...meta };
 
           if (oapp) {
-            const chainId = String(oapp.chainId ?? "");
+            const localEid = String(oapp.localEid ?? "");
             const chainDisplay =
-              this.getChainDisplayLabel(chainId) ||
+              this.getChainDisplayLabel(localEid) ||
               enrichedMeta.chainLabel ||
-              chainId;
+              `EID ${localEid}`;
             enrichedMeta.oappInfo = oapp;
             enrichedMeta.chainLabel = chainDisplay;
-            enrichedMeta.chainId = chainId;
+            enrichedMeta.localEid = localEid;
             enrichedMeta.summary =
               enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
             enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
@@ -460,7 +439,7 @@ export class QueryManager {
             ) {
               id
               oappId
-              chainId
+              localEid
               receiver
               blockTimestamp
               blockNumber
@@ -627,13 +606,13 @@ export class QueryManager {
     packets.forEach((packet) => {
       if (!packet) return;
 
-      const inferredKey = packet.oappId || (packet.chainId && packet.receiver ? `${packet.chainId}_${packet.receiver.toLowerCase()}` : null);
+      const inferredKey = packet.oappId || (packet.localEid && packet.receiver ? `${packet.localEid}_${packet.receiver.toLowerCase()}` : null);
       if (!inferredKey) return;
 
       const [chainPart, addressPart] = inferredKey.split("_");
       const group = groups.get(inferredKey) ?? {
         oappId: inferredKey,
-        chainId: chainPart || String(packet.chainId ?? ""),
+        localEid: chainPart || String(packet.localEid ?? ""),
         address: (packet.receiver || addressPart || "").toLowerCase(),
         count: 0,
         eids: new Set(),
@@ -669,13 +648,13 @@ export class QueryManager {
     const limited = sortedGroups.slice(0, resultLimit);
     const rows = limited.map((group, index) => {
       const chainDisplay =
-        this.getChainDisplayLabel(group.chainId) || group.chainId || "—";
+        this.getChainDisplayLabel(group.localEid) || group.localEid || "—";
       const address = group.address || (group.oappId.split("_")[1] ?? "—");
       const eids = Array.from(group.eids).sort();
 
       const chainCell = this.createFormattedCell(
-        [chainDisplay, `ChainId ${group.chainId || "—"}`],
-        group.chainId,
+        [chainDisplay, `Local EID ${group.localEid || "—"}`],
+        group.localEid,
       );
 
       const oappCell = this.formatOAppIdCell(group.oappId);
@@ -709,7 +688,7 @@ export class QueryManager {
       return {
         Rank: String(index + 1),
         "OApp ID": oappCell,
-        Chain: chainCell,
+        Endpoint: chainCell,
         Address: addressCell,
         Packets: String(group.count),
         "Unique EIDs": eidCell,
@@ -740,7 +719,7 @@ export class QueryManager {
 
   formatSecurityConfigRow(row, meta) {
     const formatted = {};
-    formatted.EID = String(row.eid ?? "—");
+    formatted["Source EID"] = String(row.eid ?? "—");
     formatted.Library = this.formatLibraryDescriptor(row);
     formatted["Required DVNs"] = this.formatRequiredDvns(row, meta);
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta);
@@ -779,7 +758,12 @@ export class QueryManager {
     if (row.usesRequiredDVNSentinel) {
       return this.createFormattedCell(["optional-only (sentinel)"]);
     }
-    return this.formatDvnSet(row.effectiveRequiredDVNs, row.effectiveRequiredDVNCount, meta, row.chainId);
+    return this.formatDvnSet(
+      row.effectiveRequiredDVNs,
+      row.effectiveRequiredDVNCount,
+      meta,
+      row.localEid,
+    );
   }
 
   formatOptionalDvns(row, meta) {
@@ -789,16 +773,22 @@ export class QueryManager {
       row.effectiveOptionalDVNs,
       count,
       meta,
-      row.chainId,
+      row.localEid,
       [`Threshold ${threshold}`]
     );
   }
 
-  formatDvnSet(addresses, count, meta, chainId, extraLines = []) {
+  formatDvnSet(addresses, count, meta, localEid, extraLines = []) {
     const addrs = Array.isArray(addresses) ? addresses.filter(Boolean) : [];
     const lines = [`Count ${count ?? addrs.length ?? 0}`, ...extraLines];
     if (addrs.length) {
-      lines.push(...this.resolveDvnLabels(addrs, meta, chainId ?? meta.chainId));
+      lines.push(
+        ...this.resolveDvnLabels(
+          addrs,
+          meta,
+          localEid ?? meta?.localEid ?? meta?.eid,
+        ),
+      );
     }
     return this.createFormattedCell(lines, addrs.join(", ") || String(count));
   }
@@ -810,12 +800,11 @@ export class QueryManager {
     }
 
     const eid = row.eid ?? null;
-    const resolvedChainId = eid !== null && eid !== undefined ? this.chainMetadata.resolveChainId(eid) : null;
-    const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
-    const chainLabel = chainId
-      ? this.getChainDisplayLabel(chainId) || chainId
-      : eid !== null && eid !== undefined
-        ? `EID ${eid} (unmapped)`
+    const localEid =
+      eid !== null && eid !== undefined ? String(eid) : null;
+    const endpointLabel =
+      localEid !== null
+        ? this.getChainDisplayLabel(localEid) || `EID ${localEid}`
         : null;
 
     let decodedAddress = bytes32ToAddress(peerHex);
@@ -823,10 +812,10 @@ export class QueryManager {
     let alias = null;
     let normalizedAddress = null;
 
-    if (decodedAddress && chainId) {
+    if (decodedAddress && localEid) {
       try {
         normalizedAddress = normalizeAddress(decodedAddress);
-        oappId = `${chainId}_${normalizedAddress}`;
+        oappId = makeOAppId(localEid, normalizedAddress);
         alias = this.aliasManager.get(oappId);
       } catch (error) {
         console.debug("[QueryManager] Failed to normalize peer address", {
@@ -835,14 +824,14 @@ export class QueryManager {
           error,
         });
         normalizedAddress = decodedAddress;
-        oappId = `${chainId}_${decodedAddress}`;
+        oappId = localEid ? makeOAppId(localEid, decodedAddress) : null;
       }
     }
 
     return {
       peerHex,
-      chainId,
-      chainLabel,
+      localEid,
+      endpointLabel,
       address: normalizedAddress || decodedAddress,
       oappId,
       alias,
@@ -869,11 +858,17 @@ export class QueryManager {
       lines.push(ctx.peerHex);
     }
 
-    if (ctx.chainLabel) {
-      lines.push(`Chain ${ctx.chainLabel}`);
+    if (ctx.endpointLabel) {
+      lines.push(ctx.endpointLabel);
     }
 
-    const meta = ctx.oappId ? { oappId: ctx.oappId } : undefined;
+    const meta =
+      ctx.oappId || ctx.localEid
+        ? {
+            oappId: ctx.oappId ?? undefined,
+            localEid: ctx.localEid ?? undefined,
+          }
+        : undefined;
     return this.createFormattedCell(lines, ctx.copyValue, meta);
   }
 
@@ -995,7 +990,6 @@ export class QueryManager {
         const crawler = new SecurityWebCrawler(
           this.client,
           this.chainMetadata,
-          this.dvnRegistry,
         );
         const webData = await crawler.crawl(variables.seedOAppId, {
           depth: variables.depth,
@@ -1487,11 +1481,13 @@ export class ResultsRenderer {
       this.appendSummaryRow(list, "OApp Alias", alias);
     }
     this.appendSummaryRow(list, "OApp ID", info.id ?? "");
-    this.appendSummaryRow(
-      list,
-      "Chain",
-      meta.chainLabel || String((info.chainId ?? "")),
-    );
+    const localEid =
+      info.localEid !== undefined && info.localEid !== null
+        ? String(info.localEid)
+        : "—";
+    const localLabel = meta.chainLabel || this.getChainDisplayLabel(localEid) || `EID ${localEid}`;
+    this.appendSummaryRow(list, "Local EID", `${localLabel}`);
+    // Native chain ids removed; local EIDs provide canonical context.
     this.appendSummaryRow(list, "Address", info.address ?? "");
     if (info.totalPacketsReceived !== undefined && info.totalPacketsReceived !== null) {
       this.appendSummaryRow(list, "Total Packets", String(info.totalPacketsReceived));

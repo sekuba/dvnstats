@@ -6,7 +6,6 @@
 import {
   GraphQLClient,
   ChainMetadata,
-  DvnRegistry,
   OAppChainOptions,
   normalizeOAppId,
 } from "./core.js";
@@ -21,7 +20,6 @@ class Dashboard {
     // Core services
     this.client = new GraphQLClient();
     this.chainMetadata = new ChainMetadata();
-    this.dvnRegistry = new DvnRegistry(this.client);
     this.oappChainOptions = new OAppChainOptions();
     this.aliasManager = new AliasManager();
     this.toastManager = new ToastManager();
@@ -53,7 +51,6 @@ class Dashboard {
       this.client,
       {
         chain: this.chainMetadata,
-        dvn: this.dvnRegistry,
         oappChainOptions: this.oappChainOptions,
       },
       this.aliasManager,
@@ -70,7 +67,6 @@ class Dashboard {
     // Load all metadata in parallel
     await Promise.all([
       this.chainMetadata.load(),
-      this.dvnRegistry.load(),
       this.oappChainOptions.load(),
       this.aliasManager.load(),
     ]);

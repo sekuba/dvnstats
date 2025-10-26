@@ -32,7 +32,7 @@ dashboard/
 ```
 app.js
   ├─→ config.js
-  ├─→ core.js (GraphQLClient, ChainMetadata, DvnRegistry, OAppChainOptions)
+  ├─→ core.js (GraphQLClient, ChainMetadata, OAppChainOptions)
   ├─→ ui.js (AliasManager, QueryManager, ResultsRenderer, ToastManager)
   │    ├─→ config.js
   │    ├─→ core.js (utilities)
@@ -96,23 +96,14 @@ const data = await client.query(query, variables);
 ```
 
 **`ChainMetadata`**
-- Manages LayerZero chain/EID mappings
-- Resolves chain names and labels
-- **Critical**: Must load `layerzero.json` (full format) first for EID mappings
+- Manages LayerZero local EID metadata and DVN labels
+- Resolves endpoint labels (`localEid` → display name)
+- Resolves DVN address labels directly from `layerzero.json`
+- **Critical**: Must load `layerzero.json` before issuing lookups
 ```javascript
 await chainMetadata.load();
-const chainId = chainMetadata.resolveChainId(eid);  // EID → chainId
-const eid = chainMetadata.resolveEid(chainId);       // chainId → EID
-const label = chainMetadata.getChainLabel(chainId);
-```
-
-**`DvnRegistry`**
-- Manages DVN metadata
-- Resolves DVN addresses to names
-```javascript
-await dvnRegistry.load();
-const name = dvnRegistry.resolve(address, chainId);
-const names = dvnRegistry.resolveMany(addresses, chainId);
+const label = chainMetadata.getChainLabel(localEid);          // human-readable label
+const dvnNames = chainMetadata.resolveDvnNames(addresses, { localEid });
 ```
 
 **`OAppChainOptions`**
@@ -128,7 +119,7 @@ const options = oappChainOptions.getOptions();
 
 ```javascript
 normalizeAddress(address)           // Ethereum address normalization
-makeOAppId(chainId, address)        // Creates oappId string
+makeOAppId(localEid, address)       // Creates oappId string
 normalizeOAppId(value)              // Parses & validates oappId
 clampInteger(value, min, max, fallback)
 parseOptionalPositiveInt(value)
@@ -425,7 +416,6 @@ toastManager.show("Error occurred", "error");
 1. Create service instances
 2. Load all metadata in parallel:
    - ChainMetadata
-   - DvnRegistry
    - OAppChainOptions
    - AliasManager
 3. Initialize query cards
@@ -731,8 +721,8 @@ http://localhost:3000?endpoint=https://your-hasura.com/v1/graphql
 **To Update**:
 1. Replace `dashboard/layerzero.json` with new version
 2. Refresh browser
-3. Check console: `[ChainMetadata] Processed X chains, Y deployments, Z EID mappings`
-4. Verify Z > 0 (should be 500+)
+3. Check console: `[ChainMetadata] Processed Y deployments, Z local EIDs`
+4. Verify Z > 0 (should align with the configured networks)
 
 ---
 
@@ -870,15 +860,11 @@ Promise.all([
   ChainMetadata.load()
     → Fetch layerzero.json
     → Parse deployments
-    → Build eidToChainId map
-
-  DvnRegistry.load()
-    → GraphQL query DvnMetadata
-    → Build address→name map
+    → Build eid/native chain maps & DVN label cache
 
   OAppChainOptions.load()
     → Fetch oapp-chains.json
-    → Build chainId→label map
+    → Build localEid→label map
 
   AliasManager.load()
     → Fetch oapp-aliases.json (static)
