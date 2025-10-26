@@ -374,34 +374,12 @@ export function looksLikeTimestampColumn(column) {
   return lower.includes("timestamp") || lower.endsWith("time");
 }
 
-export function looksLikeChainColumn(column) {
-  const lower = column.toLowerCase();
-  if (lower === "chainid") {
-    return true;
-  }
-  return (
-    lower.includes("chainid") ||
-    lower.endsWith("_chain_id") ||
-    lower.endsWith("_chainid")
-  );
-}
-
 export function looksLikeEidColumn(column) {
   const lower = column.toLowerCase();
   if (lower === "eid") {
     return true;
   }
   return lower.endsWith("eid") || lower.endsWith("_eid") || lower.includes("eid_");
-}
-
-export function chainPreferenceFromColumn(column) {
-  if (looksLikeChainColumn(column)) {
-    return "native";
-  }
-  if (looksLikeEidColumn(column)) {
-    return "eid";
-  }
-  return null;
 }
 
 /**

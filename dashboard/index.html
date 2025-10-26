@@ -15,8 +15,7 @@
       <div>
         <h1>LayerZero Security Config Explorer</h1>
         <p>
-          utility surface for slicing the Hasura indexer at <br />
-          <span class="endpoint">http://localhost:8080/v1/graphql</span>
+          utility surface for slicing the Hasura indexer
         </p>
       </div>
       <button id="refresh-all" type="button">Refresh all</button>
@@ -51,7 +50,7 @@
                 type="number"
                 min="0"
                 step="1"
-                value="100"
+                value="1000"
                 inputmode="numeric"
               />
             </label>
@@ -70,7 +69,7 @@
             <div>
               <h2>OApp Security Config</h2>
               <p>
-                Fetch the latest merged security settings for a specific OApp.
+                Fetch the latest security settings for a given OApp.
               </p>
             </div>
             <button class="run-query" type="button">Run</button>
@@ -88,10 +87,10 @@
               />
             </label>
             <p class="field-hint">
-              Provide either the merged `oappId` or choose a local endpoint EID and address below.
+              Provide either the merged `oappId` or choose an EID and address below.
             </p>
             <label>
-              Local endpoint EID
+              EID
               <input
                 name="localEid"
                 type="text"
