@@ -10,10 +10,9 @@ import { makeOAppId, normalizeAddress, bytes32ToAddress } from "./core.js";
  * Crawls the security web starting from a seed OApp
  */
 export class SecurityWebCrawler {
-  constructor(client, chainMetadata, dvnRegistry) {
+  constructor(client, chainMetadata) {
     this.client = client;
     this.chainMetadata = chainMetadata;
-    this.dvnRegistry = dvnRegistry;
   }
 
   /**
@@ -53,9 +52,14 @@ export class SecurityWebCrawler {
 
       const { configs, oapp } = await this.getSecurityConfig(oappId);
 
+      const localEidRaw =
+        oapp?.localEid !== undefined && oapp?.localEid !== null
+          ? String(oapp.localEid)
+          : oappId.split("_")[0];
+
       const nodeData = {
         id: oappId,
-        chainId: oapp?.chainId || oappId.split("_")[0],
+        localEid: localEidRaw,
         address: oapp?.address || oappId.split("_")[1],
         totalPacketsReceived: oapp?.totalPacketsReceived || 0,
         isTracked: configs.length > 0,
@@ -72,17 +76,26 @@ export class SecurityWebCrawler {
           ? config.effectiveOptionalDVNs
           : [];
 
-        const requiredDVNNames = this.dvnRegistry.resolveMany(
+        const configLocalEid =
+          config.localEid !== undefined && config.localEid !== null
+            ? String(config.localEid)
+            : localEidRaw;
+        const dvnContext = {
+          localEid: configLocalEid,
+        };
+
+        const requiredDVNNames = this.chainMetadata.resolveDvnNames(
           requiredDVNs,
-          config.chainId,
+          dvnContext,
         );
-        const optionalDVNNames = this.dvnRegistry.resolveMany(
+        const optionalDVNNames = this.chainMetadata.resolveDvnNames(
           optionalDVNs,
-          config.chainId,
+          dvnContext,
         );
 
         nodeData.securityConfigs.push({
           srcEid: config.eid,
+          localEid: configLocalEid,
           requiredDVNCount: config.effectiveRequiredDVNCount || 0,
           requiredDVNs: requiredDVNs,
           requiredDVNLabels: requiredDVNNames,
@@ -94,7 +107,7 @@ export class SecurityWebCrawler {
           isConfigTracked: config.isConfigTracked || false,
           peer: peerInfo?.rawPeer || null,
           peerOAppId: peerInfo?.oappId || null,
-          peerChainId: peerInfo?.chainId || null,
+          peerLocalEid: peerInfo?.localEid || null,
           peerAddress: peerInfo?.address || null,
           peerResolved: peerInfo?.resolved || false,
         });
@@ -126,10 +139,10 @@ export class SecurityWebCrawler {
     }
 
     for (const oappId of danglingNodes) {
-      const [chainId, address] = oappId.split("_");
+      const [localEid, address] = oappId.split("_");
       nodes.set(oappId, {
         id: oappId,
-        chainId,
+        localEid,
         address,
         isTracked: false,
         isDangling: true,
@@ -160,7 +173,7 @@ export class SecurityWebCrawler {
           id
           oappId
           eid
-          chainId
+          localEid
           oapp
           effectiveRequiredDVNCount
           effectiveRequiredDVNs
@@ -177,7 +190,7 @@ export class SecurityWebCrawler {
         }
         OApp(where: { id: { _eq: $oappId } }) {
           id
-          chainId
+          localEid
           address
           totalPacketsReceived
         }
@@ -198,18 +211,16 @@ export class SecurityWebCrawler {
     }
 
     const eid = config.eid ?? null;
-    const resolvedChainId =
-      eid !== null && eid !== undefined ? this.chainMetadata.resolveChainId(eid) : null;
-    const chainId = resolvedChainId !== undefined && resolvedChainId !== null ? String(resolvedChainId) : null;
+    const eidStr = eid !== null && eid !== undefined ? String(eid) : null;
 
-    if (!chainId) {
+    if (!eidStr) {
       const fallbackSuffix = peerHex ? peerHex.toLowerCase() : "unknown";
-      const fallbackChainId =
-        eid !== null && eid !== undefined ? `eid-${eid}` : "unknown-eid";
-      const fallbackOAppId = `${fallbackChainId}_${fallbackSuffix}`;
+      const fallbackLocalId =
+        eidStr !== null ? `eid-${eidStr}` : "unknown-eid";
+      const fallbackOAppId = `${fallbackLocalId}_${fallbackSuffix}`;
       return {
         rawPeer: peerHex,
-        chainId: fallbackChainId,
+        localEid: eidStr,
         address: null,
         oappId: fallbackOAppId,
         resolved: false,
@@ -220,10 +231,10 @@ export class SecurityWebCrawler {
     if (decoded) {
       try {
         const normalized = normalizeAddress(decoded);
-        const oappId = makeOAppId(chainId, normalized);
+        const oappId = makeOAppId(eidStr, normalized);
         return {
           rawPeer: peerHex,
-          chainId,
+          localEid: eidStr,
           address: normalized,
           oappId,
           resolved: true,
@@ -241,9 +252,9 @@ export class SecurityWebCrawler {
     // Fallback identifier for non-EVM peers; do not attempt to crawl further.
     return {
       rawPeer: peerHex,
-      chainId,
+      localEid: eidStr,
       address: null,
-      oappId: `${chainId}_${peerHex.toLowerCase()}`,
+      oappId: `${eidStr}_${peerHex.toLowerCase()}`,
       resolved: false,
     };
   }
@@ -268,10 +279,10 @@ export class SecurityWebCrawler {
           from: peerInfo.oappId,
           to: currentOAppId,
           srcEid: config.eid,
-          srcChainId: peerInfo.chainId,
           linkType: "peer",
           peerResolved: peerInfo.resolved,
           peerRaw: peerInfo.rawPeer,
+          peerLocalEid: peerInfo.localEid ?? null,
         });
       }
 

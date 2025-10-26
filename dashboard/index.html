@@ -84,26 +84,26 @@
                 inputmode="text"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="chainId_address"
+                placeholder="localEid_address"
               />
             </label>
             <p class="field-hint">
-              Provide either the merged `oappId` or choose a chain and address below.
+              Provide either the merged `oappId` or choose a local endpoint EID and address below.
             </p>
             <label>
-              Destination chain
+              Local endpoint EID
               <input
-                name="chainId"
+                name="localEid"
                 type="text"
                 inputmode="numeric"
                 autocomplete="off"
-                placeholder="Select chain"
+                placeholder="Select local EID"
                 list="oapp-chain-options"
                 data-chain-input
               />
               <datalist id="oapp-chain-options" data-chain-datalist></datalist>
             </label>
-            <p class="field-hint" data-chain-label>Chain not selected.</p>
+            <p class="field-hint" data-chain-label>Endpoint not selected.</p>
             <label>
               OApp address
               <input
@@ -207,7 +207,7 @@
                   inputmode="text"
                   autocomplete="off"
                   spellcheck="false"
-                  placeholder="chainId_address"
+                  placeholder="localEid_address"
                 />
               </label>
               <div class="param-grid">

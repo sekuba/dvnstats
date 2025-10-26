@@ -497,9 +497,13 @@ export class SecurityGraphRenderer {
       circle.style.cursor = "pointer";
 
       const alias = this.getOAppAlias(node.id);
+      const endpointId =
+        node.localEid ??
+        (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
+      const endpointLabel = this.formatChainLabel(endpointId) || endpointId;
       const titleLines = [
         alias ? `${alias} (${node.id})` : node.id,
-        `Chain: ${this.formatChainLabel(node.chainId) || node.chainId}`,
+        `Endpoint: ${endpointLabel}`,
         `Tracked: ${node.isTracked ? "Yes" : "No"}`,
         `Total Packets: ${node.totalPacketsReceived}`,
         `Min Required DVNs: ${minRequiredDVNs}`,
@@ -544,8 +548,10 @@ export class SecurityGraphRenderer {
       nodeGroup.appendChild(circle);
 
       // Chain label
+      const chainDisplaySource =
+        node.localEid ?? (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
       let chainDisplayLabel =
-        this.formatChainLabel(node.chainId) || `Chain ${node.chainId}`;
+        this.formatChainLabel(chainDisplaySource) || `Endpoint ${chainDisplaySource}`;
       chainDisplayLabel = chainDisplayLabel.replace(/\s*\(\d+\)$/, "");
       const displayText = chainDisplayLabel.toUpperCase();
 
@@ -741,7 +747,9 @@ export class SecurityGraphRenderer {
         blockReasons.push("Dangling peer (no config crawled)");
       }
 
-      const chainLabel = this.formatChainLabel(node.chainId) || node.chainId;
+      const endpointId =
+        node.localEid ?? (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
+      const chainLabel = this.formatChainLabel(endpointId) || endpointId;
       const totalPacketsValue = Number(
         node.totalPacketsReceived === undefined || node.totalPacketsReceived === null
           ? 0
@@ -932,8 +940,8 @@ export class SecurityGraphRenderer {
         this.appendSummaryRow(dl, "Destination Nodes", destinations);
       }
 
-      const chains = Array.from(dominantCombination.srcChains || []).map((chainId) =>
-        this.formatChainLabel(chainId) || chainId,
+      const chains = Array.from(dominantCombination.srcEids || []).map((localEid) =>
+        this.formatChainLabel(localEid) || localEid,
       );
       this.appendSummaryRow(
         dl,
@@ -1569,7 +1577,7 @@ export class SecurityGraphRenderer {
             edges: [],
             toNodes: new Set(),
             fromNodes: new Set(),
-            srcChains: new Set(),
+            srcEids: new Set(),
             optionalCounts: new Set(),
             optionalThresholds: new Set(),
             sampleInfo: {
@@ -1587,8 +1595,8 @@ export class SecurityGraphRenderer {
         entry.edges.push(info);
         entry.toNodes.add(edge.to);
         entry.fromNodes.add(edge.from);
-        if (edge.srcChainId !== undefined && edge.srcChainId !== null) {
-          entry.srcChains.add(String(edge.srcChainId));
+        if (edge.srcEid !== undefined && edge.srcEid !== null) {
+          entry.srcEids.add(String(edge.srcEid));
         }
         entry.optionalCounts.add(optionalDVNCount || 0);
         entry.optionalThresholds.add(optionalDVNThreshold || 0);
@@ -1683,7 +1691,7 @@ export class SecurityGraphRenderer {
       edges: entry.edges,
       toNodes: Array.from(entry.toNodes),
       fromNodes: Array.from(entry.fromNodes),
-      srcChains: Array.from(entry.srcChains),
+      srcEids: Array.from(entry.srcEids),
       optionalCounts: Array.from(entry.optionalCounts),
       optionalThresholds: Array.from(entry.optionalThresholds),
       optionalLabelsSample: entry.sampleInfo?.optionalDVNLabels ?? [],
