@@ -11,11 +11,11 @@ import {
   formatTimestampValue,
   looksLikeHash,
   looksLikeTimestampColumn,
-  chainPreferenceFromColumn,
   normalizeAddress,
   normalizeOAppId,
   makeOAppId,
   bytes32ToAddress,
+  looksLikeEidColumn,
 } from "./core.js";
 
 /**
@@ -1373,9 +1373,8 @@ export class ResultsRenderer {
       };
     }
 
-    const chainPreference = chainPreferenceFromColumn(column);
-    if (chainPreference) {
-      const chainInfo = this.chainMetadata.getChainInfo(value, chainPreference);
+    if (looksLikeEidColumn(column)) {
+      const chainInfo = this.chainMetadata.getChainInfo(value);
       if (chainInfo) {
         nodes.push(document.createTextNode(chainInfo.primary));
         const secondary = document.createElement("span");
