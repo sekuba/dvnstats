@@ -277,6 +277,13 @@ export class ChainMetadata {
     return this.localEidInfo.get(String(localEid)) || null;
   }
 
+  listLocalEndpoints() {
+    const entries = Array.from(this.localEidLabels.entries()).map(
+      ([id, label]) => ({ id, label }),
+    );
+    return entries.sort((a, b) => a.label.localeCompare(b.label));
+  }
+
   resolveDvnName(address, { localEid } = {}) {
     if (!address) return address;
 
@@ -301,61 +308,8 @@ export class ChainMetadata {
 }
 
 /**
- * Manages OApp chain options (available chains for OApp queries)
- */
-export class OAppChainOptions {
-  constructor() {
-    this.list = [];
-    this.map = new Map();
-    this.loaded = false;
-  }
-
-  async load() {
-    if (this.loaded) {
-      return;
-    }
-
-    try {
-      const response = await fetch(CONFIG.DATA_SOURCES.OAPP_CHAINS, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (Array.isArray(data)) {
-        this.list = data.map((item) => ({
-          id: String(item.id ?? item.chainId ?? ""),
-          label: String(item.label ?? item.name ?? item.id ?? ""),
-        }));
-
-        this.map = new Map(this.list.map((item) => [item.id, item.label]));
-      }
-
-      console.log(`[OAppChainOptions] Loaded ${this.list.length} chains`);
-      this.loaded = true;
-    } catch (error) {
-      console.warn("[OAppChainOptions] Failed to load", error);
-      this.loaded = true;
-    }
-  }
-
-  getLabel(chainId) {
-    return this.map.get(String(chainId)) || null;
-  }
-
-  getOptions() {
-    return this.list;
-  }
-}
-
-/**
  * Utility functions
  */
-
 export function clampInteger(rawValue, min, max, fallback) {
   const parsed = Number.parseInt(rawValue, 10);
   if (Number.isFinite(parsed)) {

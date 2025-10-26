@@ -128,7 +128,6 @@ export class QueryManager {
   constructor(client, metadata, aliasManager, onResultsUpdate) {
     this.client = client;
     this.chainMetadata = metadata.chain;
-    this.oappChainOptions = metadata.oappChainOptions;
     this.aliasManager = aliasManager;
     this.onResultsUpdate = onResultsUpdate;
     this.requestSeq = 0;
@@ -147,14 +146,8 @@ export class QueryManager {
 
     const key = String(chainId);
 
-    // Try OApp chain options first
-    const oappLabel = this.oappChainOptions.getLabel(key);
-    if (oappLabel) {
-      return `${oappLabel} (${key})`;
-    }
-
-    // Try chain metadata
-    const chainInfo = this.chainMetadata.getChainInfo(key, "native");
+    // Use chain metadata (falls back to eid label)
+    const chainInfo = this.chainMetadata.getChainInfo(key);
     if (chainInfo) {
       return `${chainInfo.primary} (${key})`;
     }
@@ -583,11 +576,9 @@ export class QueryManager {
 
   populateChainDatalist(datalist) {
     datalist.innerHTML = "";
-    const options = this.oappChainOptions.getOptions();
-
+    const options = this.chainMetadata.listLocalEndpoints();
     options.forEach((option) => {
       if (!option || !option.id) return;
-
       const node = document.createElement("option");
       const display = `${option.label} (${option.id})`;
       node.value = option.id;
@@ -609,10 +600,10 @@ export class QueryManager {
       const inferredKey = packet.oappId || (packet.localEid && packet.receiver ? `${packet.localEid}_${packet.receiver.toLowerCase()}` : null);
       if (!inferredKey) return;
 
-      const [chainPart, addressPart] = inferredKey.split("_");
+      const [localPart, addressPart] = inferredKey.split("_");
       const group = groups.get(inferredKey) ?? {
         oappId: inferredKey,
-        localEid: chainPart || String(packet.localEid ?? ""),
+        localEid: localPart || String(packet.localEid ?? ""),
         address: (packet.receiver || addressPart || "").toLowerCase(),
         count: 0,
         eids: new Set(),

@@ -6,7 +6,6 @@
 import {
   GraphQLClient,
   ChainMetadata,
-  OAppChainOptions,
   normalizeOAppId,
 } from "./core.js";
 import { AliasManager, QueryManager, ResultsRenderer, ToastManager } from "./ui.js";
@@ -20,7 +19,6 @@ class Dashboard {
     // Core services
     this.client = new GraphQLClient();
     this.chainMetadata = new ChainMetadata();
-    this.oappChainOptions = new OAppChainOptions();
     this.aliasManager = new AliasManager();
     this.toastManager = new ToastManager();
 
@@ -51,7 +49,6 @@ class Dashboard {
       this.client,
       {
         chain: this.chainMetadata,
-        oappChainOptions: this.oappChainOptions,
       },
       this.aliasManager,
       (rows, payload, meta) => this.resultsRenderer.render(rows, payload, meta),
@@ -67,7 +64,6 @@ class Dashboard {
     // Load all metadata in parallel
     await Promise.all([
       this.chainMetadata.load(),
-      this.oappChainOptions.load(),
       this.aliasManager.load(),
     ]);
 

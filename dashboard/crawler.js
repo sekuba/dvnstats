@@ -25,11 +25,15 @@ export class SecurityWebCrawler {
     onProgress("Initializing crawl...");
 
     // Verify metadata is loaded
-    console.log(`[SecurityWebCrawler] Starting crawl with ${this.chainMetadata.eidToChainId.size} EID mappings`);
-    if (this.chainMetadata.eidToChainId.size === 0) {
-      console.warn("[SecurityWebCrawler] No EID mappings loaded! Attempting to load...");
+    const knownEndpoints = this.chainMetadata.listLocalEndpoints();
+    console.log(
+      `[SecurityWebCrawler] Starting crawl with ${knownEndpoints.length} local endpoint mappings`,
+    );
+    if (knownEndpoints.length === 0) {
+      console.warn(
+        "[SecurityWebCrawler] No local endpoint metadata loaded! Attempting to load...",
+      );
       await this.chainMetadata.load();
-      console.log(`[SecurityWebCrawler] After load: ${this.chainMetadata.eidToChainId.size} EID mappings`);
     }
 
     const nodes = new Map();

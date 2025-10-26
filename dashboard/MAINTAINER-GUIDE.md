@@ -32,7 +32,7 @@ dashboard/
 ```
 app.js
   ├─→ config.js
-  ├─→ core.js (GraphQLClient, ChainMetadata, OAppChainOptions)
+  ├─→ core.js (GraphQLClient, ChainMetadata)
   ├─→ ui.js (AliasManager, QueryManager, ResultsRenderer, ToastManager)
   │    ├─→ config.js
   │    ├─→ core.js (utilities)
@@ -104,15 +104,6 @@ const data = await client.query(query, variables);
 await chainMetadata.load();
 const label = chainMetadata.getChainLabel(localEid);          // human-readable label
 const dvnNames = chainMetadata.resolveDvnNames(addresses, { localEid });
-```
-
-**`OAppChainOptions`**
-- Manages available chains for OApp queries
-- Populates chain selection datalists
-```javascript
-await oappChainOptions.load();
-const label = oappChainOptions.getLabel(chainId);
-const options = oappChainOptions.getOptions();
 ```
 
 #### Utility Functions
@@ -197,7 +188,7 @@ const webData = await crawler.crawl(seedOAppId, {
       from: "peer_oappId",
       to: "receiver_oappId",
       srcEid: "30184",
-      srcChainId: "8453",
+      srcEid: "30184",
       linkType: "peer",
       peerResolved: true,
       peerRaw: "0x0000..."
@@ -416,7 +407,6 @@ toastManager.show("Error occurred", "error");
 1. Create service instances
 2. Load all metadata in parallel:
    - ChainMetadata
-   - OAppChainOptions
    - AliasManager
 3. Initialize query cards
 4. Setup global event handlers
@@ -860,11 +850,7 @@ Promise.all([
   ChainMetadata.load()
     → Fetch layerzero.json
     → Parse deployments
-    → Build eid/native chain maps & DVN label cache
-
-  OAppChainOptions.load()
-    → Fetch oapp-chains.json
-    → Build localEid→label map
+    → Build localEid label map & DVN cache
 
   AliasManager.load()
     → Fetch oapp-aliases.json (static)
