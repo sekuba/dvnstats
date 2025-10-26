@@ -1137,7 +1137,6 @@ export class SecurityGraphRenderer {
     thead.innerHTML = `
       <tr>
         <th>Node</th>
-        <th>Chain</th>
         <th>Status</th>
         <th>DVN Configs</th>
         <th>Optional Quorum</th>
@@ -1170,17 +1169,23 @@ export class SecurityGraphRenderer {
         aliasSpan.textContent = metric.alias;
         nodeBlock.appendChild(aliasSpan);
       }
-      const idSpan = document.createElement("span");
-      idSpan.className = "node-id copyable";
-      idSpan.dataset.copyValue = metric.id;
-      idSpan.textContent = metric.id;
-      nodeBlock.appendChild(idSpan);
+      const nodeInfo = document.createElement("span");
+      nodeInfo.className = "node-id copyable";
+      nodeInfo.dataset.copyValue = metric.id;
+
+      const chainLine = document.createElement("span");
+      chainLine.className = "node-id-chain";
+      chainLine.textContent = metric.chainLabel;
+      nodeInfo.appendChild(chainLine);
+
+      const idLine = document.createElement("span");
+      idLine.className = "node-id-value";
+      idLine.textContent = metric.id;
+      nodeInfo.appendChild(idLine);
+
+      nodeBlock.appendChild(nodeInfo);
       nodeCell.appendChild(nodeBlock);
       tr.appendChild(nodeCell);
-
-      const chainCell = document.createElement("td");
-      chainCell.textContent = metric.chainLabel;
-      tr.appendChild(chainCell);
 
       const statusCell = document.createElement("td");
       statusCell.className = "status-cell";

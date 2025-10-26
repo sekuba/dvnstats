@@ -694,8 +694,19 @@ td {
 }
 
 .node-id {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.1rem;
   font-size: 0.75rem;
-  opacity: 0.75;
+  color: var(--ink);
+}
+
+.node-id-chain {
+  font-weight: 600;
+}
+
+.node-id-value {
+  opacity: 0.85;
 }
 
 .status-cell,
