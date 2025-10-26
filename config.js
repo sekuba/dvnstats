@@ -47,7 +47,6 @@ export const CONFIG = {
       "../layerzero.json",
       "/layerzero.json",
     ],
-    OAPP_CHAINS: "./oapp-chains.json",
     OAPP_ALIASES: "./oapp-aliases.json",
   },
 
