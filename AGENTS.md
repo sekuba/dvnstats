@@ -15,20 +15,20 @@ This note gives agents a fast mental model for the LayerZero security indexer. F
 - **Overrides (oapp scope)**: `OAppReceiveLibrary`, `OAppUlnConfig`, `OAppPeer`, `OAppRateLimiter`, `OAppRateLimit` + their `*Version` tables.
 - **Effective view**: `OAppSecurityConfig` (one row per `(oappId, eid)`) merges defaults + overrides and denormalizes the latest peer snapshot and recompute metadata.
 - **Usage stats**: `OAppEidPacketStats` (per source eid) and `PacketDelivered` (per delivery, with full effective config frozen in time).
-- **Metadata**: `DvnMetadata` enriches DVN addresses with human names.
+- **Metadata**: DVN names are resolved externally; we now store normalized addresses only.
 
-IDs follow the pattern described in `docs/layerzero-indexer.md`: scoped IDs (`chainId_eid`, `oappId_eid`), event IDs (`chain_block_log`), and composite version IDs where a single event mutates multiple rows.
+IDs follow the pattern described in `docs/layerzero-indexer.md`: scoped IDs (`localEid_eid`, `oappId_eid`), event IDs (`localEid_block_log`), and composite version IDs where a single event mutates multiple rows.
 
 ## Handler Lifecycles (see `src/EventHandlers.ts`)
 1. **Normalize** incoming addresses (`toLowerCase`, zero handling) except for peer bytes, which are stored verbatim.
 2. **Persist current state** in the relevant table (`Default*`, `OApp*`, etc.) and append a `*Version` snapshot with block/timestamp/tx hash.
 3. **Recompute effective configs** when a change could affect security posture:
-   - `computeAndPersistEffectiveConfig` merges defaults and overrides, enforces sentinel logic (`255`, `2^64-1`), dedupes DVNs, and writes `OAppSecurityConfig`.
-   - `recomputeSecurityConfigsForScope` refreshes every OApp on the same `(chainId, eid)` when defaults move.
+   - `computeAndPersistEffectiveConfig` merges defaults and overrides, enforces sentinel logic (`255`, `2^64-1`), and writes `OAppSecurityConfig` keyed by the local endpoint ID.
+   - `recomputeSecurityConfigsForScope` refreshes every OApp on the same `(localEid, eid)` when defaults move.
 4. **PacketDelivered** flow:
    - Touches cumulative stats (`OApp`, `OAppEidPacketStats`), recomputes the current effective config, and writes a denormalized `PacketDelivered` record for analytics.
 
-`computeAndPersistEffectiveConfig` is the core algorithm: it filters out zero addresses, normalizes arrays, applies fallback tracking, resolves DVN metadata, and exposes whether an OApp relies on defaults or sentinels. Peer data and recompute hashes are stitched onto the result so consumers always see the exact state that produced an event.
+`computeAndPersistEffectiveConfig` is the core algorithm: it filters out zero addresses, normalizes arrays, applies fallback tracking keyed by the local EID, and exposes whether an OApp relies on defaults or sentinels. Peer data and recompute hashes are stitched onto the result so consumers always see the exact state that produced an event.
 
 ## Mental Map
 - **Defaults drive cascades**: any default event triggers recomputation for all affected OApps (same chain/eid).

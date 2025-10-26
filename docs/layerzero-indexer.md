@@ -150,7 +150,7 @@ struct UlnConfig {
 │ Computed & Analytics:                                        │
 │ - OApp (aggregate stats) - OAppSecurityConfig (effective)   │
 │ - OAppEidPacketStats     - PacketDelivered (snapshot)       │
-│ - DvnMetadata (names)                                        │
+│ - (metadata removed; addresses stored verbatim)              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -176,10 +176,10 @@ struct UlnConfig {
 ```typescript
 1. Normalize library address → lowercase
 2. Create/update DefaultReceiveLibrary entity (current state)
-   - ID: chainId_eid
+   - ID: localEid_eid
    - Stores: library address, block/timestamp, eventId
 3. Create DefaultReceiveLibraryVersion entity (historical record)
-   - ID: chainId_blockNumber_logIndex
+   - ID: localEid_blockNumber_logIndex
    - Immutable snapshot
 4. Trigger recomputeSecurityConfigsForScope()
    - Fetches all OAppSecurityConfig for this chain
@@ -251,7 +251,7 @@ const versionId = eventId;
 ```
 
 **ID Structure**:
-- OApp: `chainId_oappAddress`
+- OApp: `localEid_oappAddress`
 - Library Config: `oappId_eid`
 - Security Config: `oappId_eid` (same as library config ID)
 
@@ -392,7 +392,7 @@ This is the **most complex and critical** function in the system. It implements 
 ```typescript
 const mergeSecurityConfig = (
   context: handlerContext | undefined,  // For logging
-  chainId: number,
+  localEid: bigint,
   eid: bigint,
   oappId: string | undefined,           // For logging
   defaults: { library?: string; config: NormalizedConfig },
@@ -427,7 +427,8 @@ Effective:  { confirmations: 20, requiredDVNCount: 2 }  // ← inherited!
 3. Else → undefined
 
 // Config tracking check
-if (effectiveLibrary !== TRACKED_LIBRARY_PER_CHAIN[chainId]) {
+const tracked = getTrackedReceiveLibraryAddress(localEid);
+if (tracked !== undefined && tracked !== effectiveLibrary) {
   return emptyConfig;  // Don't track configs for unknown libraries
 }
 ```
@@ -653,17 +654,17 @@ if (requiredDVNCount === SENTINEL_REQUIRED_DVN_COUNT) {
 - `PacketDelivered` - Every packet with denormalized security config
 
 **7. Metadata**
-- `DvnMetadata` - DVN names per (chain, address)
+- (none) DVN display names are resolved outside the indexer; we persist normalized addresses only.
 
 ### ID Schemes
 
 ```typescript
 // Event-based IDs
-eventId = `${chainId}_${blockNumber}_${logIndex}`
+eventId = `${localEid}_${blockNumber}_${logIndex}`
 
 // Scoped IDs
-defaultScopedId = `${chainId}_${eid}`
-oappId = `${chainId}_${oappAddress}`
+defaultScopedId = `${localEid}_${eid}`
+oappId = `${localEid}_${oappAddress}`
 securityConfigId = `${oappId}_${eid}`
 
 // Version IDs (special case for DefaultUlnConfigVersion)
@@ -698,7 +699,7 @@ PacketDelivered (1) ──> (1) OAppSecurityConfig (denormalized)
 ### Indexes
 
 All entities have appropriate indexes on:
-- `chainId` - for filtering by chain
+- `localEid` - for filtering by the indexed chain
 - `eid` - for filtering by endpoint
 - `oappId` / `oapp` - for filtering by application
 - `eventId` - for tracing changes
@@ -738,57 +739,13 @@ const uniqueNormalizedAddresses = (input: readonly string[]): string[] => {
 };
 ```
 
-### DVN Metadata Resolution
-
-**Source**: `layerzero.json` (738.2 KB metadata file)
-
-**Structure**:
-```typescript
-{
-  [network]: {
-    chainDetails: { nativeChainId: number },
-    dvns: {
-      [address]: {
-        canonicalName?: string,
-        name?: string,
-        id?: string
-      }
-    }
-  }
-}
-```
-
-**Lookup**:
-```typescript
-const DVN_CHAIN_AWARE_LOOKUP = buildChainAwareDvnLookup(layerzeroMetadata);
-// Map: "chainId_address" → "name"
-
-const getDvnName = (chainId: number, address: string): string | undefined =>
-  DVN_CHAIN_AWARE_LOOKUP.get(`${chainId}_${address}`);
-```
-
-**Metadata Upsert**:
-```typescript
-// Creates or updates DvnMetadata entity
-// Updates name if changed (mutable - affects historical records)
-await ensureDvnMetadataEntries(context, chainId, dvnAddresses);
-```
-
 ### Config Tracking Filter
 
-**Only tracks configs for supported ReceiveUln302 addresses**:
+**Only tracks configs for the receive library bound to the local EID**:
 ```typescript
-const RECEIVE_ULN_302_PER_CHAIN: Record<number, string> = {
-  1: "0xc02ab410f0734efa3f14628780e6e695156024c2",     // Ethereum
-  10: "0x3c4962ff6258dcfcafd23a814237b7d6eb712063",    // Optimism
-  56: "0xb217266c3a98c8b2709ee26836c98cf12f6ccec1",    // BSC
-  // ... 16 chains total
-};
-
-const isTrackedReceiveLibrary = (chainId: number, library?: string): boolean => {
-  const tracked = RECEIVE_ULN_302_PER_CHAIN[chainId];
-  return tracked !== undefined && tracked === library;
-};
+const localEid = resolveLocalEid(event.chainId);
+const tracked = getTrackedReceiveLibraryAddress(localEid);
+const isTracked = tracked !== undefined && tracked === effectiveLibrary;
 ```
 
 **If not tracked**:
@@ -812,11 +769,11 @@ return {
 **Process**:
 ```typescript
 const recomputeSecurityConfigsForScope = async (
-  context, chainId, chainIdBigInt, eid, blockNumber, blockTimestamp, eventId
+  context, chainId, localEid, eid, blockNumber, blockTimestamp, eventId
 ) => {
-  // 1. Fetch all security configs for chain
+  // 1. Fetch all security configs for this local endpoint
   const configsForChain = await context.OAppSecurityConfig
-    .getWhere.chainId.eq(chainIdBigInt);
+    .getWhere.localEid.eq(localEid);
 
   // 2. Filter by eid (in-memory)
   const configsForEid = configsForChain.filter(c => c.eid === eid);
@@ -825,7 +782,7 @@ const recomputeSecurityConfigsForScope = async (
   for (const config of configsForEid) {
     try {
       await computeAndPersistEffectiveConfig({
-        context, chainId, chainIdBigInt,
+        context, chainId, localEid,
         oappId: config.oappId,
         oappAddress: config.oapp,
         eid, blockNumber, blockTimestamp, eventId

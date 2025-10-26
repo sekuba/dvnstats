@@ -1,6 +1,6 @@
 type DefaultReceiveLibrary {
   id: ID!
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   eid: BigInt! @index
   library: String
   transactionHash: String @index
@@ -11,7 +11,7 @@ type DefaultReceiveLibrary {
 
 type DefaultReceiveLibraryVersion {
   id: ID!
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   eid: BigInt! @index
   library: String
   blockNumber: BigInt!
@@ -22,7 +22,7 @@ type DefaultReceiveLibraryVersion {
 
 type DefaultUlnConfig {
   id: ID!
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   eid: BigInt! @index
   confirmations: BigInt
   requiredDVNCount: Int
@@ -38,7 +38,7 @@ type DefaultUlnConfig {
 
 type DefaultUlnConfigVersion {
   id: ID!
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   eid: BigInt! @index
   confirmations: BigInt
   requiredDVNCount: Int
@@ -54,7 +54,7 @@ type DefaultUlnConfigVersion {
 
 type OApp {
   id: ID!
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   address: String! @index
   totalPacketsReceived: BigInt!
   lastPacketBlock: BigInt
@@ -64,7 +64,7 @@ type OApp {
 type OAppReceiveLibrary {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   library: String
@@ -77,7 +77,7 @@ type OAppReceiveLibrary {
 type OAppReceiveLibraryVersion {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   library: String
@@ -90,7 +90,7 @@ type OAppReceiveLibraryVersion {
 type OAppUlnConfig {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   confirmations: BigInt
@@ -108,7 +108,7 @@ type OAppUlnConfig {
 type OAppUlnConfigVersion {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   confirmations: BigInt
@@ -126,7 +126,7 @@ type OAppUlnConfigVersion {
 type OAppSecurityConfig {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   effectiveReceiveLibrary: String
@@ -159,7 +159,7 @@ type OAppSecurityConfig {
 type OAppEidPacketStats {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   srcEid: BigInt! @index
   packetCount: BigInt!
@@ -170,7 +170,7 @@ type OAppEidPacketStats {
 
 type PacketDelivered {
   id: ID!
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   blockNumber: BigInt!
   blockTimestamp: BigInt!
   receiver: String! @index
@@ -198,17 +198,10 @@ type PacketDelivered {
   configOverrideVersionId: String
 }
 
-type DvnMetadata {
-  id: ID!
-  chainId: Int! @index
-  address: String! @index
-  name: String! @index
-}
-
 type OAppPeer {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   peer: String
@@ -221,7 +214,7 @@ type OAppPeer {
 type OAppPeerVersion {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   eid: BigInt! @index
   peer: String
@@ -234,7 +227,7 @@ type OAppPeerVersion {
 type OAppRateLimiter {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   rateLimiter: String
   transactionHash: String! @index
@@ -246,7 +239,7 @@ type OAppRateLimiter {
 type OAppRateLimiterVersion {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   rateLimiter: String
   transactionHash: String! @index
@@ -258,7 +251,7 @@ type OAppRateLimiterVersion {
 type OAppRateLimit {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   dstEid: BigInt! @index
   limit: BigInt!
@@ -272,7 +265,7 @@ type OAppRateLimit {
 type OAppRateLimitVersion {
   id: ID!
   oappId: String! @index
-  chainId: BigInt! @index
+  localEid: BigInt! @index
   oapp: String! @index
   dstEid: BigInt! @index
   limit: BigInt!
