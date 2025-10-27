@@ -201,30 +201,22 @@ class DashboardApp {
       return;
     }
 
-    const formMode = mode === "bulk" ? "bulk" : "single";
-
-    if (formMode === "bulk") {
-      const cleanedTargets = this.sanitizeAliasTargets(targets);
-      if (!cleanedTargets.length) {
-        this.toastQueue.show("No eligible nodes available for renaming.", "info");
+    if (mode === "bulk") {
+      const cleaned = this.sanitizeAliasTargets(targets);
+      if (!cleaned.length) {
+        this.toastQueue.show("No eligible nodes for renaming", "info");
         return;
       }
 
-      this.bulkAliasTargets = cleanedTargets;
-      const targetLabel =
-        cleanedTargets.length === 1 ? cleanedTargets[0] : `${cleanedTargets.length} nodes selected`;
-      const sharedAlias = this.computeSharedAlias(cleanedTargets);
-
-      this.aliasFields.id.value = targetLabel;
-      this.aliasFields.alias.value = sharedAlias;
+      this.bulkAliasTargets = cleaned;
+      this.aliasFields.id.value = cleaned.length === 1 ? cleaned[0] : `${cleaned.length} nodes`;
+      this.aliasFields.alias.value = this.computeSharedAlias(cleaned);
       if (this.dom.aliasTitle) {
         this.dom.aliasTitle.textContent =
-          cleanedTargets.length === 1 ? this.aliasFields.defaultTitle : "Set OApp Name (All Nodes)";
+          cleaned.length === 1 ? this.aliasFields.defaultTitle : "Set OApp Name (All Nodes)";
       }
     } else {
-      if (!target) {
-        return;
-      }
+      if (!target) return;
       this.bulkAliasTargets = null;
       this.aliasFields.id.value = target;
       this.aliasFields.alias.value = this.aliasStore.get(target) || "";
@@ -234,28 +226,20 @@ class DashboardApp {
     }
 
     this.dom.aliasModal.classList.remove("hidden");
-
     queueMicrotask(() => {
       this.aliasFields.alias.focus();
       this.aliasFields.alias.select();
     });
   }
 
-  computeSharedAlias(targetIds) {
-    const aliases = targetIds
-      .map((id) => this.aliasStore.get(id))
-      .filter((value) => typeof value === "string" && value.length > 0);
-    if (!aliases.length) {
-      return "";
-    }
-    const [firstAlias] = aliases;
-    return aliases.every((alias) => alias === firstAlias) ? firstAlias : "";
+  computeSharedAlias(ids) {
+    const aliases = ids.map((id) => this.aliasStore.get(id)).filter((v) => v && v.length);
+    if (!aliases.length) return "";
+    return aliases.every((a) => a === aliases[0]) ? aliases[0] : "";
   }
 
   closeAliasModal() {
-    if (!this.dom.aliasModal || !this.dom.aliasForm || !this.aliasFields.alias) {
-      return;
-    }
+    if (!this.dom.aliasModal || !this.dom.aliasForm) return;
 
     this.dom.aliasModal.classList.add("hidden");
     this.dom.aliasForm.reset();
@@ -267,113 +251,83 @@ class DashboardApp {
 
   async handleAliasSubmit(event) {
     event.preventDefault();
-
-    if (!this.aliasFields.id || !this.aliasFields.alias) {
-      return;
-    }
+    if (!this.aliasFields.id || !this.aliasFields.alias) return;
 
     const alias = this.aliasFields.alias.value;
     const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
 
-    if (targets.length > 0) {
+    if (targets.length) {
       targets.forEach((id) => this.aliasStore.set(id, alias));
       await this.queryCoordinator.reprocessLastResults();
       this.closeAliasModal();
 
-      const normalized = alias && alias.trim().length > 0;
-      const tone = normalized ? "success" : "info";
-      const message = normalized
-        ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}.`
-        : `Cleared aliases for ${targets.length} node${targets.length === 1 ? "" : "s"}.`;
-      this.toastQueue.show(message, tone);
+      const hasAlias = alias?.trim().length > 0;
+      const message = hasAlias
+        ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}`
+        : `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`;
+      this.toastQueue.show(message, hasAlias ? "success" : "info");
       return;
     }
 
-    const oappId = this.aliasFields.id.value;
-    if (!oappId) {
-      this.closeAliasModal();
-      return;
+    const id = this.aliasFields.id.value;
+    if (id) {
+      this.aliasStore.set(id, alias);
+      await this.queryCoordinator.reprocessLastResults();
     }
-
-    this.aliasStore.set(oappId, alias);
-    await this.queryCoordinator.reprocessLastResults();
     this.closeAliasModal();
   }
 
   async handleAliasFormClick(event) {
-    const button = event.target;
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
+    if (!(event.target instanceof HTMLButtonElement)) return;
 
-    const action = button.dataset.action;
+    const action = event.target.dataset.action;
+    event.preventDefault();
 
     if (action === "cancel") {
-      event.preventDefault();
       this.closeAliasModal();
-      return;
-    }
-
-    if (action === "clear") {
-      event.preventDefault();
+    } else if (action === "clear") {
       const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
       if (targets.length) {
         targets.forEach((id) => this.aliasStore.set(id, ""));
         await this.queryCoordinator.reprocessLastResults();
         this.closeAliasModal();
         this.toastQueue.show(
-          `Cleared aliases for ${targets.length} node${targets.length === 1 ? "" : "s"}.`,
+          `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`,
           "info",
         );
-      } else if (this.aliasFields.id) {
-        const oappId = this.aliasFields.id.value;
-        if (oappId) {
-          this.aliasStore.set(oappId, "");
+      } else {
+        const id = this.aliasFields.id?.value;
+        if (id) {
+          this.aliasStore.set(id, "");
           await this.queryCoordinator.reprocessLastResults();
         }
         this.closeAliasModal();
       }
-      return;
-    }
-
-    if (action === "export") {
-      event.preventDefault();
+    } else if (action === "export") {
       this.aliasStore.export();
     }
   }
 
   sanitizeAliasTargets(input) {
-    const zeroAddresses = new Set(
-      [APP_CONFIG.ZERO_ADDRESS, APP_CONFIG.ZERO_PEER]
+    const zeroAddrs = new Set(
+      [APP_CONFIG.ADDRESSES.ZERO, APP_CONFIG.ADDRESSES.ZERO_PEER]
         .filter(Boolean)
-        .map((value) => String(value).toLowerCase()),
+        .map((v) => String(v).toLowerCase()),
     );
     const seen = new Set();
     const result = [];
 
-    const candidates = Array.isArray(input) ? input : [];
-    candidates.forEach((raw) => {
-      if (raw === null || raw === undefined) {
-        return;
-      }
+    (Array.isArray(input) ? input : []).forEach((raw) => {
+      if (!raw) return;
       const trimmed = String(raw).trim();
-      if (!trimmed) {
-        return;
-      }
+      if (!trimmed || seen.has(trimmed)) return;
+
       const parts = trimmed.split("_");
-      if (parts.length < 2) {
-        return;
-      }
-      const address = parts[parts.length - 1].toLowerCase();
-      if (!address.startsWith("0x")) {
-        return;
-      }
-      if (zeroAddresses.has(address)) {
-        return;
-      }
-      if (seen.has(trimmed)) {
-        return;
-      }
+      if (parts.length < 2) return;
+
+      const addr = parts[parts.length - 1].toLowerCase();
+      if (!addr.startsWith("0x") || zeroAddrs.has(addr)) return;
+
       seen.add(trimmed);
       result.push(trimmed);
     });
