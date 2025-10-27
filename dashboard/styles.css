@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
-  font-family: "IBM Plex Mono", "Fira Mono", ui-monospace, SFMono-Regular,
-    SFMono, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
-    monospace;
+  font-family:
+    "IBM Plex Mono", "Fira Mono", ui-monospace, SFMono-Regular, SFMono, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
   --ink: #0d0d0d;
   --paper: #fcfcfc;
   --accent: #f2f200;
@@ -63,7 +63,9 @@ button {
   border: 3px solid var(--ink);
   background: var(--paper);
   cursor: pointer;
-  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
   box-shadow: 5px 5px 0 var(--ink);
 }
 
@@ -300,7 +302,9 @@ td {
   padding: 0.2rem 0.3rem;
   border: 2px solid transparent;
   position: relative;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .copyable:hover {
@@ -320,7 +324,9 @@ td {
   letter-spacing: 0.1em;
   opacity: 0;
   transform: translateY(-6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
   pointer-events: none;
   content: "";
 }
@@ -457,7 +463,9 @@ td {
   box-shadow: 6px 6px 0 var(--ink);
   opacity: 0;
   transform: translateY(-8px);
-  transition: opacity 0.18s ease, transform 0.18s ease;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
 }
 
 .copy-toast.visible {

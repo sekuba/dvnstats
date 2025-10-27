@@ -117,11 +117,11 @@ const LOCAL_CHAIN_CONFIGS: LocalChainConfig[] = [
 ];
 
 const LOCAL_EID_BY_CHAIN_ID = new Map<number, bigint>(
-  LOCAL_CHAIN_CONFIGS.map(config => [config.chainId, config.localEid]),
+  LOCAL_CHAIN_CONFIGS.map((config) => [config.chainId, config.localEid]),
 );
 
 const RECEIVE_LIBRARY_BY_LOCAL_EID = new Map<bigint, string>(
-  LOCAL_CHAIN_CONFIGS.filter(config => config.receiveUln302).map(config => [
+  LOCAL_CHAIN_CONFIGS.filter((config) => config.receiveUln302).map((config) => [
     config.localEid,
     config.receiveUln302!.toLowerCase(),
   ]),
@@ -135,9 +135,7 @@ export const resolveLocalEid = (chainId: number): bigint => {
   return localEid;
 };
 
-export const getTrackedReceiveLibraryAddress = (
-  localEid: bigint,
-): string | undefined => RECEIVE_LIBRARY_BY_LOCAL_EID.get(localEid);
+export const getTrackedReceiveLibraryAddress = (localEid: bigint): string | undefined =>
+  RECEIVE_LIBRARY_BY_LOCAL_EID.get(localEid);
 
-export const listLocalChainConfigs = (): LocalChainConfig[] =>
-  LOCAL_CHAIN_CONFIGS.slice();
+export const listLocalChainConfigs = (): LocalChainConfig[] => LOCAL_CHAIN_CONFIGS.slice();

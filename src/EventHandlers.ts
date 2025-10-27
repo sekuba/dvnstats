@@ -22,10 +22,7 @@ import {
   OAppOFT,
   handlerContext,
 } from "generated";
-import {
-  getTrackedReceiveLibraryAddress,
-  resolveLocalEid,
-} from "./localChainRegistry";
+import { getTrackedReceiveLibraryAddress, resolveLocalEid } from "./localChainRegistry";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
@@ -60,14 +57,11 @@ const FALLBACK_FIELD_ORDER = [
 
 type FallbackField = (typeof FALLBACK_FIELD_ORDER)[number];
 
-const normalizeAddress = (
-  value: string | undefined | null,
-): string | undefined => (value ? value.toLowerCase() : undefined);
+const normalizeAddress = (value: string | undefined | null): string | undefined =>
+  value ? value.toLowerCase() : undefined;
 
 const isZeroAddress = (value: string | undefined | null): boolean =>
-  value !== undefined &&
-  value !== null &&
-  value.toLowerCase() === ZERO_ADDRESS;
+  value !== undefined && value !== null && value.toLowerCase() === ZERO_ADDRESS;
 
 type NormalizedConfig = {
   confirmations?: bigint;
@@ -116,9 +110,7 @@ type ComputeEffectiveConfigArgs = {
   transactionHash: string;
 };
 
-const uniqueNormalizedAddresses = (
-  input: readonly string[] | undefined,
-): string[] => {
+const uniqueNormalizedAddresses = (input: readonly string[] | undefined): string[] => {
   if (!input || input.length === 0) return [];
   const seen = new Set<string>();
   for (const value of input) {
@@ -152,22 +144,16 @@ const validateUlnConfig = (
 
   // Log sentinel value usage (informational)
   if (config.requiredDVNCount === SENTINEL_REQUIRED_DVN_COUNT) {
-    context.log.debug(
-      `UlnConfig using sentinel: requiredDVNCount=255 (NIL) in ${source}`,
-      {
-        chainId,
-        eid: eid.toString(),
-      },
-    );
+    context.log.debug(`UlnConfig using sentinel: requiredDVNCount=255 (NIL) in ${source}`, {
+      chainId,
+      eid: eid.toString(),
+    });
   }
   if (config.optionalDVNCount === SENTINEL_OPTIONAL_DVN_COUNT) {
-    context.log.debug(
-      `UlnConfig using sentinel: optionalDVNCount=255 (NIL) in ${source}`,
-      {
-        chainId,
-        eid: eid.toString(),
-      },
-    );
+    context.log.debug(`UlnConfig using sentinel: optionalDVNCount=255 (NIL) in ${source}`, {
+      chainId,
+      eid: eid.toString(),
+    });
   }
 
   // Validate requiredDVNCount vs requiredDVNs.length (except sentinel)
@@ -178,16 +164,13 @@ const validateUlnConfig = (
     config.requiredDVNs.length > 0 &&
     config.requiredDVNCount !== config.requiredDVNs.length
   ) {
-    context.log.warn(
-      `UlnConfig validation: requiredDVNCount mismatch in ${source}`,
-      {
-        chainId,
-        eid: eid.toString(),
-        requiredDVNCount: config.requiredDVNCount,
-        requiredDVNsLength: config.requiredDVNs.length,
-        requiredDVNs: config.requiredDVNs,
-      },
-    );
+    context.log.warn(`UlnConfig validation: requiredDVNCount mismatch in ${source}`, {
+      chainId,
+      eid: eid.toString(),
+      requiredDVNCount: config.requiredDVNCount,
+      requiredDVNsLength: config.requiredDVNs.length,
+      requiredDVNs: config.requiredDVNs,
+    });
     isValid = false;
   }
 
@@ -199,16 +182,13 @@ const validateUlnConfig = (
     config.optionalDVNs.length > 0 &&
     config.optionalDVNCount !== config.optionalDVNs.length
   ) {
-    context.log.warn(
-      `UlnConfig validation: optionalDVNCount mismatch in ${source}`,
-      {
-        chainId,
-        eid: eid.toString(),
-        optionalDVNCount: config.optionalDVNCount,
-        optionalDVNsLength: config.optionalDVNs.length,
-        optionalDVNs: config.optionalDVNs,
-      },
-    );
+    context.log.warn(`UlnConfig validation: optionalDVNCount mismatch in ${source}`, {
+      chainId,
+      eid: eid.toString(),
+      optionalDVNCount: config.optionalDVNCount,
+      optionalDVNsLength: config.optionalDVNs.length,
+      optionalDVNs: config.optionalDVNs,
+    });
     isValid = false;
   }
 
@@ -247,15 +227,12 @@ const checkForZeroAddresses = (
 ): void => {
   for (const address of addresses) {
     if (isZeroAddress(address)) {
-      context.log.warn(
-        `Zero address detected in ${dvnType} DVNs for ${source}`,
-        {
-          chainId,
-          eid: eid.toString(),
-          dvnType,
-          originalAddress: address,
-        },
-      );
+      context.log.warn(`Zero address detected in ${dvnType} DVNs for ${source}`, {
+        chainId,
+        eid: eid.toString(),
+        dvnType,
+        originalAddress: address,
+      });
     }
   }
 };
@@ -271,16 +248,14 @@ const emptyNormalizedConfig = (): NormalizedConfig => ({
 });
 
 const createNormalizedConfig = (
-  input?:
-    | {
-        confirmations?: bigint | null;
-        requiredDVNCount?: number | null;
-        optionalDVNCount?: number | null;
-        optionalDVNThreshold?: number | null;
-        requiredDVNs?: readonly string[] | null;
-        optionalDVNs?: readonly string[] | null;
-      }
-    | null,
+  input?: {
+    confirmations?: bigint | null;
+    requiredDVNCount?: number | null;
+    optionalDVNCount?: number | null;
+    optionalDVNThreshold?: number | null;
+    requiredDVNs?: readonly string[] | null;
+    optionalDVNs?: readonly string[] | null;
+  } | null,
 ): NormalizedConfig => {
   if (!input) return emptyNormalizedConfig();
 
@@ -297,8 +272,7 @@ const createNormalizedConfig = (
       ? Number(input.optionalDVNCount)
       : undefined;
   const optionalDVNThreshold =
-    input.optionalDVNThreshold !== undefined &&
-    input.optionalDVNThreshold !== null
+    input.optionalDVNThreshold !== undefined && input.optionalDVNThreshold !== null
       ? Number(input.optionalDVNThreshold)
       : undefined;
 
@@ -328,11 +302,8 @@ const createNormalizedConfig = (
   };
 };
 
-const makeEventId = (
-  localEid: bigint,
-  blockNumber: number,
-  logIndex: number,
-): string => `${localEid.toString()}_${blockNumber}_${logIndex}`;
+const makeEventId = (localEid: bigint, blockNumber: number, logIndex: number): string =>
+  `${localEid.toString()}_${blockNumber}_${logIndex}`;
 
 const makeDefaultScopedId = (localEid: bigint, eid: bigint): string =>
   `${localEid.toString()}_${eid.toString()}`;
@@ -340,18 +311,14 @@ const makeDefaultScopedId = (localEid: bigint, eid: bigint): string =>
 const makeOAppId = (localEid: bigint, address: string): string =>
   `${localEid.toString()}_${address}`;
 
-const makeSecurityConfigId = (oappId: string, eid: bigint): string =>
-  `${oappId}_${eid.toString()}`;
+const makeSecurityConfigId = (oappId: string, eid: bigint): string => `${oappId}_${eid.toString()}`;
 
 const toBigInt = (value: number | bigint): bigint => BigInt(value);
 
 const getTrackedReceiveLibrary = (localEid: bigint): string | undefined =>
   getTrackedReceiveLibraryAddress(localEid);
 
-const isTrackedReceiveLibrary = (
-  localEid: bigint,
-  library?: string,
-): boolean => {
+const isTrackedReceiveLibrary = (localEid: bigint, library?: string): boolean => {
   if (!library) return false;
   const tracked = getTrackedReceiveLibrary(localEid);
   return tracked !== undefined && tracked === library;
@@ -413,12 +380,8 @@ const mergeSecurityConfig = (
 ): MergeResult => {
   const fallbackFields = new Set<FallbackField>();
 
-  const defaultLibrary = defaults.library
-    ? normalizeAddress(defaults.library)
-    : undefined;
-  const overrideLibrary = overrides?.library
-    ? normalizeAddress(overrides.library)
-    : undefined;
+  const defaultLibrary = defaults.library ? normalizeAddress(defaults.library) : undefined;
+  const overrideLibrary = overrides?.library ? normalizeAddress(overrides.library) : undefined;
 
   let effectiveReceiveLibrary: string | undefined;
   if (overrideLibrary && !isZeroAddress(overrideLibrary)) {
@@ -434,10 +397,7 @@ const mergeSecurityConfig = (
     effectiveReceiveLibrary = undefined;
   }
 
-  const isConfigTracked = isTrackedReceiveLibrary(
-    localEid,
-    effectiveReceiveLibrary,
-  );
+  const isConfigTracked = isTrackedReceiveLibrary(localEid, effectiveReceiveLibrary);
 
   if (!isConfigTracked) {
     return {
@@ -463,21 +423,14 @@ const mergeSecurityConfig = (
   const overrideConfirmations = overrideConfig.confirmations;
   const defaultConfirmations = defaultConfig.confirmations;
   let effectiveConfirmations: bigint | undefined;
-  if (
-    overrideConfirmations !== undefined &&
-    overrideConfirmations !== 0n
-  ) {
+  if (overrideConfirmations !== undefined && overrideConfirmations !== 0n) {
     // Sentinel value means explicitly set to zero confirmations
     effectiveConfirmations =
-      overrideConfirmations === SENTINEL_CONFIRMATIONS
-        ? 0n
-        : overrideConfirmations;
+      overrideConfirmations === SENTINEL_CONFIRMATIONS ? 0n : overrideConfirmations;
   } else if (defaultConfirmations !== undefined) {
     // Sentinel value in default also means zero confirmations
     effectiveConfirmations =
-      defaultConfirmations === SENTINEL_CONFIRMATIONS
-        ? 0n
-        : defaultConfirmations;
+      defaultConfirmations === SENTINEL_CONFIRMATIONS ? 0n : defaultConfirmations;
     if (
       overrideHasConfig &&
       (overrideConfirmations === undefined || overrideConfirmations === 0n)
@@ -493,17 +446,12 @@ const mergeSecurityConfig = (
   let rawRequiredCount: number | undefined;
   if (
     overrideRequiredCount !== undefined &&
-    (overrideRequiredCount > 0 ||
-      overrideRequiredCount === SENTINEL_REQUIRED_DVN_COUNT)
+    (overrideRequiredCount > 0 || overrideRequiredCount === SENTINEL_REQUIRED_DVN_COUNT)
   ) {
     rawRequiredCount = overrideRequiredCount;
   } else if (defaultRequiredCount !== undefined) {
     rawRequiredCount = defaultRequiredCount;
-    if (
-      overrideHasConfig &&
-      (overrideRequiredCount === undefined ||
-        overrideRequiredCount === 0)
-    ) {
+    if (overrideHasConfig && (overrideRequiredCount === undefined || overrideRequiredCount === 0)) {
       fallbackFields.add("requiredDVNCount");
     }
   }
@@ -513,24 +461,16 @@ const mergeSecurityConfig = (
   let rawOptionalCount: number | undefined;
   if (
     overrideOptionalCount !== undefined &&
-    (overrideOptionalCount > 0 ||
-      overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT)
+    (overrideOptionalCount > 0 || overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT)
   ) {
     // Sentinel value means explicitly set to zero optional DVNs
     rawOptionalCount =
-      overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT
-        ? 0
-        : overrideOptionalCount;
+      overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT ? 0 : overrideOptionalCount;
   } else if (defaultOptionalCount !== undefined) {
     // Sentinel value in default also means zero optional DVNs
     rawOptionalCount =
-      defaultOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT
-        ? 0
-        : defaultOptionalCount;
-    if (
-      overrideHasConfig &&
-      (overrideOptionalCount === undefined || overrideOptionalCount === 0)
-    ) {
+      defaultOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT ? 0 : defaultOptionalCount;
+    if (overrideHasConfig && (overrideOptionalCount === undefined || overrideOptionalCount === 0)) {
       fallbackFields.add("optionalDVNCount");
     }
   }
@@ -538,17 +478,13 @@ const mergeSecurityConfig = (
   const overrideOptionalThreshold = overrideConfig.optionalDVNThreshold;
   const defaultOptionalThreshold = defaultConfig.optionalDVNThreshold;
   let effectiveOptionalDVNThreshold: number | undefined;
-  if (
-    overrideOptionalThreshold !== undefined &&
-    overrideOptionalThreshold > 0
-  ) {
+  if (overrideOptionalThreshold !== undefined && overrideOptionalThreshold > 0) {
     effectiveOptionalDVNThreshold = overrideOptionalThreshold;
   } else if (defaultOptionalThreshold !== undefined) {
     effectiveOptionalDVNThreshold = defaultOptionalThreshold;
     if (
       overrideHasConfig &&
-      (overrideOptionalThreshold === undefined ||
-        overrideOptionalThreshold === 0)
+      (overrideOptionalThreshold === undefined || overrideOptionalThreshold === 0)
     ) {
       fallbackFields.add("optionalDVNThreshold");
     }
@@ -556,8 +492,7 @@ const mergeSecurityConfig = (
 
   const overrideRequiredDVNs = overrideConfig.requiredDVNs;
   const defaultRequiredDVNs = defaultConfig.requiredDVNs;
-  const usesRequiredDVNSentinel =
-    rawRequiredCount === SENTINEL_REQUIRED_DVN_COUNT;
+  const usesRequiredDVNSentinel = rawRequiredCount === SENTINEL_REQUIRED_DVN_COUNT;
 
   let effectiveRequiredDVNs: string[] = [];
   if (usesRequiredDVNSentinel) {
@@ -606,10 +541,7 @@ const mergeSecurityConfig = (
   }
 
   // Cap threshold to count if misconfigured
-  if (
-    effectiveOptionalDVNThreshold !== undefined &&
-    effectiveOptionalDVNCount >= 0
-  ) {
+  if (effectiveOptionalDVNThreshold !== undefined && effectiveOptionalDVNCount >= 0) {
     if (effectiveOptionalDVNThreshold > effectiveOptionalDVNCount) {
       const originalThreshold = effectiveOptionalDVNThreshold;
       effectiveOptionalDVNThreshold = effectiveOptionalDVNCount;
@@ -632,15 +564,10 @@ const mergeSecurityConfig = (
 
   const comparable: ConfigComparable = {
     confirmations: effectiveConfirmations,
-    requiredDVNCount:
-      effectiveRequiredDVNCount !== undefined
-        ? effectiveRequiredDVNCount
-        : 0,
+    requiredDVNCount: effectiveRequiredDVNCount !== undefined ? effectiveRequiredDVNCount : 0,
     optionalDVNCount: effectiveOptionalDVNCount,
     optionalDVNThreshold:
-      effectiveOptionalDVNThreshold !== undefined
-        ? effectiveOptionalDVNThreshold
-        : 0,
+      effectiveOptionalDVNThreshold !== undefined ? effectiveOptionalDVNThreshold : 0,
     requiredDVNs: effectiveRequiredDVNs,
     optionalDVNs: effectiveOptionalDVNs,
     usesSentinel: usesRequiredDVNSentinel,
@@ -700,8 +627,7 @@ const computeAndPersistEffectiveConfig = async ({
             confirmations: defaultConfig.confirmations,
             requiredDVNCount: defaultConfig.requiredDVNCount ?? undefined,
             optionalDVNCount: defaultConfig.optionalDVNCount ?? undefined,
-            optionalDVNThreshold:
-              defaultConfig.optionalDVNThreshold ?? undefined,
+            optionalDVNThreshold: defaultConfig.optionalDVNThreshold ?? undefined,
             requiredDVNs: defaultConfig.requiredDVNs,
             optionalDVNs: defaultConfig.optionalDVNs,
           }
@@ -717,8 +643,7 @@ const computeAndPersistEffectiveConfig = async ({
             confirmations: configOverride.confirmations,
             requiredDVNCount: configOverride.requiredDVNCount ?? undefined,
             optionalDVNCount: configOverride.optionalDVNCount ?? undefined,
-            optionalDVNThreshold:
-              configOverride.optionalDVNThreshold ?? undefined,
+            optionalDVNThreshold: configOverride.optionalDVNThreshold ?? undefined,
             requiredDVNs: configOverride.requiredDVNs,
             optionalDVNs: configOverride.optionalDVNs,
           }
@@ -726,39 +651,23 @@ const computeAndPersistEffectiveConfig = async ({
     ),
   };
 
-  const defaultResolved = mergeSecurityConfig(
-    context,
-    localEid,
-    eid,
-    undefined,
-    defaults,
-  );
-  const resolved = mergeSecurityConfig(
-    context,
-    localEid,
-    eid,
-    oappId,
-    defaults,
-    overrides,
-  );
+  const defaultResolved = mergeSecurityConfig(context, localEid, eid, undefined, defaults);
+  const resolved = mergeSecurityConfig(context, localEid, eid, oappId, defaults, overrides);
 
   const usesDefaultLibrary =
-    resolved.effectiveReceiveLibrary ===
-    defaultResolved.effectiveReceiveLibrary;
+    resolved.effectiveReceiveLibrary === defaultResolved.effectiveReceiveLibrary;
   const usesDefaultConfig =
     resolved.isConfigTracked &&
     defaultResolved.isConfigTracked &&
     configsAreEqual(resolved.comparable, defaultResolved.comparable);
 
   const derivedPeer = existingConfig?.peer ?? peerState?.peer;
-  const derivedPeerBlock =
-    existingConfig?.peerLastUpdatedBlock ?? peerState?.lastUpdatedBlock;
+  const derivedPeerBlock = existingConfig?.peerLastUpdatedBlock ?? peerState?.lastUpdatedBlock;
   const derivedPeerTimestamp =
     existingConfig?.peerLastUpdatedTimestamp ?? peerState?.lastUpdatedTimestamp;
   const derivedPeerEventId =
     existingConfig?.peerLastUpdatedEventId ?? peerState?.lastUpdatedByEventId;
-  const derivedPeerTxHash =
-    existingConfig?.peerTransactionHash ?? peerState?.transactionHash;
+  const derivedPeerTxHash = existingConfig?.peerTransactionHash ?? peerState?.transactionHash;
 
   const entity: OAppSecurityConfig = {
     id: configId,
@@ -808,8 +717,7 @@ const recomputeSecurityConfigsForScope = async (
   transactionHash: string,
 ) => {
   try {
-    const configsForChain =
-      await context.OAppSecurityConfig.getWhere.localEid.eq(localEid);
+    const configsForChain = await context.OAppSecurityConfig.getWhere.localEid.eq(localEid);
     if (!configsForChain || configsForChain.length === 0) {
       context.log.debug("No configs found for chain during recomputation", {
         chainId,
@@ -820,7 +728,7 @@ const recomputeSecurityConfigsForScope = async (
     }
 
     // Filter by eid in memory (performance note: could be optimized with compound query)
-    const configsForEid = configsForChain.filter(config => config.eid === eid);
+    const configsForEid = configsForChain.filter((config) => config.eid === eid);
 
     if (configsForEid.length > 0) {
       context.log.debug("Recomputing security configs for scope", {
@@ -848,17 +756,15 @@ const recomputeSecurityConfigsForScope = async (
       } catch (error) {
         context.log.error(
           "Failed to recompute security config for OApp",
-          error instanceof Error
-            ? error
-            : new Error(String(error)),
+          error instanceof Error ? error : new Error(String(error)),
         );
-      context.log.error("Config recomputation context", {
-        chainId,
-        localEid: localEid.toString(),
-        eid: eid.toString(),
-        oappId: config.oappId,
-        oappAddress: config.oapp,
-      });
+        context.log.error("Config recomputation context", {
+          chainId,
+          localEid: localEid.toString(),
+          eid: eid.toString(),
+          oappId: config.oappId,
+          oappAddress: config.oapp,
+        });
         // Continue processing other configs
       }
     }
@@ -1394,217 +1300,226 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
   }
 });
 
-OAppOFT.PeerSet.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
+OAppOFT.PeerSet.handler(
+  async ({ event, context }) => {
+    if (context.isPreload) return;
 
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-  const transactionHash = event.transaction.hash;
-  const oappAddress = normalizeAddress(event.srcAddress);
-  if (!oappAddress) {
-    context.log.warn("PeerSet missing srcAddress", {
-      chainId: event.chainId,
-      localEid: localEid.toString(),
-      rawValue: event.srcAddress,
-      eventId,
-      transactionHash,
-    });
-    return;
-  }
-  const oappId = makeOAppId(localEid, oappAddress);
-  const eid = event.params.eid;
-  const configId = makeSecurityConfigId(oappId, eid);
-  const peerValue = event.params.peer;
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+    const transactionHash = event.transaction.hash;
+    const oappAddress = normalizeAddress(event.srcAddress);
+    if (!oappAddress) {
+      context.log.warn("PeerSet missing srcAddress", {
+        chainId: event.chainId,
+        localEid: localEid.toString(),
+        rawValue: event.srcAddress,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+    const oappId = makeOAppId(localEid, oappAddress);
+    const eid = event.params.eid;
+    const configId = makeSecurityConfigId(oappId, eid);
+    const peerValue = event.params.peer;
 
-  const oappDefaults: OApp = {
-    id: oappId,
-    localEid,
-    address: oappAddress,
-    totalPacketsReceived: 0n,
-    lastPacketBlock: undefined,
-    lastPacketTimestamp: undefined,
-  };
-  await context.OApp.getOrCreate(oappDefaults);
+    const oappDefaults: OApp = {
+      id: oappId,
+      localEid,
+      address: oappAddress,
+      totalPacketsReceived: 0n,
+      lastPacketBlock: undefined,
+      lastPacketTimestamp: undefined,
+    };
+    await context.OApp.getOrCreate(oappDefaults);
 
-  const peerEntity: OAppPeer = {
-    id: configId,
-    oappId,
-    localEid,
-    oapp: oappAddress,
-    eid,
-    peer: peerValue,
-    transactionHash,
-    lastUpdatedBlock: blockNumber,
-    lastUpdatedTimestamp: blockTimestamp,
-    lastUpdatedByEventId: eventId,
-  };
-  context.OAppPeer.set(peerEntity);
-
-  const peerVersion: OAppPeerVersion = {
-    id: eventId,
-    oappId,
-    localEid,
-    oapp: oappAddress,
-    eid,
-    peer: peerValue,
-    transactionHash,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-  };
-  context.OAppPeerVersion.set(peerVersion);
-
-  const securityConfig = await computeAndPersistEffectiveConfig({
-    context,
-    chainId: event.chainId,
-    localEid,
-    oappId,
-    oappAddress,
-    eid,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  });
-
-  const updatedSecurityConfig: OAppSecurityConfig = {
-    ...securityConfig,
-    peer: peerValue,
-    peerLastUpdatedBlock: blockNumber,
-    peerLastUpdatedTimestamp: blockTimestamp,
-    peerLastUpdatedEventId: eventId,
-    peerTransactionHash: transactionHash,
-  };
-  context.OAppSecurityConfig.set(updatedSecurityConfig);
-}, { wildcard: true });
-
-OAppOFT.RateLimiterSet.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
-
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-  const transactionHash = event.transaction.hash;
-  const oappAddress = normalizeAddress(event.srcAddress);
-  if (!oappAddress) {
-    context.log.warn("RateLimiterSet missing srcAddress", {
-      chainId: event.chainId,
-      localEid: localEid.toString(),
-      rawValue: event.srcAddress,
-      eventId,
-      transactionHash,
-    });
-    return;
-  }
-  const oappId = makeOAppId(localEid, oappAddress);
-  const normalizedRateLimiter = normalizeAddress(event.params.rateLimiter);
-
-  const oappDefaults: OApp = {
-    id: oappId,
-    localEid,
-    address: oappAddress,
-    totalPacketsReceived: 0n,
-    lastPacketBlock: undefined,
-    lastPacketTimestamp: undefined,
-  };
-  await context.OApp.getOrCreate(oappDefaults);
-
-  const rateLimiterEntity: OAppRateLimiter = {
-    id: oappId,
-    oappId,
-    localEid,
-    oapp: oappAddress,
-    rateLimiter: normalizedRateLimiter,
-    transactionHash,
-    lastUpdatedBlock: blockNumber,
-    lastUpdatedTimestamp: blockTimestamp,
-    lastUpdatedByEventId: eventId,
-  };
-  context.OAppRateLimiter.set(rateLimiterEntity);
-
-  const rateLimiterVersion: OAppRateLimiterVersion = {
-    id: eventId,
-    oappId,
-    localEid,
-    oapp: oappAddress,
-    rateLimiter: normalizedRateLimiter,
-    transactionHash,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-  };
-  context.OAppRateLimiterVersion.set(rateLimiterVersion);
-}, { wildcard: true });
-
-OAppOFT.RateLimitsChanged.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
-
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-  const transactionHash = event.transaction.hash;
-  const oappAddress = normalizeAddress(event.srcAddress);
-  if (!oappAddress) {
-    context.log.warn("RateLimitsChanged missing srcAddress", {
-      chainId: event.chainId,
-      localEid: localEid.toString(),
-      rawValue: event.srcAddress,
-      eventId,
-      transactionHash,
-    });
-    return;
-  }
-  const oappId = makeOAppId(localEid, oappAddress);
-
-  const oappDefaults: OApp = {
-    id: oappId,
-    localEid,
-    address: oappAddress,
-    totalPacketsReceived: 0n,
-    lastPacketBlock: undefined,
-    lastPacketTimestamp: undefined,
-  };
-  await context.OApp.getOrCreate(oappDefaults);
-
-  for (const [rawDstEid, rawLimit, rawWindow] of event.params.rateLimitConfigs) {
-    const dstEid = BigInt(rawDstEid);
-    const limit = BigInt(rawLimit);
-    const window = BigInt(rawWindow);
-    const configId = makeSecurityConfigId(oappId, dstEid);
-    const versionId = `${eventId}_${dstEid.toString()}`;
-
-    const rateLimitEntity: OAppRateLimit = {
+    const peerEntity: OAppPeer = {
       id: configId,
       oappId,
       localEid,
       oapp: oappAddress,
-      dstEid,
-      limit,
-      window,
+      eid,
+      peer: peerValue,
       transactionHash,
       lastUpdatedBlock: blockNumber,
       lastUpdatedTimestamp: blockTimestamp,
       lastUpdatedByEventId: eventId,
     };
-    context.OAppRateLimit.set(rateLimitEntity);
+    context.OAppPeer.set(peerEntity);
 
-    const rateLimitVersion: OAppRateLimitVersion = {
-      id: versionId,
+    const peerVersion: OAppPeerVersion = {
+      id: eventId,
       oappId,
       localEid,
       oapp: oappAddress,
-      dstEid,
-      limit,
-      window,
+      eid,
+      peer: peerValue,
       transactionHash,
       blockNumber,
       blockTimestamp,
       eventId,
     };
-    context.OAppRateLimitVersion.set(rateLimitVersion);
-  }
-}, { wildcard: true });
+    context.OAppPeerVersion.set(peerVersion);
+
+    const securityConfig = await computeAndPersistEffectiveConfig({
+      context,
+      chainId: event.chainId,
+      localEid,
+      oappId,
+      oappAddress,
+      eid,
+      blockNumber,
+      blockTimestamp,
+      eventId,
+      transactionHash,
+    });
+
+    const updatedSecurityConfig: OAppSecurityConfig = {
+      ...securityConfig,
+      peer: peerValue,
+      peerLastUpdatedBlock: blockNumber,
+      peerLastUpdatedTimestamp: blockTimestamp,
+      peerLastUpdatedEventId: eventId,
+      peerTransactionHash: transactionHash,
+    };
+    context.OAppSecurityConfig.set(updatedSecurityConfig);
+  },
+  { wildcard: true },
+);
+
+OAppOFT.RateLimiterSet.handler(
+  async ({ event, context }) => {
+    if (context.isPreload) return;
+
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+    const transactionHash = event.transaction.hash;
+    const oappAddress = normalizeAddress(event.srcAddress);
+    if (!oappAddress) {
+      context.log.warn("RateLimiterSet missing srcAddress", {
+        chainId: event.chainId,
+        localEid: localEid.toString(),
+        rawValue: event.srcAddress,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+    const oappId = makeOAppId(localEid, oappAddress);
+    const normalizedRateLimiter = normalizeAddress(event.params.rateLimiter);
+
+    const oappDefaults: OApp = {
+      id: oappId,
+      localEid,
+      address: oappAddress,
+      totalPacketsReceived: 0n,
+      lastPacketBlock: undefined,
+      lastPacketTimestamp: undefined,
+    };
+    await context.OApp.getOrCreate(oappDefaults);
+
+    const rateLimiterEntity: OAppRateLimiter = {
+      id: oappId,
+      oappId,
+      localEid,
+      oapp: oappAddress,
+      rateLimiter: normalizedRateLimiter,
+      transactionHash,
+      lastUpdatedBlock: blockNumber,
+      lastUpdatedTimestamp: blockTimestamp,
+      lastUpdatedByEventId: eventId,
+    };
+    context.OAppRateLimiter.set(rateLimiterEntity);
+
+    const rateLimiterVersion: OAppRateLimiterVersion = {
+      id: eventId,
+      oappId,
+      localEid,
+      oapp: oappAddress,
+      rateLimiter: normalizedRateLimiter,
+      transactionHash,
+      blockNumber,
+      blockTimestamp,
+      eventId,
+    };
+    context.OAppRateLimiterVersion.set(rateLimiterVersion);
+  },
+  { wildcard: true },
+);
+
+OAppOFT.RateLimitsChanged.handler(
+  async ({ event, context }) => {
+    if (context.isPreload) return;
+
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+    const transactionHash = event.transaction.hash;
+    const oappAddress = normalizeAddress(event.srcAddress);
+    if (!oappAddress) {
+      context.log.warn("RateLimitsChanged missing srcAddress", {
+        chainId: event.chainId,
+        localEid: localEid.toString(),
+        rawValue: event.srcAddress,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+    const oappId = makeOAppId(localEid, oappAddress);
+
+    const oappDefaults: OApp = {
+      id: oappId,
+      localEid,
+      address: oappAddress,
+      totalPacketsReceived: 0n,
+      lastPacketBlock: undefined,
+      lastPacketTimestamp: undefined,
+    };
+    await context.OApp.getOrCreate(oappDefaults);
+
+    for (const [rawDstEid, rawLimit, rawWindow] of event.params.rateLimitConfigs) {
+      const dstEid = BigInt(rawDstEid);
+      const limit = BigInt(rawLimit);
+      const window = BigInt(rawWindow);
+      const configId = makeSecurityConfigId(oappId, dstEid);
+      const versionId = `${eventId}_${dstEid.toString()}`;
+
+      const rateLimitEntity: OAppRateLimit = {
+        id: configId,
+        oappId,
+        localEid,
+        oapp: oappAddress,
+        dstEid,
+        limit,
+        window,
+        transactionHash,
+        lastUpdatedBlock: blockNumber,
+        lastUpdatedTimestamp: blockTimestamp,
+        lastUpdatedByEventId: eventId,
+      };
+      context.OAppRateLimit.set(rateLimitEntity);
+
+      const rateLimitVersion: OAppRateLimitVersion = {
+        id: versionId,
+        oappId,
+        localEid,
+        oapp: oappAddress,
+        dstEid,
+        limit,
+        window,
+        transactionHash,
+        blockNumber,
+        blockTimestamp,
+        eventId,
+      };
+      context.OAppRateLimitVersion.set(rateLimitVersion);
+    }
+  },
+  { wildcard: true },
+);

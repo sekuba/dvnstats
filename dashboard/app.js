@@ -3,11 +3,7 @@
  * Main application bootstrap
  */
 
-import {
-  GraphQLClient,
-  ChainMetadata,
-  normalizeOAppId,
-} from "./core.js";
+import { GraphQLClient, ChainMetadata, normalizeOAppId } from "./core.js";
 import { AliasManager, QueryManager, ResultsRenderer, ToastManager } from "./ui.js";
 import { SecurityWebCrawler } from "./crawler.js";
 
@@ -62,10 +58,7 @@ class Dashboard {
     console.log("[Dashboard] Initializing...");
 
     // Load all metadata in parallel
-    await Promise.all([
-      this.chainMetadata.load(),
-      this.aliasManager.load(),
-    ]);
+    await Promise.all([this.chainMetadata.load(), this.aliasManager.load()]);
 
     console.log("[Dashboard] Metadata loaded");
 
@@ -220,7 +213,12 @@ class Dashboard {
    * Open alias editor modal
    */
   openAliasEditor(oappId) {
-    if (!this.aliasEditor || !this.aliasEditorForm || !this.aliasEditorIdInput || !this.aliasEditorAliasInput) {
+    if (
+      !this.aliasEditor ||
+      !this.aliasEditorForm ||
+      !this.aliasEditorIdInput ||
+      !this.aliasEditorAliasInput
+    ) {
       return;
     }
 

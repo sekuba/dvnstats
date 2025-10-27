@@ -21,10 +21,10 @@ export const CONFIG = {
     HEIGHT: 1200,
     NODE_RADIUS: 40,
     PADDING: 150,
-    SEED_GAP: 400,           // Distance from seed to first column (left/right)
-    COLUMN_SPACING: 300,     // Distance between subsequent columns
+    SEED_GAP: 400, // Distance from seed to first column (left/right)
+    COLUMN_SPACING: 300, // Distance between subsequent columns
     MAX_NODES_PER_COLUMN: 8, // Max nodes in a single column before splitting
-    MAX_COLUMNS: 20,         // Max number of columns per side
+    MAX_COLUMNS: 20, // Max number of columns per side
   },
 
   // Security web crawler settings
@@ -42,11 +42,7 @@ export const CONFIG = {
 
   // Data sources
   DATA_SOURCES: {
-    CHAIN_METADATA: [
-      "./layerzero.json",
-      "../layerzero.json",
-      "/layerzero.json",
-    ],
+    CHAIN_METADATA: ["./layerzero.json", "/dashboard/layerzero.json"],
     OAPP_ALIASES: "./oapp-aliases.json",
   },
 

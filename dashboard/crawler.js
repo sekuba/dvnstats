@@ -30,9 +30,7 @@ export class SecurityWebCrawler {
       `[SecurityWebCrawler] Starting crawl with ${knownEndpoints.length} local endpoint mappings`,
     );
     if (knownEndpoints.length === 0) {
-      console.warn(
-        "[SecurityWebCrawler] No local endpoint metadata loaded! Attempting to load...",
-      );
+      console.warn("[SecurityWebCrawler] No local endpoint metadata loaded! Attempting to load...");
       await this.chainMetadata.load();
     }
 
@@ -88,14 +86,8 @@ export class SecurityWebCrawler {
           localEid: configLocalEid,
         };
 
-        const requiredDVNNames = this.chainMetadata.resolveDvnNames(
-          requiredDVNs,
-          dvnContext,
-        );
-        const optionalDVNNames = this.chainMetadata.resolveDvnNames(
-          optionalDVNs,
-          dvnContext,
-        );
+        const requiredDVNNames = this.chainMetadata.resolveDvnNames(requiredDVNs, dvnContext);
+        const optionalDVNNames = this.chainMetadata.resolveDvnNames(optionalDVNs, dvnContext);
 
         nodeData.securityConfigs.push({
           srcEid: config.eid,
@@ -219,8 +211,7 @@ export class SecurityWebCrawler {
 
     if (!eidStr) {
       const fallbackSuffix = peerHex ? peerHex.toLowerCase() : "unknown";
-      const fallbackLocalId =
-        eidStr !== null ? `eid-${eidStr}` : "unknown-eid";
+      const fallbackLocalId = eidStr !== null ? `eid-${eidStr}` : "unknown-eid";
       const fallbackOAppId = `${fallbackLocalId}_${fallbackSuffix}`;
       return {
         rawPeer: peerHex,
@@ -263,15 +254,7 @@ export class SecurityWebCrawler {
     };
   }
 
-  addPeerEdges({
-    currentOAppId,
-    depth,
-    maxDepth,
-    queue,
-    visited,
-    edges,
-    configContexts,
-  }) {
+  addPeerEdges({ currentOAppId, depth, maxDepth, queue, visited, edges, configContexts }) {
     for (const { config, peerInfo } of configContexts) {
       if (!peerInfo || !peerInfo.oappId) {
         continue;

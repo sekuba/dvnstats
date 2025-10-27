@@ -12,10 +12,9 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 const CONFIG_PATH = path.join(ROOT, "config.yaml");
-const METADATA_PATH = path.join(ROOT, "layerzero.json");
+const METADATA_PATH = path.join(ROOT, "dashboard", "layerzero.json");
 
-const readFile = (filePath) =>
-  fs.readFileSync(filePath, { encoding: "utf8" });
+const readFile = (filePath) => fs.readFileSync(filePath, { encoding: "utf8" });
 
 const parseNetworks = (configText) => {
   const normalized = configText.replace(/\r\n/g, "\n");
@@ -26,13 +25,10 @@ const parseNetworks = (configText) => {
   while ((match = regex.exec(normalized)) !== null) {
     const [, id, block] = match;
     const chainId = Number(id);
-    const endpointMatch = /name:\s*EndpointV2[\s\S]*?address:\s*-\s*(0x[a-fA-F0-9]+)/.exec(
+    const endpointMatch = /name:\s*EndpointV2[\s\S]*?address:\s*-\s*(0x[a-fA-F0-9]+)/.exec(block);
+    const receiveUlnMatch = /name:\s*ReceiveUln302[\s\S]*?address:\s*-\s*(0x[a-fA-F0-9]+)/.exec(
       block,
     );
-    const receiveUlnMatch =
-      /name:\s*ReceiveUln302[\s\S]*?address:\s*-\s*(0x[a-fA-F0-9]+)/.exec(
-        block,
-      );
 
     results.push({
       chainId,
@@ -75,16 +71,9 @@ const buildAddressIndex = (metadata) => {
     if (typeof node.stage === "string") {
       nextContext.stage = node.stage;
     }
-    if (
-      node.chainDetails &&
-      typeof node.chainDetails === "object" &&
-      node.chainDetails !== null
-    ) {
+    if (node.chainDetails && typeof node.chainDetails === "object" && node.chainDetails !== null) {
       const candidate = node.chainDetails.nativeChainId;
-      if (
-        typeof candidate === "number" ||
-        (typeof candidate === "string" && candidate !== "")
-      ) {
+      if (typeof candidate === "number" || (typeof candidate === "string" && candidate !== "")) {
         const nativeChainIdNumber = Number(candidate);
         if (!Number.isNaN(nativeChainIdNumber)) {
           nextContext.nativeChainId = nativeChainIdNumber;
@@ -140,9 +129,7 @@ const main = () => {
 
     const filterByNativeChainId = (matches) => {
       if (!matches) return undefined;
-      const filtered = matches.filter(
-        candidate => candidate.nativeChainId === network.chainId,
-      );
+      const filtered = matches.filter((candidate) => candidate.nativeChainId === network.chainId);
       return filtered.length > 0 ? filtered : matches;
     };
 

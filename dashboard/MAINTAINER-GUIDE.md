@@ -679,10 +679,9 @@ http://localhost:3000?endpoint=https://your-hasura.com/v1/graphql
 
 **Important**: The dashboard requires `layerzero.json` (the standard LayerZero chain metadata file).
 
-**File Priority** (config.js):
+**File Priority** (`config.js`):
 1. `./layerzero.json`
-2. `../layerzero.json`
-3. `/layerzero.json`
+2. `/dashboard/layerzero.json`
 
 **Expected Format**:
 ```json
@@ -709,7 +708,7 @@ http://localhost:3000?endpoint=https://your-hasura.com/v1/graphql
 ```
 
 **To Update**:
-1. Replace `dashboard/layerzero.json` with new version
+1. Replace `dashboard/layerzero.json` with the new version (ensure your static hosting exposes it at `/dashboard/layerzero.json`)
 2. Refresh browser
 3. Check console: `[ChainMetadata] Processed Y deployments, Z local EIDs`
 4. Verify Z > 0 (should align with the configured networks)
@@ -902,7 +901,7 @@ Skipping sender: unknown chainId for srcEid=30184
 
 **Fix**:
 1. Check console for: `[ChainMetadata] Loaded from ...`
-2. Verify file exists: `ls dashboard/layerzero.json`
+2. Verify file exists and is served: `ls dashboard/layerzero.json`
 3. Check file format: Should have `deployments` arrays with `eid` fields
 4. Download fresh copy from LayerZero API if corrupted
 5. Verify console shows: `[ChainMetadata] Processed X chains, Y deployments, Z EID mappings` with Z > 0
