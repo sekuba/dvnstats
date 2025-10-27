@@ -3,9 +3,9 @@
  * Main application bootstrap
  */
 
+import { CONFIG } from "./config.js";
 import { GraphQLClient, ChainMetadata } from "./core.js";
 import { AliasManager, QueryManager, ResultsRenderer, ToastManager } from "./ui.js";
-import { SecurityWebCrawler } from "./crawler.js";
 
 /**
  * Main application class
@@ -377,8 +377,11 @@ class Dashboard {
   }
 
   filterAliasTargets(input) {
-    const ZERO_ADDRESS20 = "0x0000000000000000000000000000000000000000";
-    const ZERO_ADDRESS32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    const zeroAddresses = new Set(
+      [CONFIG.ZERO_ADDRESS, CONFIG.ZERO_PEER]
+        .filter(Boolean)
+        .map((value) => String(value).toLowerCase()),
+    );
     const seen = new Set();
     const result = [];
 
@@ -396,13 +399,10 @@ class Dashboard {
         return;
       }
       const address = parts[parts.length - 1].toLowerCase();
-      if (address === ZERO_ADDRESS20 || address === ZERO_ADDRESS32) {
-        if (this.aliasManager) {
-          this.aliasManager.set(trimmed, "");
-        }
+      if (!address.startsWith("0x")) {
         return;
       }
-      if (!address.startsWith("0x")) {
+      if (zeroAddresses.has(address)) {
         return;
       }
       if (seen.has(trimmed)) {

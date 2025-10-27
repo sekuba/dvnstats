@@ -20,6 +20,7 @@ export class SecurityGraphRenderer {
     this.maxColumns = CONFIG.SVG.MAX_COLUMNS;
     this.deadAddress = CONFIG.DEAD_ADDRESS;
     this.zeroPeer = CONFIG.ZERO_PEER;
+    this.zeroAddress = CONFIG.ZERO_ADDRESS;
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.getChainDisplayLabel =
       typeof getChainDisplayLabel === "function" ? getChainDisplayLabel : () => "";
@@ -887,8 +888,11 @@ export class SecurityGraphRenderer {
     nodeMetrics.forEach((metric) => metricsById.set(metric.id, metric));
 
     if (this.requestUniformAlias && nodeMetrics.length) {
-      const ZERO_ADDRESS20 = "0x0000000000000000000000000000000000000000";
-      const ZERO_ADDRESS32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+      const zeroAddresses = new Set(
+        [this.zeroAddress, this.zeroPeer]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase()),
+      );
       const renameTargets = Array.from(
         new Set(
           nodeMetrics
@@ -896,18 +900,12 @@ export class SecurityGraphRenderer {
               if (!metric || !metric.id || typeof metric.id !== "string") {
                 return false;
               }
-              const idStr = metric.id.toLowerCase();
-              const idParts = idStr.split("_");
+              const idParts = metric.id.toLowerCase().split("_");
               const idAddress = idParts.length > 1 ? idParts[idParts.length - 1] : "";
               const nodeAddress = String(metric.node?.address || "")
                 .toLowerCase()
                 .trim();
-              if (
-                idAddress === ZERO_ADDRESS20 ||
-                idAddress === ZERO_ADDRESS32 ||
-                nodeAddress === ZERO_ADDRESS20 ||
-                nodeAddress === ZERO_ADDRESS32
-              ) {
+              if (zeroAddresses.has(idAddress) || zeroAddresses.has(nodeAddress)) {
                 return false;
               }
               return true;
