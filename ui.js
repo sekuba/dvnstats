@@ -1025,7 +1025,7 @@ export class QueryManager {
     }
   }
 
-  reprocessLastResults() {
+  async reprocessLastResults() {
     if (!this.lastPayload || !this.lastMetaBase || !this.lastQueryKey) {
       return;
     }
@@ -1040,14 +1040,22 @@ export class QueryManager {
     let rows = [];
     let finalMeta = { ...baseMeta };
 
-    if (typeof config.processResponse === "function") {
-      const result = config.processResponse(this.lastPayload, { ...baseMeta }) || {};
-      rows = Array.isArray(result.rows) ? result.rows : [];
-      if (result.meta && typeof result.meta === "object") {
-        finalMeta = { ...baseMeta, ...result.meta };
+    try {
+      if (typeof config.processResponse === "function") {
+        let result = config.processResponse(this.lastPayload, { ...baseMeta }) || {};
+        if (result && typeof result.then === "function") {
+          result = await result;
+        }
+        rows = Array.isArray(result.rows) ? result.rows : [];
+        if (result?.meta && typeof result.meta === "object") {
+          finalMeta = { ...baseMeta, ...result.meta };
+        }
+      } else if (typeof config.extractRows === "function") {
+        rows = config.extractRows(this.lastPayload.data) ?? [];
       }
-    } else if (typeof config.extractRows === "function") {
-      rows = config.extractRows(this.lastPayload.data) ?? [];
+    } catch (error) {
+      console.error("[QueryManager] Failed to reprocess results", error);
+      return;
     }
 
     this.lastMetaBase = baseMeta;
@@ -1143,9 +1151,16 @@ export class ResultsRenderer {
     const metaSnapshot = { ...meta };
     this.lastRender = { rows, payload, meta: metaSnapshot };
 
-    this.copyJsonButton.disabled = metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
-    this.copyJsonButton.textContent =
-      metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
+    if (this.copyJsonButton) {
+      const hideCopyButton = metaSnapshot.originalLabel === "Top OApps";
+      this.copyJsonButton.hidden = hideCopyButton;
+      if (!hideCopyButton) {
+        this.copyJsonButton.disabled =
+          metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
+        this.copyJsonButton.textContent =
+          metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
+      }
+    }
 
     const variableHints = this.buildVariableSummary(metaSnapshot.variables);
     const metaParts = [
@@ -1209,10 +1224,30 @@ export class ResultsRenderer {
     this.resultsBody.innerHTML = "";
 
     const { SecurityGraphRenderer } = await import("./graph.js");
-    const renderer = new SecurityGraphRenderer(
-      (oappId) => this.aliasManager.get(oappId),
-      (chainId) => this.getChainDisplayLabel(chainId),
-    );
+    const renderer = new SecurityGraphRenderer({
+      getOAppAlias: (oappId) => this.aliasManager.get(oappId),
+      getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
+      requestUniformAlias: (ids) => {
+        if (!Array.isArray(ids) || !ids.length) {
+          return;
+        }
+        const uniqueIds = Array.from(
+          new Set(
+            ids.map((id) => (id === null || id === undefined ? null : String(id))).filter(Boolean),
+          ),
+        );
+        if (!uniqueIds.length) {
+          return;
+        }
+        const event = new CustomEvent("alias:rename-all", {
+          detail: {
+            oappIds: uniqueIds,
+            source: "web-of-security",
+          },
+        });
+        document.dispatchEvent(event);
+      },
+    });
 
     const graphContainer = renderer.render(webData);
     this.resultsBody.appendChild(graphContainer);
