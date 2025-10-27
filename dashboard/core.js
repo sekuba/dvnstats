@@ -1,14 +1,17 @@
 /**
- * Core utilities and data management for the LayerZero Security Config Explorer
+ * Core services and helpers for the LayerZero Security Config Explorer dashboard.
  */
 
-import { CONFIG } from "./config.js";
+import { APP_CONFIG } from "./config.js";
+
+const EVM_ADDRESS_REGEX = /^0x[0-9a-f]{40}$/;
+const BYTES32_REGEX = /^0x[0-9a-f]{64}$/;
 
 /**
- * GraphQL client for Hasura endpoint
+ * Minimal GraphQL client targeting the Hasura endpoint that powers the dashboard.
  */
-export class GraphQLClient {
-  constructor(endpoint = CONFIG.GRAPHQL_ENDPOINT) {
+export class HasuraClient {
+  constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
     this.endpoint = endpoint;
     this.headers = {
       "Content-Type": "application/json",
@@ -26,101 +29,247 @@ export class GraphQLClient {
       throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
     }
 
-    const result = await response.json();
-
-    if (result.errors && result.errors.length > 0) {
-      const message = result.errors.map((error) => error.message || "Unknown error").join("; ");
+    const payload = await response.json();
+    if (Array.isArray(payload.errors) && payload.errors.length > 0) {
+      const message = payload.errors.map((error) => error.message || "Unknown error").join("; ");
       throw new Error(message);
     }
 
-    return result.data;
+    return payload.data;
   }
 }
 
 /**
- * Normalizes an Ethereum address to standard format
- * Handles various input formats and ensures consistent output
+ * Fetch JSON with minimal error handling. Returns null on failure.
  */
+async function safeJsonFetch(url) {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+      return null;
+    }
+    return await response.json();
+  } catch (error) {
+    console.warn(`[Core] Failed to load ${url}`, error);
+    return null;
+  }
+}
+
+/**
+ * Stores LayerZero chain metadata, EID mappings, and DVN naming information.
+ */
+export class ChainDirectory {
+  constructor() {
+    this.localEidLabels = new Map();
+    this.localEidDetails = new Map();
+    this.dvnDirectory = new Map();
+    this.loaded = false;
+  }
+
+  async load() {
+    if (this.loaded) {
+      return;
+    }
+
+    for (const candidate of APP_CONFIG.DATA_SOURCES.CHAIN_METADATA) {
+      const data = await safeJsonFetch(candidate);
+      if (!data) {
+        continue;
+      }
+
+      this.hydrate(data);
+      console.info(`[ChainDirectory] Loaded chain metadata from ${candidate}`);
+      this.loaded = true;
+      return;
+    }
+
+    console.warn("[ChainDirectory] No metadata source responded; endpoint names unavailable.");
+    this.loaded = true;
+  }
+
+  hydrate(data) {
+    if (!data || typeof data !== "object") {
+      console.warn("[ChainDirectory] Invalid metadata payload");
+      return;
+    }
+
+    let processedDeployments = 0;
+
+    const registerDvns = (localEid, dvns) => {
+      if (!localEid || !dvns || typeof dvns !== "object") {
+        return;
+      }
+
+      Object.entries(dvns).forEach(([address, info]) => {
+        if (!address) {
+          return;
+        }
+        const normalized = String(address).toLowerCase();
+        const label = info?.canonicalName || info?.name || info?.id || address;
+
+        this.dvnDirectory.set(`local:${localEid}:${normalized}`, label);
+        if (!this.dvnDirectory.has(`fallback:${normalized}`)) {
+          this.dvnDirectory.set(`fallback:${normalized}`, label);
+        }
+      });
+    };
+
+    Object.entries(data).forEach(([key, chainEntry]) => {
+      if (!chainEntry || typeof chainEntry !== "object") {
+        return;
+      }
+
+      const baseLabel = this.deriveChainLabel(chainEntry, key);
+      const deployments = Array.isArray(chainEntry.deployments) ? chainEntry.deployments : [];
+
+      deployments.forEach((deployment) => {
+        if (!deployment || deployment.eid === undefined || deployment.eid === null) {
+          return;
+        }
+
+        const localEid = String(deployment.eid);
+        const stageSuffix =
+          deployment.stage && deployment.stage !== "mainnet" ? ` (${deployment.stage})` : "";
+        const label = `${baseLabel}${stageSuffix}`;
+
+        this.localEidLabels.set(localEid, label);
+        this.localEidDetails.set(localEid, {
+          label,
+          stage: deployment.stage || "mainnet",
+          chainKey: chainEntry.chainKey || null,
+        });
+
+        registerDvns(localEid, chainEntry.dvns);
+        processedDeployments += 1;
+      });
+    });
+
+    console.log(
+      `[ChainDirectory] Registered ${processedDeployments} deployments across ${this.localEidLabels.size} local EIDs`,
+    );
+  }
+
+  deriveChainLabel(entry, fallbackKey) {
+    const details = entry?.chainDetails || {};
+    return details.shortName || details.name || entry.chainKey || fallbackKey;
+  }
+
+  getChainLabel(localEid) {
+    if (localEid === undefined || localEid === null) {
+      return null;
+    }
+    return this.localEidLabels.get(String(localEid)) || null;
+  }
+
+  getChainInfo(localEid) {
+    const key = String(localEid);
+    const info = this.localEidDetails.get(key);
+
+    if (!info) {
+      return null;
+    }
+
+    return {
+      primary: info.label,
+      secondary: `eid ${key}`,
+      copyValue: key,
+    };
+  }
+
+  resolveLocalEidInfo(localEid) {
+    return this.localEidDetails.get(String(localEid)) || null;
+  }
+
+  listLocalEndpoints() {
+    return Array.from(this.localEidLabels.entries())
+      .map(([id, label]) => ({ id, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  resolveDvnName(address, { localEid } = {}) {
+    if (!address) {
+      return address;
+    }
+
+    const normalized = String(address).toLowerCase();
+    if (localEid !== undefined && localEid !== null) {
+      const scopedKey = `local:${localEid}:${normalized}`;
+      const scopedMatch = this.dvnDirectory.get(scopedKey);
+      if (scopedMatch) {
+        return scopedMatch;
+      }
+    }
+
+    return this.dvnDirectory.get(`fallback:${normalized}`) || address;
+  }
+
+  resolveDvnNames(addresses, context = {}) {
+    if (!Array.isArray(addresses)) {
+      return [];
+    }
+    return addresses.map((address) => this.resolveDvnName(address, context));
+  }
+}
+
 export function normalizeAddress(address) {
-  if (!address) {
+  if (!address && address !== 0) {
     throw new Error("Address is required.");
   }
 
-  let cleaned = String(address).toLowerCase().trim();
-
-  // Add 0x prefix if missing
-  if (!cleaned.startsWith("0x")) {
-    cleaned = "0x" + cleaned;
+  const raw = String(address).trim().toLowerCase();
+  if (!raw) {
+    throw new Error("Address cannot be empty.");
   }
 
-  // Remove leading zeros after 0x
-  cleaned = cleaned.replace(/^0x0+/, "0x");
-
-  // Handle completely zero address
-  if (cleaned === "0x") {
+  const prefixed = raw.startsWith("0x") ? raw : `0x${raw}`;
+  const trimmed = prefixed.replace(/^0x0+/, "0x");
+  if (trimmed === "0x") {
     return null;
   }
 
-  // Pad to 40 characters if shorter
-  if (cleaned.length < 42) {
-    cleaned = "0x" + cleaned.slice(2).padStart(40, "0");
+  const body = trimmed.slice(2);
+  let normalized;
+  if (body.length < 40) {
+    normalized = `0x${body.padStart(40, "0")}`;
+  } else if (body.length > 40) {
+    normalized = `0x${body.slice(-40)}`;
+  } else {
+    normalized = trimmed;
   }
 
-  // Truncate if longer (handles 32-byte addresses)
-  if (cleaned.length > 42) {
-    cleaned = "0x" + cleaned.slice(-40);
-  }
-
-  // Validate format
-  if (!/^0x[0-9a-f]{40}$/.test(cleaned)) {
+  if (!EVM_ADDRESS_REGEX.test(normalized)) {
     throw new Error(`Invalid address format: ${address}`);
   }
 
-  return cleaned;
+  return normalized;
 }
 
-/**
- * Decodes a bytes32 value into a 20-byte address if possible.
- * Returns null when the value cannot be interpreted as an EVM address.
- */
 export function bytes32ToAddress(value) {
   if (!value) {
     return null;
   }
 
-  const hex = String(value).toLowerCase().trim();
-  if (!hex.startsWith("0x") || hex.length !== 66) {
+  const hex = String(value).trim().toLowerCase();
+  if (!BYTES32_REGEX.test(hex)) {
     return null;
   }
 
-  const body = hex.slice(2);
-  if (!/^[0-9a-f]{64}$/.test(body)) {
+  const tail = hex.slice(-40);
+  if (/^0+$/.test(tail)) {
     return null;
   }
 
-  const addressPart = body.slice(-40);
-  if (/^0+$/.test(addressPart)) {
-    return null;
-  }
-
-  return `0x${addressPart}`;
+  return `0x${tail}`;
 }
 
-/**
- * Creates a normalized OApp ID from chain ID and address
- */
 export function makeOAppId(localEid, address) {
-  if (!localEid && localEid !== 0) {
+  if (localEid === undefined || localEid === null) {
     throw new Error("localEid is required.");
   }
-
-  const normalized = normalizeAddress(address);
-  return `${localEid}_${normalized}`;
+  const normalizedAddress = normalizeAddress(address);
+  return `${localEid}_${normalizedAddress}`;
 }
 
-/**
- * Parses and normalizes an OApp ID string
- */
 export function normalizeOAppId(value) {
   if (!value) {
     throw new Error("OApp ID is required.");
@@ -133,168 +282,15 @@ export function normalizeOAppId(value) {
     throw new Error("OApp ID must follow 'localEid_address' format.");
   }
 
-  const localEid = parts[0]?.trim();
-  const address = normalizeAddress(parts[1]);
-
-  if (!localEid) {
-    throw new Error("OApp ID must include a localEid.");
+  const [localEidPart, address] = parts;
+  if (!localEidPart) {
+    throw new Error("OApp ID must include a localEid segment.");
   }
 
-  return `${localEid}_${address}`;
+  const normalizedAddress = normalizeAddress(address);
+  return `${localEidPart}_${normalizedAddress}`;
 }
 
-/**
- * Manages LayerZero chain metadata, EID mappings, and DVN information
- */
-export class ChainMetadata {
-  constructor() {
-    this.localEidLabels = new Map();
-    this.localEidInfo = new Map();
-    this.dvnLookup = new Map();
-    this.loaded = false;
-  }
-
-  async load() {
-    if (this.loaded) {
-      return;
-    }
-
-    for (const candidate of CONFIG.DATA_SOURCES.CHAIN_METADATA) {
-      try {
-        const response = await fetch(candidate, { cache: "no-store" });
-        if (!response.ok) {
-          continue;
-        }
-
-        const data = await response.json();
-        this.hydrate(data);
-        console.info(`[ChainMetadata] Loaded from ${candidate}`);
-        this.loaded = true;
-        return;
-      } catch (error) {
-        console.warn(`[ChainMetadata] Failed to load ${candidate}`, error);
-      }
-    }
-
-    console.warn("[ChainMetadata] No metadata found; endpoint names will not be resolved");
-    this.loaded = true;
-  }
-
-  hydrate(data) {
-    if (!data || typeof data !== "object") {
-      console.warn("[ChainMetadata] Invalid data format");
-      return;
-    }
-
-    let processedDeployments = 0;
-
-    const storeDvn = (localEid, dvns) => {
-      if (!localEid || !dvns || typeof dvns !== "object") return;
-      Object.entries(dvns).forEach(([address, info]) => {
-        if (!address) return;
-        const normalized = String(address).toLowerCase();
-        const label = info?.canonicalName || info?.name || info?.id || address;
-        if (!normalized) return;
-
-        this.dvnLookup.set(`local:${localEid}:${normalized}`, label);
-        const fallbackKey = `fallback:${normalized}`;
-        if (!this.dvnLookup.has(fallbackKey)) {
-          this.dvnLookup.set(fallbackKey, label);
-        }
-      });
-    };
-
-    Object.entries(data).forEach(([key, entry]) => {
-      if (!entry || typeof entry !== "object") {
-        return;
-      }
-
-      const baseLabel = this.deriveChainLabel(entry, key);
-
-      if (Array.isArray(entry.deployments)) {
-        entry.deployments.forEach((deployment) => {
-          if (!deployment || !deployment.eid) {
-            return;
-          }
-
-          const localEid = String(deployment.eid);
-          const stage =
-            deployment.stage && deployment.stage !== "mainnet" ? ` (${deployment.stage})` : "";
-          const label = `${baseLabel}${stage}`;
-
-          this.localEidLabels.set(localEid, label);
-          this.localEidInfo.set(localEid, {
-            label,
-            stage: deployment.stage || "mainnet",
-            chainKey: entry.chainKey || null,
-          });
-
-          storeDvn(localEid, entry.dvns);
-          processedDeployments++;
-        });
-      }
-    });
-
-    console.log(
-      `[ChainMetadata] Processed ${processedDeployments} deployments, ${this.localEidLabels.size} local EIDs`,
-    );
-  }
-
-  deriveChainLabel(entry, fallbackKey) {
-    const details = entry.chainDetails || {};
-    return details.shortName || details.name || entry.chainKey || fallbackKey;
-  }
-
-  getChainLabel(localEid) {
-    if (localEid === undefined || localEid === null) return null;
-    return this.localEidLabels.get(String(localEid)) || null;
-  }
-
-  getChainInfo(value) {
-    const key = String(value);
-    const info = this.localEidInfo.get(key);
-    return info
-      ? {
-          primary: info.label,
-          secondary: `eid ${key}`,
-          copyValue: key,
-        }
-      : null;
-  }
-
-  resolveLocalEidInfo(localEid) {
-    return this.localEidInfo.get(String(localEid)) || null;
-  }
-
-  listLocalEndpoints() {
-    const entries = Array.from(this.localEidLabels.entries()).map(([id, label]) => ({ id, label }));
-    return entries.sort((a, b) => a.label.localeCompare(b.label));
-  }
-
-  resolveDvnName(address, { localEid } = {}) {
-    if (!address) return address;
-
-    const normalized = String(address).toLowerCase();
-    if (localEid !== undefined && localEid !== null) {
-      const key = `local:${localEid}:${normalized}`;
-      const match = this.dvnLookup.get(key);
-      if (match) return match;
-    }
-
-    return this.dvnLookup.get(`fallback:${normalized}`) || address;
-  }
-
-  resolveDvnNames(addresses, context = {}) {
-    if (!Array.isArray(addresses)) {
-      return [];
-    }
-    return addresses.map((address) => this.resolveDvnName(address, context));
-  }
-}
-
-/**
- * Utility functions
- */
 export function clampInteger(rawValue, min, max, fallback) {
   const parsed = Number.parseInt(rawValue, 10);
   if (Number.isFinite(parsed)) {
@@ -305,7 +301,7 @@ export function clampInteger(rawValue, min, max, fallback) {
 }
 
 export function parseOptionalPositiveInt(rawValue) {
-  if (!rawValue) {
+  if (!rawValue && rawValue !== 0) {
     return Number.NaN;
   }
   const parsed = Number.parseInt(rawValue, 10);
@@ -333,7 +329,6 @@ export function formatTimestampValue(value) {
 
   const millis = numeric < 1e12 ? numeric * 1000 : numeric;
   const date = new Date(millis);
-
   if (Number.isNaN(date.getTime())) {
     return null;
   }
@@ -347,11 +342,11 @@ export function formatTimestampValue(value) {
 }
 
 export function looksLikeHash(column, value) {
-  const lower = column.toLowerCase();
-  if (lower.includes("hash") || lower.includes("tx")) {
+  const lowerColumn = column.toLowerCase();
+  if (lowerColumn.includes("hash") || lowerColumn.includes("tx")) {
     return true;
   }
-  return /^0x[a-fA-F0-9]{16,}$/.test(value);
+  return typeof value === "string" && /^0x[a-f0-9]{16,}$/i.test(value);
 }
 
 export function looksLikeTimestampColumn(column) {
@@ -364,22 +359,5 @@ export function looksLikeEidColumn(column) {
   if (lower === "eid") {
     return true;
   }
-  return lower.endsWith("eid") || lower.endsWith("_eid") || lower.includes("eid_");
-}
-
-/**
- * Error boundary wrapper for async operations
- */
-export class ErrorBoundary {
-  static async wrap(fn, fallback) {
-    try {
-      return await fn();
-    } catch (error) {
-      console.error("Error caught:", error);
-      if (typeof fallback === "function") {
-        return fallback(error);
-      }
-      return fallback;
-    }
-  }
+  return lower.endsWith("_eid") || lower.includes("eid_");
 }

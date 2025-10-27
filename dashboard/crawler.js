@@ -1,15 +1,10 @@
-/**
- * Security Web Crawler for LayerZero OApps
- * Performs breadth-first traversal of the packet delivery graph
- */
-
-import { CONFIG } from "./config.js";
-import { makeOAppId, normalizeAddress, bytes32ToAddress } from "./core.js";
+import { APP_CONFIG } from "./config.js";
+import { bytes32ToAddress, makeOAppId, normalizeAddress } from "./core.js";
 
 /**
- * Crawls the security web starting from a seed OApp
+ * Crawls the security web starting from a seed OApp.
  */
-export class SecurityWebCrawler {
+export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
     this.client = client;
     this.chainMetadata = chainMetadata;
@@ -19,7 +14,7 @@ export class SecurityWebCrawler {
    * Main crawl function
    */
   async crawl(seedOAppId, options = {}) {
-    const maxDepth = options.depth || CONFIG.CRAWLER.DEFAULT_DEPTH;
+    const maxDepth = options.depth || APP_CONFIG.CRAWLER.DEFAULT_DEPTH;
     const onProgress = options.onProgress || (() => {});
 
     onProgress("Initializing crawl...");
@@ -27,10 +22,12 @@ export class SecurityWebCrawler {
     // Verify metadata is loaded
     const knownEndpoints = this.chainMetadata.listLocalEndpoints();
     console.log(
-      `[SecurityWebCrawler] Starting crawl with ${knownEndpoints.length} local endpoint mappings`,
+      `[SecurityGraphCrawler] Starting crawl with ${knownEndpoints.length} local endpoint mappings`,
     );
     if (knownEndpoints.length === 0) {
-      console.warn("[SecurityWebCrawler] No local endpoint metadata loaded! Attempting to load...");
+      console.warn(
+        "[SecurityGraphCrawler] No local endpoint metadata loaded! Attempting to load...",
+      );
       await this.chainMetadata.load();
     }
 
@@ -235,7 +232,7 @@ export class SecurityWebCrawler {
           resolved: true,
         };
       } catch (error) {
-        console.debug("[SecurityWebCrawler] Failed to normalize peer address", {
+        console.debug("[SecurityGraphCrawler] Failed to normalize peer address", {
           peerHex,
           decoded,
           error,

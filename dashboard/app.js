@@ -1,84 +1,65 @@
-/**
- * LayerZero Security Config Explorer
- * Main application bootstrap
- */
+import { APP_CONFIG } from "./config.js";
+import { ChainDirectory, HasuraClient } from "./core.js";
+import { AliasStore, QueryCoordinator, ResultsView, ToastQueue } from "./ui.js";
 
-import { CONFIG } from "./config.js";
-import { GraphQLClient, ChainMetadata } from "./core.js";
-import { AliasManager, QueryManager, ResultsRenderer, ToastManager } from "./ui.js";
-
-/**
- * Main application class
- */
-class Dashboard {
+class DashboardApp {
   constructor() {
-    // Core services
-    this.client = new GraphQLClient();
-    this.chainMetadata = new ChainMetadata();
-    this.aliasManager = new AliasManager();
-    this.toastManager = new ToastManager();
+    this.client = new HasuraClient();
+    this.chainDirectory = new ChainDirectory();
+    this.aliasStore = new AliasStore();
+    this.toastQueue = new ToastQueue();
 
-    // DOM elements
-    this.resultsTitle = document.getElementById("results-title");
-    this.resultsMeta = document.getElementById("results-meta");
-    this.resultsBody = document.getElementById("results-body");
-    this.copyJsonButton = document.getElementById("copy-json");
-    this.downloadAliasesButton = document.getElementById("download-aliases");
-    this.aliasEditor = document.getElementById("alias-editor");
-    this.aliasEditorForm = document.getElementById("alias-editor-form");
-    this.aliasEditorIdInput = this.aliasEditorForm?.querySelector('input[name="oappId"]');
-    this.aliasEditorAliasInput = this.aliasEditorForm?.querySelector('input[name="alias"]');
-    this.aliasEditorTitle = document.getElementById("alias-editor-title");
-    this.aliasEditorTitleDefault = this.aliasEditorTitle?.textContent || "Set OApp Name";
+    this.dom = {
+      title: document.getElementById("results-title"),
+      meta: document.getElementById("results-meta"),
+      body: document.getElementById("results-body"),
+      copyButton: document.getElementById("copy-json"),
+      aliasDownloadButton: document.getElementById("download-aliases"),
+      aliasModal: document.getElementById("alias-editor"),
+      aliasForm: document.getElementById("alias-editor-form"),
+      aliasTitle: document.getElementById("alias-editor-title"),
+    };
+    this.aliasFields = {
+      id: this.dom.aliasForm?.querySelector('input[name="oappId"]') ?? null,
+      alias: this.dom.aliasForm?.querySelector('input[name="alias"]') ?? null,
+      defaultTitle: this.dom.aliasTitle?.textContent || "Set OApp Name",
+    };
+
     this.bulkAliasTargets = null;
 
-    // Results renderer
-    this.resultsRenderer = new ResultsRenderer(
-      this.resultsTitle,
-      this.resultsMeta,
-      this.resultsBody,
-      this.copyJsonButton,
-      this.chainMetadata,
-      this.aliasManager,
-      this.toastManager,
+    this.resultsView = new ResultsView(
+      this.dom.title,
+      this.dom.meta,
+      this.dom.body,
+      this.dom.copyButton,
+      this.chainDirectory,
+      this.aliasStore,
+      this.toastQueue,
     );
 
-    // Query manager
-    this.queryManager = new QueryManager(
+    this.queryCoordinator = new QueryCoordinator(
       this.client,
-      {
-        chain: this.chainMetadata,
-      },
-      this.aliasManager,
-      (rows, payload, meta) => this.resultsRenderer.render(rows, payload, meta),
+      { chain: this.chainDirectory },
+      this.aliasStore,
+      (rows, payload, meta) => this.resultsView.render(rows, payload, meta),
     );
   }
 
-  /**
-   * Initialize the application
-   */
   async initialize() {
-    console.log("[Dashboard] Initializing...");
+    console.log("[DashboardApp] Initializing…");
 
-    // Load all metadata in parallel
-    await Promise.all([this.chainMetadata.load(), this.aliasManager.load()]);
+    await Promise.all([this.chainDirectory.load(), this.aliasStore.load()]);
 
-    console.log("[Dashboard] Metadata loaded");
+    console.log("[DashboardApp] Metadata ready");
 
-    // Initialize query cards
-    this.initializeQueryCards();
+    this.setupQueryCards();
+    this.registerGlobalHandlers();
 
-    // Setup global event handlers
-    this.setupGlobalHandlers();
-
-    console.log("[Dashboard] Ready");
+    console.log("[DashboardApp] Ready");
   }
 
-  /**
-   * Initialize all query cards
-   */
-  initializeQueryCards() {
-    const registry = this.queryManager.buildQueryRegistry();
+  setupQueryCards() {
+    const registry = this.queryCoordinator.buildQueryRegistry();
     let bootstrapTriggered = false;
 
     document.querySelectorAll("[data-query-key]").forEach((card) => {
@@ -86,7 +67,7 @@ class Dashboard {
       const config = registry[key];
 
       if (!config) {
-        console.warn(`[Dashboard] Unknown query key: ${key}`);
+        console.warn(`[DashboardApp] Unknown query key: ${key}`);
         return;
       }
 
@@ -99,65 +80,56 @@ class Dashboard {
         queryCode.textContent = config.query.trim();
       }
 
-      const run = async () => {
+      const runQuery = async () => {
         try {
-          await this.queryManager.runQuery(key, card, statusEl);
+          await this.queryCoordinator.runQuery(key, card, statusEl);
         } catch (error) {
-          console.error(`[Dashboard] Query failed: ${key}`, error);
-          this.toastManager.show(error.message, "error");
+          console.error(`[DashboardApp] Query failed: ${key}`, error);
+          this.toastQueue.show(error.message, "error");
         }
       };
 
-      runButton?.addEventListener("click", run);
+      runButton?.addEventListener("click", runQuery);
       form?.addEventListener("submit", (event) => {
         event.preventDefault();
-        run();
+        runQuery();
       });
 
-      // Initialize query-specific hooks
       if (typeof config.initialize === "function") {
         try {
-          config.initialize({ card, run });
+          config.initialize({ card, run: runQuery });
         } catch (error) {
-          console.warn(`[Dashboard] Initialize hook failed for ${key}`, error);
+          console.warn(`[DashboardApp] Initialize hook failed for ${key}`, error);
         }
       }
 
-      // Bootstrap first query (only once, after metadata loads)
       if (!bootstrapTriggered) {
         bootstrapTriggered = true;
-        queueMicrotask(run);
+        queueMicrotask(runQuery);
       }
     });
   }
 
-  /**
-   * Setup global event handlers
-   */
-  setupGlobalHandlers() {
-    // Copy JSON button
-    this.copyJsonButton?.addEventListener("click", () => {
-      this.resultsRenderer.handleCopyJson();
+  registerGlobalHandlers() {
+    this.dom.copyButton?.addEventListener("click", () => {
+      this.resultsView.handleCopyJson();
     });
 
-    // Download aliases button
-    this.downloadAliasesButton?.addEventListener("click", () => {
+    this.dom.aliasDownloadButton?.addEventListener("click", () => {
       try {
-        this.aliasManager.export();
+        this.aliasStore.export();
       } catch (error) {
-        console.error("[Dashboard] Failed to export aliases", error);
-        this.toastManager.show("Failed to export aliases", "error");
+        console.error("[DashboardApp] Failed to export aliases", error);
+        this.toastQueue.show("Failed to export aliases", "error");
       }
     });
 
-    // Copyable cells
-    this.resultsBody?.addEventListener("click", (event) => {
-      this.resultsRenderer.handleCopyableClick(event);
+    this.dom.body?.addEventListener("click", (event) => {
+      this.resultsView.handleCopyableClick(event);
     });
 
-    // Double-click to edit alias
-    this.resultsBody?.addEventListener("dblclick", (event) => {
-      this.handleAliasDblClick(event);
+    this.dom.body?.addEventListener("dblclick", (event) => {
+      this.handleAliasDoubleClick(event);
     });
 
     document.addEventListener("alias:rename-all", (event) => {
@@ -165,54 +137,48 @@ class Dashboard {
       if (!detail) {
         return;
       }
-      const filteredTargets = this.filterAliasTargets(detail.oappIds);
-      if (!filteredTargets.length) {
-        this.toastManager.show("No eligible nodes available for renaming.", "info");
+      const targets = this.sanitizeAliasTargets(detail.oappIds);
+      if (!targets.length) {
+        this.toastQueue.show("No eligible nodes available for renaming.", "info");
         return;
       }
-      this.openAliasEditor(null, { mode: "bulk", targets: filteredTargets });
+      this.openAliasModal({ mode: "bulk", targets });
     });
 
-    // Alias editor form
-    this.aliasEditorForm?.addEventListener("submit", (event) => {
+    this.dom.aliasForm?.addEventListener("submit", (event) => {
       this.handleAliasSubmit(event).catch((error) => {
-        console.error("[Dashboard] Alias submit failed", error);
+        console.error("[DashboardApp] Alias submit failed", error);
       });
     });
 
-    this.aliasEditorForm?.addEventListener("click", (event) => {
+    this.dom.aliasForm?.addEventListener("click", (event) => {
       this.handleAliasFormClick(event).catch((error) => {
-        console.error("[Dashboard] Alias action failed", error);
+        console.error("[DashboardApp] Alias action failed", error);
       });
     });
 
-    // Close alias editor on Escape
     document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && !this.aliasEditor?.classList.contains("hidden")) {
+      if (event.key === "Escape" && !this.dom.aliasModal?.classList.contains("hidden")) {
         event.preventDefault();
-        this.closeAliasEditor();
+        this.closeAliasModal();
       }
     });
 
-    // Close alias editor on backdrop click
-    this.aliasEditor?.addEventListener("click", (event) => {
-      if (event.target === this.aliasEditor) {
-        this.closeAliasEditor();
+    this.dom.aliasModal?.addEventListener("click", (event) => {
+      if (event.target === this.dom.aliasModal) {
+        this.closeAliasModal();
       }
     });
   }
 
-  /**
-   * Handle double-click to edit alias
-   */
-  handleAliasDblClick(event) {
-    const target = event.target.closest(".copyable[data-oapp-id]");
-    if (!target || !this.resultsBody.contains(target)) {
+  handleAliasDoubleClick(event) {
+    const container = event.target.closest(".copyable[data-oapp-id]");
+    if (!container || !this.dom.body.contains(container)) {
       return;
     }
 
     event.preventDefault();
-    const oappId = target.dataset.oappId;
+    const oappId = container.dataset.oappId;
     if (!oappId) {
       return;
     }
@@ -222,163 +188,163 @@ class Dashboard {
       selection.removeAllRanges();
     }
 
-    this.openAliasEditor(oappId);
+    this.openAliasModal({ mode: "single", target: oappId });
   }
 
-  /**
-   * Open alias editor modal
-   */
-  openAliasEditor(oappId, options = {}) {
+  openAliasModal({ mode, target, targets }) {
     if (
-      !this.aliasEditor ||
-      !this.aliasEditorForm ||
-      !this.aliasEditorIdInput ||
-      !this.aliasEditorAliasInput
+      !this.dom.aliasModal ||
+      !this.dom.aliasForm ||
+      !this.aliasFields.id ||
+      !this.aliasFields.alias
     ) {
       return;
     }
 
-    const mode = options.mode === "bulk" ? "bulk" : "single";
+    const formMode = mode === "bulk" ? "bulk" : "single";
 
-    if (mode === "bulk") {
-      const targets = this.filterAliasTargets(options.targets);
-
-      if (!targets.length) {
-        this.toastManager.show("No eligible nodes available for renaming.", "info");
+    if (formMode === "bulk") {
+      const cleanedTargets = this.sanitizeAliasTargets(targets);
+      if (!cleanedTargets.length) {
+        this.toastQueue.show("No eligible nodes available for renaming.", "info");
         return;
       }
 
-      this.bulkAliasTargets = targets;
-      if (this.aliasEditorTitle) {
-        this.aliasEditorTitle.textContent =
-          targets.length === 1 ? this.aliasEditorTitleDefault : "Set OApp Name (All Nodes)";
+      this.bulkAliasTargets = cleanedTargets;
+      const targetLabel =
+        cleanedTargets.length === 1 ? cleanedTargets[0] : `${cleanedTargets.length} nodes selected`;
+      const sharedAlias = this.computeSharedAlias(cleanedTargets);
+
+      this.aliasFields.id.value = targetLabel;
+      this.aliasFields.alias.value = sharedAlias;
+      if (this.dom.aliasTitle) {
+        this.dom.aliasTitle.textContent =
+          cleanedTargets.length === 1 ? this.aliasFields.defaultTitle : "Set OApp Name (All Nodes)";
       }
-
-      this.aliasEditorIdInput.value =
-        targets.length === 1 ? targets[0] : `${targets.length} nodes selected`;
-
-      const aliases = targets
-        .map((id) => this.aliasManager.get(id))
-        .filter((value) => typeof value === "string" && value.length > 0);
-      const sharedAlias =
-        aliases.length && aliases.every((value) => value === aliases[0]) ? aliases[0] : "";
-      this.aliasEditorAliasInput.value = sharedAlias;
     } else {
-      this.bulkAliasTargets = null;
-      if (!oappId) {
+      if (!target) {
         return;
       }
-      if (this.aliasEditorTitle) {
-        this.aliasEditorTitle.textContent = this.aliasEditorTitleDefault;
+      this.bulkAliasTargets = null;
+      this.aliasFields.id.value = target;
+      this.aliasFields.alias.value = this.aliasStore.get(target) || "";
+      if (this.dom.aliasTitle) {
+        this.dom.aliasTitle.textContent = this.aliasFields.defaultTitle;
       }
-      this.aliasEditorIdInput.value = oappId;
-      this.aliasEditorAliasInput.value = this.aliasManager.get(oappId) || "";
     }
 
-    this.aliasEditor.classList.remove("hidden");
+    this.dom.aliasModal.classList.remove("hidden");
 
-    setTimeout(() => {
-      this.aliasEditorAliasInput.focus();
-      this.aliasEditorAliasInput.select();
-    }, 0);
+    queueMicrotask(() => {
+      this.aliasFields.alias.focus();
+      this.aliasFields.alias.select();
+    });
   }
 
-  /**
-   * Close alias editor modal
-   */
-  closeAliasEditor() {
-    if (!this.aliasEditor || !this.aliasEditorForm || !this.aliasEditorAliasInput) {
+  computeSharedAlias(targetIds) {
+    const aliases = targetIds
+      .map((id) => this.aliasStore.get(id))
+      .filter((value) => typeof value === "string" && value.length > 0);
+    if (!aliases.length) {
+      return "";
+    }
+    const [firstAlias] = aliases;
+    return aliases.every((alias) => alias === firstAlias) ? firstAlias : "";
+  }
+
+  closeAliasModal() {
+    if (!this.dom.aliasModal || !this.dom.aliasForm || !this.aliasFields.alias) {
       return;
     }
 
-    this.aliasEditor.classList.add("hidden");
-    this.aliasEditorForm.reset();
+    this.dom.aliasModal.classList.add("hidden");
+    this.dom.aliasForm.reset();
     this.bulkAliasTargets = null;
-    if (this.aliasEditorTitle) {
-      this.aliasEditorTitle.textContent = this.aliasEditorTitleDefault;
+    if (this.dom.aliasTitle) {
+      this.dom.aliasTitle.textContent = this.aliasFields.defaultTitle;
     }
   }
 
-  /**
-   * Handle alias form submission
-   */
   async handleAliasSubmit(event) {
     event.preventDefault();
 
-    if (!this.aliasEditorIdInput || !this.aliasEditorAliasInput) {
+    if (!this.aliasFields.id || !this.aliasFields.alias) {
       return;
     }
 
-    const alias = this.aliasEditorAliasInput.value;
-    const targets = this.filterAliasTargets(this.bulkAliasTargets);
+    const alias = this.aliasFields.alias.value;
+    const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
 
-    if (targets && targets.length) {
-      targets.forEach((id) => this.aliasManager.set(id, alias));
-      await this.queryManager.reprocessLastResults();
-      this.closeAliasEditor();
+    if (targets.length > 0) {
+      targets.forEach((id) => this.aliasStore.set(id, alias));
+      await this.queryCoordinator.reprocessLastResults();
+      this.closeAliasModal();
 
       const normalized = alias && alias.trim().length > 0;
       const tone = normalized ? "success" : "info";
       const message = normalized
         ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}.`
         : `Cleared aliases for ${targets.length} node${targets.length === 1 ? "" : "s"}.`;
-      this.toastManager.show(message, tone);
+      this.toastQueue.show(message, tone);
       return;
     }
 
-    const oappId = this.aliasEditorIdInput.value;
+    const oappId = this.aliasFields.id.value;
     if (!oappId) {
-      this.closeAliasEditor();
+      this.closeAliasModal();
       return;
     }
 
-    this.aliasManager.set(oappId, alias);
-    await this.queryManager.reprocessLastResults();
-    this.closeAliasEditor();
+    this.aliasStore.set(oappId, alias);
+    await this.queryCoordinator.reprocessLastResults();
+    this.closeAliasModal();
   }
 
-  /**
-   * Handle alias form button clicks
-   */
   async handleAliasFormClick(event) {
-    const target = event.target;
-    if (!(target instanceof HTMLButtonElement)) {
+    const button = event.target;
+    if (!(button instanceof HTMLButtonElement)) {
       return;
     }
 
-    const action = target.dataset.action;
+    const action = button.dataset.action;
 
     if (action === "cancel") {
       event.preventDefault();
-      this.closeAliasEditor();
-    } else if (action === "clear") {
+      this.closeAliasModal();
+      return;
+    }
+
+    if (action === "clear") {
       event.preventDefault();
-      const targets = this.filterAliasTargets(this.bulkAliasTargets);
-      if (targets && targets.length) {
-        targets.forEach((id) => this.aliasManager.set(id, ""));
-        await this.queryManager.reprocessLastResults();
-        this.closeAliasEditor();
-        this.toastManager.show(
+      const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
+      if (targets.length) {
+        targets.forEach((id) => this.aliasStore.set(id, ""));
+        await this.queryCoordinator.reprocessLastResults();
+        this.closeAliasModal();
+        this.toastQueue.show(
           `Cleared aliases for ${targets.length} node${targets.length === 1 ? "" : "s"}.`,
           "info",
         );
-      } else if (this.aliasEditorIdInput) {
-        const oappId = this.aliasEditorIdInput.value;
+      } else if (this.aliasFields.id) {
+        const oappId = this.aliasFields.id.value;
         if (oappId) {
-          this.aliasManager.set(oappId, "");
-          await this.queryManager.reprocessLastResults();
+          this.aliasStore.set(oappId, "");
+          await this.queryCoordinator.reprocessLastResults();
         }
-        this.closeAliasEditor();
+        this.closeAliasModal();
       }
-    } else if (action === "export") {
+      return;
+    }
+
+    if (action === "export") {
       event.preventDefault();
-      this.aliasManager.export();
+      this.aliasStore.export();
     }
   }
 
-  filterAliasTargets(input) {
+  sanitizeAliasTargets(input) {
     const zeroAddresses = new Set(
-      [CONFIG.ZERO_ADDRESS, CONFIG.ZERO_PEER]
+      [APP_CONFIG.ZERO_ADDRESS, APP_CONFIG.ZERO_PEER]
         .filter(Boolean)
         .map((value) => String(value).toLowerCase()),
     );
@@ -416,17 +382,15 @@ class Dashboard {
   }
 }
 
-// Initialize the dashboard when DOM is ready
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => {
-    const dashboard = new Dashboard();
-    dashboard.initialize().catch((error) => {
-      console.error("[Dashboard] Failed to initialize", error);
-    });
-  });
-} else {
-  const dashboard = new Dashboard();
+function bootstrapDashboard() {
+  const dashboard = new DashboardApp();
   dashboard.initialize().catch((error) => {
-    console.error("[Dashboard] Failed to initialize", error);
+    console.error("[DashboardApp] Failed to initialize", error);
   });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrapDashboard);
+} else {
+  bootstrapDashboard();
 }
