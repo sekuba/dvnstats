@@ -1,0 +1,23 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.8/schema.json",
+  "formatter": {
+    "enabled": true,
+    "lineWidth": 100,
+    "indentWidth": 2
+  },
+  "linter": {
+    "enabled": false
+  },
+  "organizeImports": {
+    "enabled": true
+  },
+  "files": {
+    "ignore": [
+      "build",
+      "generated",
+      "node_modules",
+      "dashboard/.next",
+      "dashboard/out"
+    ]
+  }
+}
