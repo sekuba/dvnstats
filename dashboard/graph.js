@@ -12,17 +12,17 @@ const SVG_NS = "http://www.w3.org/2000/svg";
  */
 export class SecurityGraphView {
   constructor({ getOAppAlias, getChainDisplayLabel, requestUniformAlias } = {}) {
-    this.width = APP_CONFIG.SVG.WIDTH;
-    this.height = APP_CONFIG.SVG.HEIGHT;
-    this.nodeRadius = APP_CONFIG.SVG.NODE_RADIUS;
-    this.padding = APP_CONFIG.SVG.PADDING;
-    this.seedGap = APP_CONFIG.SVG.SEED_GAP;
-    this.columnSpacing = APP_CONFIG.SVG.COLUMN_SPACING;
-    this.maxNodesPerColumn = APP_CONFIG.SVG.MAX_NODES_PER_COLUMN;
-    this.maxColumns = APP_CONFIG.SVG.MAX_COLUMNS;
-    this.deadAddress = APP_CONFIG.DEAD_ADDRESS;
-    this.zeroPeer = APP_CONFIG.ZERO_PEER;
-    this.zeroAddress = APP_CONFIG.ZERO_ADDRESS;
+    this.width = APP_CONFIG.GRAPH_VISUAL.WIDTH;
+    this.height = APP_CONFIG.GRAPH_VISUAL.HEIGHT;
+    this.nodeRadius = APP_CONFIG.GRAPH_VISUAL.NODE_RADIUS;
+    this.padding = APP_CONFIG.GRAPH_VISUAL.PADDING;
+    this.seedGap = APP_CONFIG.GRAPH_VISUAL.SEED_GAP;
+    this.columnSpacing = APP_CONFIG.GRAPH_VISUAL.COLUMN_SPACING;
+    this.maxNodesPerColumn = APP_CONFIG.GRAPH_VISUAL.MAX_NODES_PER_COLUMN;
+    this.maxColumns = APP_CONFIG.GRAPH_VISUAL.MAX_COLUMNS;
+    this.deadAddress = APP_CONFIG.ADDRESSES.DEAD;
+    this.zeroPeer = APP_CONFIG.ADDRESSES.ZERO_PEER;
+    this.zeroAddress = APP_CONFIG.ADDRESSES.ZERO;
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.getChainDisplayLabel =
       typeof getChainDisplayLabel === "function" ? getChainDisplayLabel : () => "";
@@ -34,51 +34,40 @@ export class SecurityGraphView {
    * Renders the complete web of security visualization
    */
   render(webData) {
-    if (!webData || !webData.nodes || !webData.edges) {
-      return this.renderError();
-    }
+    if (!webData?.nodes || !webData?.edges) return this.renderError();
 
     const container = document.createElement("div");
     container.className = "web-of-security-container";
 
-    const summary = this.renderSummary(webData);
-    container.appendChild(summary);
-
     const nodesById = new Map(webData.nodes.map((n) => [n.id, n]));
-
     const edgeAnalysis = this.calculateEdgeSecurityInfo(webData.edges, nodesById);
     const maxMinRequiredDVNsForNodes = this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
     const blockedNodes = this.findBlockedNodes(webData.nodes, edgeAnalysis.edgeSecurityInfo);
 
-    const svg = this.renderSVG(webData, {
+    const context = {
       edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
       maxRequiredDVNsInWeb: edgeAnalysis.maxRequiredDVNsInWeb,
       dominantCombination: edgeAnalysis.dominantCombination,
+      combinationStats: edgeAnalysis.combinationStats,
       maxMinRequiredDVNsForNodes,
       blockedNodes,
-    });
-    container.appendChild(svg);
+    };
 
-    const nodeList = this.renderNodeList(webData, {
-      edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
-      combinationStats: edgeAnalysis.combinationStats,
-      dominantCombination: edgeAnalysis.dominantCombination,
-      blockedNodes,
-      maxRequiredDVNsInWeb: edgeAnalysis.maxRequiredDVNsInWeb,
-    });
-    container.appendChild(nodeList);
+    container.append(
+      this.renderSummary(webData),
+      this.renderSVG(webData, context),
+      this.renderNodeList(webData, context),
+    );
 
     return container;
   }
 
   renderError() {
-    const error = document.createElement("div");
-    error.className = "placeholder";
-    error.innerHTML = `
-      <p class="placeholder-title">Invalid web data</p>
-      <p>The loaded file does not contain valid web data.</p>
-    `;
-    return error;
+    const el = document.createElement("div");
+    el.className = "placeholder";
+    el.innerHTML =
+      '<p class="placeholder-title">Invalid web data</p><p>The loaded file does not contain valid web data.</p>';
+    return el;
   }
 
   renderSummary(webData) {
@@ -1931,16 +1920,12 @@ export class SecurityGraphView {
   }
 
   appendSummaryRow(list, label, value) {
-    if (!list || value === undefined || value === null || value === "") {
-      return;
-    }
+    if (!list || (!value && value !== 0)) return;
     const dt = document.createElement("dt");
     dt.textContent = label;
-    list.appendChild(dt);
-
     const dd = document.createElement("dd");
     dd.textContent = String(value);
-    list.appendChild(dd);
+    list.append(dt, dd);
   }
 
   describeCombination(combination) {
@@ -2038,9 +2023,7 @@ export class SecurityGraphView {
   hashString(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash; // Convert to 32-bit integer
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) & hash;
     }
     return Math.abs(hash);
   }
@@ -2146,12 +2129,12 @@ export class SecurityGraphView {
         const normalizedPosition =
           maxDistanceFromCenter > 0 ? distanceFromCenterIndex / maxDistanceFromCenter : 0;
 
-        const arcIntensity = 200;
-        const xOffset = arcIntensity * normalizedPosition * normalizedPosition;
+        const xOffset =
+          APP_CONFIG.GRAPH_VISUAL.ARC_INTENSITY * normalizedPosition * normalizedPosition;
 
-        // Add deterministic y-variation to prevent perfect vertical alignment
         const nodeHash = this.hashString(node.id);
-        const yJitter = (nodeHash % 31) - 15; // -15 to +15 pixel variation
+        const yJitter =
+          (nodeHash % APP_CONFIG.GRAPH_VISUAL.HASH_MOD) - APP_CONFIG.GRAPH_VISUAL.Y_JITTER_MAX;
 
         // Mirror arc direction: left side (negative depth) arcs left, right side arcs right
         const x = depth < 0 ? baseX + xOffset : baseX - xOffset;

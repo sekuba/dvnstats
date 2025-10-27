@@ -22,55 +22,40 @@ import {
  * Manages OApp aliases (friendly names for OApp IDs)
  */
 export class AliasStore {
-  constructor(storageKey = APP_CONFIG.STORAGE.OAPP_ALIASES) {
+  constructor(storageKey = APP_CONFIG.STORAGE_KEYS.OAPP_ALIASES) {
     this.map = new Map();
     this.storageKey = storageKey;
     this.loaded = false;
   }
 
   async load() {
-    if (this.loaded) {
-      return;
-    }
-
+    if (this.loaded) return;
     this.map.clear();
 
-    // Load from static file
     try {
-      const response = await fetch(APP_CONFIG.DATA_SOURCES.OAPP_ALIASES, {
-        cache: "no-store",
-      });
+      const response = await fetch(APP_CONFIG.DATA_SOURCES.OAPP_ALIASES, { cache: "no-store" });
       if (response.ok) {
         const data = await response.json();
         if (data && typeof data === "object") {
-          Object.entries(data).forEach(([key, value]) => {
-            if (value) {
-              this.map.set(String(key), String(value));
-            }
-          });
+          Object.entries(data).forEach(([k, v]) => v && this.map.set(String(k), String(v)));
         }
       }
     } catch (error) {
-      console.warn("[AliasStore] Failed to load oapp-aliases.json", error);
+      console.warn("[AliasStore] Failed to load from file", error);
     }
 
-    // Merge from localStorage
     try {
       const stored = localStorage.getItem(this.storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object") {
-          Object.entries(parsed).forEach(([key, value]) => {
-            if (value) {
-              this.map.set(String(key), String(value));
-            } else {
-              this.map.delete(String(key));
-            }
+          Object.entries(parsed).forEach(([k, v]) => {
+            v ? this.map.set(String(k), String(v)) : this.map.delete(String(k));
           });
         }
       }
     } catch (error) {
-      console.warn("[AliasStore] Failed to restore from localStorage", error);
+      console.warn("[AliasStore] Failed to load from storage", error);
     }
 
     this.loaded = true;
@@ -84,16 +69,9 @@ export class AliasStore {
 
   set(oappId, alias) {
     if (!oappId) return;
-
-    const normalizedId = String(oappId);
-    const normalizedAlias = alias && alias.trim() ? alias.trim() : null;
-
-    if (normalizedAlias) {
-      this.map.set(normalizedId, normalizedAlias);
-    } else {
-      this.map.delete(normalizedId);
-    }
-
+    const id = String(oappId);
+    const trimmed = alias?.trim();
+    trimmed ? this.map.set(id, trimmed) : this.map.delete(id);
     this.persist();
   }
 
@@ -107,17 +85,14 @@ export class AliasStore {
   }
 
   export() {
-    const obj = Object.fromEntries(this.map.entries());
-    const content = JSON.stringify(obj, null, 2);
+    const content = JSON.stringify(Object.fromEntries(this.map), null, 2);
     const blob = new Blob([content], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "oapp-aliases.json";
-    document.body.appendChild(anchor);
-    anchor.click();
-    document.body.removeChild(anchor);
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "oapp-aliases.json";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 }
 
@@ -1105,10 +1080,10 @@ export class ToastQueue {
       setTimeout(() => {
         toast.remove();
       }, 220);
-    }, APP_CONFIG.UI.TOAST_DURATION);
+    }, APP_CONFIG.FEEDBACK.TOAST_DURATION);
 
     this.timers.push(timeout);
-    if (this.timers.length > APP_CONFIG.UI.MAX_TOASTS) {
+    if (this.timers.length > APP_CONFIG.FEEDBACK.MAX_TOASTS) {
       const removedTimeout = this.timers.shift();
       if (removedTimeout) {
         clearTimeout(removedTimeout);
@@ -1537,16 +1512,12 @@ export class ResultsView {
   }
 
   appendSummaryRow(list, label, value) {
-    if (value === undefined || value === null || value === "") {
-      return;
-    }
+    if (!value && value !== 0) return;
     const dt = document.createElement("dt");
     dt.textContent = label;
-    list.appendChild(dt);
-
     const dd = document.createElement("dd");
     dd.textContent = String(value);
-    list.appendChild(dd);
+    list.append(dt, dd);
   }
 
   buildVariableSummary(variables = {}) {
@@ -1627,9 +1598,7 @@ export class ResultsView {
         element.classList.remove("copied", "copy-failed");
         this.copyFeedbackTimers.delete(element);
       },
-      didSucceed
-        ? APP_CONFIG.UI.COPY_FEEDBACK_DURATION
-        : APP_CONFIG.UI.COPY_FEEDBACK_DURATION + 400,
+      didSucceed ? APP_CONFIG.FEEDBACK.COPY_DURATION : APP_CONFIG.FEEDBACK.COPY_DURATION + 400,
     );
     this.copyFeedbackTimers.set(element, timeout);
   }
@@ -1675,6 +1644,6 @@ export class ResultsView {
     setTimeout(() => {
       button.textContent = original;
       button.disabled = this.lastRender?.rows?.length === 0;
-    }, APP_CONFIG.UI.BUTTON_FEEDBACK_DURATION);
+    }, APP_CONFIG.FEEDBACK.BUTTON_DURATION);
   }
 }

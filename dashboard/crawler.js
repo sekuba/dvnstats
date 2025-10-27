@@ -1,33 +1,22 @@
 import { APP_CONFIG } from "./config.js";
 import { bytes32ToAddress, makeOAppId, normalizeAddress } from "./core.js";
 
-/**
- * Crawls the security web starting from a seed OApp.
- */
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
     this.client = client;
     this.chainMetadata = chainMetadata;
   }
 
-  /**
-   * Main crawl function
-   */
   async crawl(seedOAppId, options = {}) {
     const maxDepth = options.depth || APP_CONFIG.CRAWLER.DEFAULT_DEPTH;
     const onProgress = options.onProgress || (() => {});
 
-    onProgress("Initializing crawl...");
+    onProgress("Initializing...");
 
-    // Verify metadata is loaded
-    const knownEndpoints = this.chainMetadata.listLocalEndpoints();
-    console.log(
-      `[SecurityGraphCrawler] Starting crawl with ${knownEndpoints.length} local endpoint mappings`,
-    );
-    if (knownEndpoints.length === 0) {
-      console.warn(
-        "[SecurityGraphCrawler] No local endpoint metadata loaded! Attempting to load...",
-      );
+    const endpoints = this.chainMetadata.listLocalEndpoints();
+    console.log(`[Crawler] Starting with ${endpoints.length} endpoint mappings`);
+    if (!endpoints.length) {
+      console.warn("[Crawler] No metadata loaded, attempting load...");
       await this.chainMetadata.load();
     }
 
@@ -35,30 +24,25 @@ export class SecurityGraphCrawler {
     const edges = new Map();
     const visited = new Set();
     const queue = [{ oappId: seedOAppId, depth: 0 }];
+    let count = 0;
 
-    let nodeCount = 0;
-
-    while (queue.length > 0) {
+    while (queue.length) {
       const { oappId, depth } = queue.shift();
-
-      if (visited.has(oappId)) {
-        continue;
-      }
+      if (visited.has(oappId)) continue;
       visited.add(oappId);
 
-      nodeCount++;
-      onProgress(`Processing node ${nodeCount} [depth=${depth}]: ${oappId}`);
+      count++;
+      onProgress(`Processing node ${count} [depth=${depth}]: ${oappId}`);
 
-      const { configs, oapp } = await this.getSecurityConfig(oappId);
-
-      const localEidRaw =
+      const { configs, oapp } = await this.fetchSecurityConfig(oappId);
+      const localEid =
         oapp?.localEid !== undefined && oapp?.localEid !== null
           ? String(oapp.localEid)
           : oappId.split("_")[0];
 
-      const nodeData = {
+      const node = {
         id: oappId,
-        localEid: localEidRaw,
+        localEid,
         address: oapp?.address || oappId.split("_")[1],
         totalPacketsReceived: oapp?.totalPacketsReceived || 0,
         isTracked: configs.length > 0,
@@ -66,86 +50,48 @@ export class SecurityGraphCrawler {
         securityConfigs: [],
       };
 
-      const configContexts = configs.map((config) => {
-        const peerInfo = this.derivePeerFromConfig(config);
-        const requiredDVNs = Array.isArray(config.effectiveRequiredDVNs)
-          ? config.effectiveRequiredDVNs
+      const configContexts = configs.map((cfg) => {
+        const peer = this.derivePeer(cfg);
+        const requiredDVNs = Array.isArray(cfg.effectiveRequiredDVNs)
+          ? cfg.effectiveRequiredDVNs
           : [];
-        const optionalDVNs = Array.isArray(config.effectiveOptionalDVNs)
-          ? config.effectiveOptionalDVNs
+        const optionalDVNs = Array.isArray(cfg.effectiveOptionalDVNs)
+          ? cfg.effectiveOptionalDVNs
           : [];
+        const cfgEid =
+          cfg.localEid !== undefined && cfg.localEid !== null ? String(cfg.localEid) : localEid;
+        const context = { localEid: cfgEid };
 
-        const configLocalEid =
-          config.localEid !== undefined && config.localEid !== null
-            ? String(config.localEid)
-            : localEidRaw;
-        const dvnContext = {
-          localEid: configLocalEid,
-        };
+        const requiredDVNNames = this.chainMetadata.resolveDvnNames(requiredDVNs, context);
+        const optionalDVNNames = this.chainMetadata.resolveDvnNames(optionalDVNs, context);
 
-        const requiredDVNNames = this.chainMetadata.resolveDvnNames(requiredDVNs, dvnContext);
-        const optionalDVNNames = this.chainMetadata.resolveDvnNames(optionalDVNs, dvnContext);
-
-        nodeData.securityConfigs.push({
-          srcEid: config.eid,
-          localEid: configLocalEid,
-          requiredDVNCount: config.effectiveRequiredDVNCount || 0,
-          requiredDVNs: requiredDVNs,
+        node.securityConfigs.push({
+          srcEid: cfg.eid,
+          localEid: cfgEid,
+          requiredDVNCount: cfg.effectiveRequiredDVNCount || 0,
+          requiredDVNs,
           requiredDVNLabels: requiredDVNNames,
-          optionalDVNCount: config.effectiveOptionalDVNCount || 0,
-          optionalDVNs: optionalDVNs,
+          optionalDVNCount: cfg.effectiveOptionalDVNCount || 0,
+          optionalDVNs,
           optionalDVNLabels: optionalDVNNames,
-          optionalDVNThreshold: config.effectiveOptionalDVNThreshold || 0,
-          usesRequiredDVNSentinel: config.usesRequiredDVNSentinel || false,
-          isConfigTracked: config.isConfigTracked || false,
-          peer: peerInfo?.rawPeer || null,
-          peerOAppId: peerInfo?.oappId || null,
-          peerLocalEid: peerInfo?.localEid || null,
-          peerAddress: peerInfo?.address || null,
-          peerResolved: peerInfo?.resolved || false,
+          optionalDVNThreshold: cfg.effectiveOptionalDVNThreshold || 0,
+          usesRequiredDVNSentinel: cfg.usesRequiredDVNSentinel || false,
+          isConfigTracked: cfg.isConfigTracked || false,
+          peer: peer?.rawPeer || null,
+          peerOAppId: peer?.oappId || null,
+          peerLocalEid: peer?.localEid || null,
+          peerAddress: peer?.address || null,
+          peerResolved: peer?.resolved || false,
         });
-        return { config, peerInfo };
+        return { config: cfg, peerInfo: peer };
       });
 
-      nodes.set(oappId, nodeData);
-
-      this.addPeerEdges({
-        currentOAppId: oappId,
-        depth,
-        maxDepth,
-        queue,
-        visited,
-        edges,
-        configContexts,
-      });
+      nodes.set(oappId, node);
+      this.addPeerEdges({ oappId, depth, maxDepth, queue, visited, edges, configContexts });
     }
 
-    // Add dangling nodes (referenced in edges but not crawled)
-    const danglingNodes = new Set();
-    for (const edge of edges.values()) {
-      if (!nodes.has(edge.from)) {
-        danglingNodes.add(edge.from);
-      }
-      if (!nodes.has(edge.to)) {
-        danglingNodes.add(edge.to);
-      }
-    }
-
-    for (const oappId of danglingNodes) {
-      const [localEid, address] = oappId.split("_");
-      nodes.set(oappId, {
-        id: oappId,
-        localEid,
-        address,
-        isTracked: false,
-        isDangling: true,
-        depth: -1,
-        securityConfigs: [],
-        totalPacketsReceived: 0,
-      });
-    }
-
-    onProgress(`Crawl complete: ${nodes.size} nodes, ${edges.size} edges`);
+    this.addDanglingNodes(nodes, edges);
+    onProgress(`Complete: ${nodes.size} nodes, ${edges.size} edges`);
 
     return {
       seed: seedOAppId,
@@ -156,10 +102,29 @@ export class SecurityGraphCrawler {
     };
   }
 
-  /**
-   * Fetches security config for a given OApp
-   */
-  async getSecurityConfig(oappId) {
+  addDanglingNodes(nodes, edges) {
+    const dangling = new Set();
+    for (const edge of edges.values()) {
+      if (!nodes.has(edge.from)) dangling.add(edge.from);
+      if (!nodes.has(edge.to)) dangling.add(edge.to);
+    }
+
+    for (const id of dangling) {
+      const [localEid, address] = id.split("_");
+      nodes.set(id, {
+        id,
+        localEid,
+        address,
+        isTracked: false,
+        isDangling: true,
+        depth: -1,
+        securityConfigs: [],
+        totalPacketsReceived: 0,
+      });
+    }
+  }
+
+  async fetchSecurityConfig(oappId) {
     const query = `
       query GetSecurityConfig($oappId: String!) {
         OAppSecurityConfig(where: { oappId: { _eq: $oappId } }) {
@@ -197,76 +162,59 @@ export class SecurityGraphCrawler {
     };
   }
 
-  derivePeerFromConfig(config) {
-    const peerHex = config.peer;
-    if (!peerHex) {
-      return null;
-    }
+  derivePeer(config) {
+    if (!config.peer) return null;
 
-    const eid = config.eid ?? null;
-    const eidStr = eid !== null && eid !== undefined ? String(eid) : null;
-
-    if (!eidStr) {
-      const fallbackSuffix = peerHex ? peerHex.toLowerCase() : "unknown";
-      const fallbackLocalId = eidStr !== null ? `eid-${eidStr}` : "unknown-eid";
-      const fallbackOAppId = `${fallbackLocalId}_${fallbackSuffix}`;
+    const eid = config.eid !== undefined && config.eid !== null ? String(config.eid) : null;
+    if (!eid) {
       return {
-        rawPeer: peerHex,
-        localEid: eidStr,
+        rawPeer: config.peer,
+        localEid: null,
         address: null,
-        oappId: fallbackOAppId,
+        oappId: `unknown-eid_${config.peer.toLowerCase()}`,
         resolved: false,
       };
     }
 
-    let decoded = bytes32ToAddress(peerHex);
+    const decoded = bytes32ToAddress(config.peer);
     if (decoded) {
       try {
         const normalized = normalizeAddress(decoded);
-        const oappId = makeOAppId(eidStr, normalized);
         return {
-          rawPeer: peerHex,
-          localEid: eidStr,
+          rawPeer: config.peer,
+          localEid: eid,
           address: normalized,
-          oappId,
+          oappId: makeOAppId(eid, normalized),
           resolved: true,
         };
       } catch (error) {
-        console.debug("[SecurityGraphCrawler] Failed to normalize peer address", {
-          peerHex,
-          decoded,
-          error,
-        });
-        decoded = null;
+        console.debug("[Crawler] Failed to normalize peer", { peer: config.peer, decoded, error });
       }
     }
 
-    // Fallback identifier for non-EVM peers; do not attempt to crawl further.
     return {
-      rawPeer: peerHex,
-      localEid: eidStr,
+      rawPeer: config.peer,
+      localEid: eid,
       address: null,
-      oappId: `${eidStr}_${peerHex.toLowerCase()}`,
+      oappId: `${eid}_${config.peer.toLowerCase()}`,
       resolved: false,
     };
   }
 
-  addPeerEdges({ currentOAppId, depth, maxDepth, queue, visited, edges, configContexts }) {
+  addPeerEdges({ oappId, depth, maxDepth, queue, visited, edges, configContexts }) {
     for (const { config, peerInfo } of configContexts) {
-      if (!peerInfo || !peerInfo.oappId) {
-        continue;
-      }
+      if (!peerInfo?.oappId) continue;
 
-      const edgeKey = `${peerInfo.oappId}->${currentOAppId}`;
-      if (!edges.has(edgeKey)) {
-        edges.set(edgeKey, {
+      const key = `${peerInfo.oappId}->${oappId}`;
+      if (!edges.has(key)) {
+        edges.set(key, {
           from: peerInfo.oappId,
-          to: currentOAppId,
+          to: oappId,
           srcEid: config.eid,
           linkType: "peer",
           peerResolved: peerInfo.resolved,
           peerRaw: peerInfo.rawPeer,
-          peerLocalEid: peerInfo.localEid ?? null,
+          peerLocalEid: peerInfo.localEid,
         });
       }
 
