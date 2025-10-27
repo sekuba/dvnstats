@@ -106,11 +106,6 @@ export class SecurityGraphView {
           <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower required DVN count vs web max (still dominant mix)<br>
           <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer, dead DVN, or blocking DVN)
         </dd>
-        <dt style="margin-top: 0.5rem;">Node Border</dt>
-        <dd>
-          Solid: Tracked (security config known)<br>
-          Dashed: Dangling (unknown security - dangerous!)
-        </dd>
       </dl>
     `;
     return summary;
