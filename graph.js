@@ -41,12 +41,8 @@ export class SecurityGraphRenderer {
     const nodesById = new Map(webData.nodes.map((n) => [n.id, n]));
 
     const edgeAnalysis = this.calculateEdgeSecurityInfo(webData.edges, nodesById);
-    const maxMinRequiredDVNsForNodes =
-      this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
-    const blockedNodes = this.findBlockedNodes(
-      webData.nodes,
-      edgeAnalysis.edgeSecurityInfo,
-    );
+    const maxMinRequiredDVNsForNodes = this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
+    const blockedNodes = this.findBlockedNodes(webData.nodes, edgeAnalysis.edgeSecurityInfo);
 
     const svg = this.renderSVG(webData, {
       edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
@@ -287,11 +283,28 @@ export class SecurityGraphRenderer {
     const angle = Math.atan2(dy, dx);
 
     edgesGroup.appendChild(
-      this.createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, style.color)
+      this.createArrowMarker(
+        svgNS,
+        fromPos.x + dx * 0.75,
+        fromPos.y + dy * 0.75,
+        angle,
+        8,
+        style.color,
+      ),
     );
   }
 
-  renderBidirectionalEdge(svgNS, edgesGroup, fromPos, toPos, forwardInfo, reverseInfo, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip) {
+  renderBidirectionalEdge(
+    svgNS,
+    edgesGroup,
+    fromPos,
+    toPos,
+    forwardInfo,
+    reverseInfo,
+    maxRequiredDVNsInWeb,
+    dominantCombination,
+    showPersistentTooltip,
+  ) {
     const forwardStyle = this.getEdgeStyle({
       isBlocked: forwardInfo.isBlocked,
       requiredDVNCount: forwardInfo.requiredDVNCount,
@@ -311,19 +324,93 @@ export class SecurityGraphRenderer {
     const angle = Math.atan2(dy, dx);
 
     // Render two halves
-    this.renderHalfEdge(svgNS, edgesGroup, fromPos.x, fromPos.y, midX, midY, reverseStyle, reverseInfo, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip);
-    this.renderHalfEdge(svgNS, edgesGroup, midX, midY, toPos.x, toPos.y, forwardStyle, forwardInfo, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip);
+    this.renderHalfEdge(
+      svgNS,
+      edgesGroup,
+      fromPos.x,
+      fromPos.y,
+      midX,
+      midY,
+      reverseStyle,
+      reverseInfo,
+      maxRequiredDVNsInWeb,
+      dominantCombination,
+      showPersistentTooltip,
+    );
+    this.renderHalfEdge(
+      svgNS,
+      edgesGroup,
+      midX,
+      midY,
+      toPos.x,
+      toPos.y,
+      forwardStyle,
+      forwardInfo,
+      maxRequiredDVNsInWeb,
+      dominantCombination,
+      showPersistentTooltip,
+    );
 
     // Arrows
-    edgesGroup.appendChild(this.createArrowMarker(svgNS, fromPos.x + dx * 0.75, fromPos.y + dy * 0.75, angle, 8, forwardStyle.color));
-    edgesGroup.appendChild(this.createArrowMarker(svgNS, fromPos.x + dx * 0.25, fromPos.y + dy * 0.25, angle + Math.PI, 8, reverseStyle.color));
+    edgesGroup.appendChild(
+      this.createArrowMarker(
+        svgNS,
+        fromPos.x + dx * 0.75,
+        fromPos.y + dy * 0.75,
+        angle,
+        8,
+        forwardStyle.color,
+      ),
+    );
+    edgesGroup.appendChild(
+      this.createArrowMarker(
+        svgNS,
+        fromPos.x + dx * 0.25,
+        fromPos.y + dy * 0.25,
+        angle + Math.PI,
+        8,
+        reverseStyle.color,
+      ),
+    );
   }
 
-  renderHalfEdge(svgNS, edgesGroup, x1, y1, x2, y2, style, info, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip) {
-    this.createEdgeLine(svgNS, edgesGroup, { x: x1, y: y1 }, { x: x2, y: y2 }, style, info, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip);
+  renderHalfEdge(
+    svgNS,
+    edgesGroup,
+    x1,
+    y1,
+    x2,
+    y2,
+    style,
+    info,
+    maxRequiredDVNsInWeb,
+    dominantCombination,
+    showPersistentTooltip,
+  ) {
+    this.createEdgeLine(
+      svgNS,
+      edgesGroup,
+      { x: x1, y: y1 },
+      { x: x2, y: y2 },
+      style,
+      info,
+      maxRequiredDVNsInWeb,
+      dominantCombination,
+      showPersistentTooltip,
+    );
   }
 
-  createEdgeLine(svgNS, edgesGroup, fromPos, toPos, style, info, maxRequiredDVNsInWeb, dominantCombination, showPersistentTooltip) {
+  createEdgeLine(
+    svgNS,
+    edgesGroup,
+    fromPos,
+    toPos,
+    style,
+    info,
+    maxRequiredDVNsInWeb,
+    dominantCombination,
+    showPersistentTooltip,
+  ) {
     const line = document.createElementNS(svgNS, "line");
     line.setAttribute("x1", fromPos.x);
     line.setAttribute("y1", fromPos.y);
@@ -332,7 +419,12 @@ export class SecurityGraphRenderer {
     Object.assign(line.style, { cursor: "pointer" });
 
     Object.entries(style).forEach(([key, value]) => {
-      const attrMap = { color: "stroke", width: "stroke-width", opacity: "opacity", dashArray: "stroke-dasharray" };
+      const attrMap = {
+        color: "stroke",
+        width: "stroke-width",
+        opacity: "opacity",
+        dashArray: "stroke-dasharray",
+      };
       line.setAttribute(attrMap[key], value);
     });
 
@@ -447,10 +539,7 @@ export class SecurityGraphRenderer {
     );
 
     const arrow = document.createElementNS(svgNS, "polygon");
-    arrow.setAttribute(
-      "points",
-      `0,0 -${size},-${size / 2} -${size},${size / 2}`,
-    );
+    arrow.setAttribute("points", `0,0 -${size},-${size / 2} -${size},${size / 2}`);
     arrow.setAttribute("fill", color);
     arrow.setAttribute("opacity", "0.8");
 
@@ -458,7 +547,14 @@ export class SecurityGraphRenderer {
     return arrowGroup;
   }
 
-  renderNodes(svgNS, nodes, nodePositions, maxMinRequiredDVNsForNodes, blockedNodes, showPersistentTooltip) {
+  renderNodes(
+    svgNS,
+    nodes,
+    nodePositions,
+    maxMinRequiredDVNsForNodes,
+    blockedNodes,
+    showPersistentTooltip,
+  ) {
     const nodesGroup = document.createElementNS(svgNS, "g");
     nodesGroup.setAttribute("class", "nodes");
 
@@ -498,8 +594,7 @@ export class SecurityGraphRenderer {
 
       const alias = this.getOAppAlias(node.id);
       const endpointId =
-        node.localEid ??
-        (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
+        node.localEid ?? (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
       const endpointLabel = this.formatChainLabel(endpointId) || endpointId;
       const titleLines = [
         alias ? `${alias} (${node.id})` : node.id,
@@ -529,9 +624,7 @@ export class SecurityGraphRenderer {
             `WEAK LINK: Lower than best node security (${minRequiredDVNs} vs ${maxMinRequiredDVNsForNodes})`,
           );
         } else {
-          titleLines.push(
-            `POTENTIAL WEAK LINK: Unknown security config (untracked)`,
-          );
+          titleLines.push(`POTENTIAL WEAK LINK: Unknown security config (untracked)`);
         }
       }
 
@@ -594,9 +687,7 @@ export class SecurityGraphRenderer {
     const blockedNodes =
       analysis?.blockedNodes instanceof Set
         ? analysis.blockedNodes
-        : new Set(
-            Array.isArray(analysis?.blockedNodes) ? analysis.blockedNodes : [],
-          );
+        : new Set(Array.isArray(analysis?.blockedNodes) ? analysis.blockedNodes : []);
 
     const edgeSecurityInfo = Array.isArray(analysis?.edgeSecurityInfo)
       ? analysis.edgeSecurityInfo
@@ -669,8 +760,7 @@ export class SecurityGraphRenderer {
           Boolean(combinationFingerprint) &&
           !cfg.usesRequiredDVNSentinel &&
           fingerprint === combinationFingerprint;
-        const differsFromDominant =
-          Boolean(combinationFingerprint) && !matchesDominant;
+        const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
         const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
 
         if (usesSentinel) {
@@ -720,8 +810,7 @@ export class SecurityGraphRenderer {
       });
 
       const hasConfigDifference =
-        differenceEdges.length > 0 ||
-        configDetails.some((detail) => detail.differsFromDominant);
+        differenceEdges.length > 0 || configDetails.some((detail) => detail.differsFromDominant);
       const hasSentinel =
         sentinelEdges.length > 0 || configDetails.some((detail) => detail.usesSentinel);
 
@@ -812,9 +901,7 @@ export class SecurityGraphRenderer {
       return `${from} → ${to}`;
     };
 
-    const eligibleNodes = nodeMetrics.filter(
-      (metric) => metric.isTracked && !metric.isBlocked,
-    );
+    const eligibleNodes = nodeMetrics.filter((metric) => metric.isTracked && !metric.isBlocked);
 
     const computeMedian = (values) => {
       const filtered = [];
@@ -861,12 +948,8 @@ export class SecurityGraphRenderer {
       return { low, high };
     };
 
-    const edgeMedian = computeMedian(
-      eligibleNodes.map((metric) => metric.activeIncomingCount),
-    );
-    const packetMedian = computeMedian(
-      eligibleNodes.map((metric) => metric.totalPackets),
-    );
+    const edgeMedian = computeMedian(eligibleNodes.map((metric) => metric.activeIncomingCount));
+    const packetMedian = computeMedian(eligibleNodes.map((metric) => metric.totalPackets));
     const edgeExtremes = pickExtremes(
       eligibleNodes,
       (metric) => metric.activeIncomingCount,
@@ -886,8 +969,7 @@ export class SecurityGraphRenderer {
       return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
     };
 
-    const formatNumber = (value) =>
-      Number(value || 0).toLocaleString("en-US");
+    const formatNumber = (value) => Number(value || 0).toLocaleString("en-US");
 
     const edgeLowId = edgeExtremes.low?.id ?? null;
     const edgeHighId = edgeExtremes.high?.id ?? null;
@@ -924,15 +1006,14 @@ export class SecurityGraphRenderer {
         typeof dominantCombination.share === "number"
           ? ` (${(dominantCombination.share * 100).toFixed(1)}%)`
           : "";
-      this.appendSummaryRow(
-        dl,
-        "Edges Using Combo",
-        `${dominantCombination.count}${shareText}`,
-      );
+      this.appendSummaryRow(dl, "Edges Using Combo", `${dominantCombination.count}${shareText}`);
 
       const destIds = Array.from(dominantCombination.toNodes || []);
       if (destIds.length) {
-        const sample = destIds.slice(0, 3).map((id) => formatNodeShort(id)).join(", ");
+        const sample = destIds
+          .slice(0, 3)
+          .map((id) => formatNodeShort(id))
+          .join(", ");
         const destinations =
           destIds.length > 3
             ? `${destIds.length} nodes (${sample}, ...)`
@@ -940,14 +1021,10 @@ export class SecurityGraphRenderer {
         this.appendSummaryRow(dl, "Destination Nodes", destinations);
       }
 
-      const chains = Array.from(dominantCombination.srcEids || []).map((localEid) =>
-        this.formatChainLabel(localEid) || localEid,
+      const chains = Array.from(dominantCombination.srcEids || []).map(
+        (localEid) => this.formatChainLabel(localEid) || localEid,
       );
-      this.appendSummaryRow(
-        dl,
-        "Source Chains",
-        chains.length ? chains.join(", ") : "—",
-      );
+      this.appendSummaryRow(dl, "Source Chains", chains.length ? chains.join(", ") : "—");
 
       const routeExamples = dominantCombination.edges
         ? dominantCombination.edges.slice(0, 3).map((info) => formatRoute(info))
@@ -1039,13 +1116,9 @@ export class SecurityGraphRenderer {
           .filter((detail) => detail.usesSentinel || detail.optionalSummary)
           .map((detail) => {
             const eidText =
-              detail.srcEid !== undefined && detail.srcEid !== null
-                ? `EID ${detail.srcEid}: `
-                : "";
+              detail.srcEid !== undefined && detail.srcEid !== null ? `EID ${detail.srcEid}: ` : "";
             return `${eidText}${
-              detail.optionalSummary
-                ? `quorum ${detail.optionalSummary}`
-                : "sentinel"
+              detail.optionalSummary ? `quorum ${detail.optionalSummary}` : "sentinel"
             }`;
           });
         return {
@@ -1191,9 +1264,7 @@ export class SecurityGraphRenderer {
       statusCell.className = "status-cell";
       const statusBadges = [];
       statusBadges.push(
-        metric.isTracked
-          ? createBadge("Tracked")
-          : createBadge("Untracked", "muted"),
+        metric.isTracked ? createBadge("Tracked") : createBadge("Untracked", "muted"),
       );
       if (metric.isDangling) {
         statusBadges.push(createBadge("Dangling", "alert"));
@@ -1252,7 +1323,8 @@ export class SecurityGraphRenderer {
               const copyValue = pair.address || pair.label;
               pill.dataset.copyValue = copyValue || "";
               pill.title = pair.address || pair.label;
-              pill.textContent = pair.label || (pair.address ? this.shortenAddress(pair.address) : "—");
+              pill.textContent =
+                pair.label || (pair.address ? this.shortenAddress(pair.address) : "—");
               list.appendChild(pill);
             });
             container.appendChild(list);
@@ -1296,15 +1368,14 @@ export class SecurityGraphRenderer {
           header.textContent = `Dominant combo • ${group.count} EID${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
           line.appendChild(header);
 
-          const uniqueEids = Array.from(new Set(group.eids.filter((eid) => eid !== undefined && eid !== null))).map(
-            (eid) => String(eid),
-          );
+          const uniqueEids = Array.from(
+            new Set(group.eids.filter((eid) => eid !== undefined && eid !== null)),
+          ).map((eid) => String(eid));
           if (uniqueEids.length) {
             const preview = uniqueEids.slice(0, 4).join(", ");
             const note = document.createElement("div");
             note.className = "config-line-note";
-            note.textContent =
-              uniqueEids.length > 4 ? `EIDs ${preview}, …` : `EIDs ${preview}`;
+            note.textContent = uniqueEids.length > 4 ? `EIDs ${preview}, …` : `EIDs ${preview}`;
             line.appendChild(note);
           }
 
@@ -1324,12 +1395,10 @@ export class SecurityGraphRenderer {
 
       const optionalCell = document.createElement("td");
       optionalCell.className = "optional-cell";
-      const optionalChunks = metric.configDetails.filter(
-        (detail) => {
-          const pairs = Array.isArray(detail.optionalPairs) ? detail.optionalPairs : [];
-          return (detail.optionalSummary && detail.optionalSummary !== "0") || pairs.length;
-        },
-      );
+      const optionalChunks = metric.configDetails.filter((detail) => {
+        const pairs = Array.isArray(detail.optionalPairs) ? detail.optionalPairs : [];
+        return (detail.optionalSummary && detail.optionalSummary !== "0") || pairs.length;
+      });
       if (!optionalChunks.length) {
         optionalCell.textContent = "—";
       } else {
@@ -1387,12 +1456,7 @@ export class SecurityGraphRenderer {
         edgeParts.push(`${metric.blockedIncomingCount} blocked`);
       }
       edgesCell.textContent = edgeParts.join(" / ");
-      if (
-        hasEdgeVariation &&
-        metric.id === edgeLowId &&
-        metric.isTracked &&
-        !metric.isBlocked
-      ) {
+      if (hasEdgeVariation && metric.id === edgeLowId && metric.isTracked && !metric.isBlocked) {
         edgesCell.classList.add("cell-extreme-low");
       } else if (
         hasEdgeVariation &&
@@ -1429,18 +1493,10 @@ export class SecurityGraphRenderer {
       const noteBadges = [];
 
       if (metric.diffReasonSummary.length) {
-        noteBadges.push(
-          createBadge(
-            "Δ DVN mix",
-            "alert",
-            metric.diffReasonSummary.join("; "),
-          ),
-        );
+        noteBadges.push(createBadge("Δ DVN mix", "alert", metric.diffReasonSummary.join("; ")));
       }
       if (metric.blockReasons.length) {
-        noteBadges.push(
-          createBadge("Blocked", "danger", metric.blockReasons.join("; ")),
-        );
+        noteBadges.push(createBadge("Blocked", "danger", metric.blockReasons.join("; ")));
       }
       if (metric.hasSentinel) {
         const sentinelDetails = metric.configDetails
@@ -1520,10 +1576,7 @@ export class SecurityGraphRenderer {
           usesSentinel = Boolean(config.usesRequiredDVNSentinel);
 
           // Check for dead address in DVNs
-          if (
-            !isBlocked &&
-            requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))
-          ) {
+          if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
             isBlocked = true;
             blockReason = "dead-dvn";
           }
@@ -1609,10 +1662,7 @@ export class SecurityGraphRenderer {
     }
 
     const combinationStatsList = Array.from(combinationStatsMap.values());
-    const totalActiveEdges = combinationStatsList.reduce(
-      (sum, entry) => sum + entry.count,
-      0,
-    );
+    const totalActiveEdges = combinationStatsList.reduce((sum, entry) => sum + entry.count, 0);
 
     // Determine dominant combination (prefer non-sentinel combos)
     let dominantEntry = null;
@@ -1626,8 +1676,7 @@ export class SecurityGraphRenderer {
         }
         return a.fingerprint.localeCompare(b.fingerprint);
       })[0];
-      dominantEntry.share =
-        totalActiveEdges > 0 ? dominantEntry.count / totalActiveEdges : 0;
+      dominantEntry.share = totalActiveEdges > 0 ? dominantEntry.count / totalActiveEdges : 0;
     }
 
     const dominantFingerprint = dominantEntry?.fingerprint ?? null;
@@ -1657,10 +1706,7 @@ export class SecurityGraphRenderer {
           );
         }
         if (
-          !this.areStringArraysEqual(
-            info.normalizedRequiredNames,
-            dominantEntry.normalizedNames,
-          )
+          !this.areStringArraysEqual(info.normalizedRequiredNames, dominantEntry.normalizedNames)
         ) {
           info.differenceReasons.push("validator set differs");
         }
@@ -1760,7 +1806,7 @@ export class SecurityGraphRenderer {
 
       // If the node has incoming edges, check if ALL are blocked
       if (incoming.length > 0) {
-        const allBlocked = incoming.every(info => info.isBlocked);
+        const allBlocked = incoming.every((info) => info.isBlocked);
         if (allBlocked) {
           blocked.add(node.id);
         }
@@ -1807,10 +1853,7 @@ export class SecurityGraphRenderer {
     }
 
     const sample = combination.sampleInfo || {};
-    const requiredCount =
-      combination.requiredDVNCount ??
-      sample.requiredDVNCount ??
-      0;
+    const requiredCount = combination.requiredDVNCount ?? sample.requiredDVNCount ?? 0;
     const requiredLabels =
       (Array.isArray(sample.requiredDVNLabels) && sample.requiredDVNLabels.length
         ? sample.requiredDVNLabels
@@ -1842,8 +1885,7 @@ export class SecurityGraphRenderer {
 
     const quorumLabel =
       optionalCount > 0 ? `${optionalThreshold}/${optionalCount}` : `${optionalThreshold}`;
-    const optionalText =
-      optionalLabels.length > 0 ? ` → ${optionalLabels.join(", ")}` : "";
+    const optionalText = optionalLabels.length > 0 ? ` → ${optionalLabels.join(", ")}` : "";
 
     return `${base} (sentinel, quorum ${quorumLabel}${optionalText})`;
   }
@@ -1876,17 +1918,20 @@ export class SecurityGraphRenderer {
   }
 
   getNodeSecurityMetrics(node) {
-    const nonBlockedConfigs = node.securityConfigs?.filter((cfg) =>
-      !(cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr))
-    ) || [];
+    const nonBlockedConfigs =
+      node.securityConfigs?.filter(
+        (cfg) => !(cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr)),
+      ) || [];
 
     return {
-      minRequiredDVNs: nonBlockedConfigs.length > 0
-        ? Math.min(...nonBlockedConfigs.map((c) => c.requiredDVNCount))
-        : 0,
-      hasBlockedConfig: node.securityConfigs?.some((cfg) =>
-        (cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr))
-      ) || false,
+      minRequiredDVNs:
+        nonBlockedConfigs.length > 0
+          ? Math.min(...nonBlockedConfigs.map((c) => c.requiredDVNCount))
+          : 0,
+      hasBlockedConfig:
+        node.securityConfigs?.some((cfg) =>
+          (cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr)),
+        ) || false,
     };
   }
 
@@ -1897,7 +1942,7 @@ export class SecurityGraphRenderer {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash; // Convert to 32-bit integer
     }
     return Math.abs(hash);
@@ -1936,15 +1981,15 @@ export class SecurityGraphRenderer {
     }
 
     // Apply column splitting to all depths
-    const depthsToProcess = Array.from(nodesByDepth.keys()).filter(d => d !== 0 && d < 999);
+    const depthsToProcess = Array.from(nodesByDepth.keys()).filter((d) => d !== 0 && d < 999);
     for (const originalDepth of depthsToProcess) {
       const depthNodes = nodesByDepth.get(originalDepth);
       if (!depthNodes || depthNodes.length <= 1) continue;
 
       // Special handling for depth 1: separate tracked (left) and untracked (right)
       if (originalDepth === 1) {
-        const trackedNodes = depthNodes.filter(n => n.isTracked);
-        const untrackedNodes = depthNodes.filter(n => !n.isTracked);
+        const trackedNodes = depthNodes.filter((n) => n.isTracked);
+        const untrackedNodes = depthNodes.filter((n) => !n.isTracked);
 
         // Process tracked nodes (left side, mirrored)
         if (trackedNodes.length > 0) {
@@ -1967,8 +2012,8 @@ export class SecurityGraphRenderer {
     const centerX = this.width / 2;
 
     // Pre-calculate left and right column depths for indexing
-    const leftDepths = depths.filter(d => d < 0).sort((a, b) => b - a); // Sort descending: -0.1, -0.2, -0.3...
-    const rightDepths = depths.filter(d => d > 1).sort((a, b) => a - b); // Sort ascending: 1.1, 1.2, 1.3...
+    const leftDepths = depths.filter((d) => d < 0).sort((a, b) => b - a); // Sort descending: -0.1, -0.2, -0.3...
+    const rightDepths = depths.filter((d) => d > 1).sort((a, b) => a - b); // Sort ascending: 1.1, 1.2, 1.3...
 
     for (const depth of depths) {
       const nodesAtDepth = nodesByDepth.get(depth);
@@ -1981,11 +2026,11 @@ export class SecurityGraphRenderer {
       } else if (depth < 0) {
         // Left side: each column to the left of seed
         const columnIndex = leftDepths.indexOf(depth);
-        baseX = centerX - this.seedGap - (columnIndex * this.columnSpacing);
+        baseX = centerX - this.seedGap - columnIndex * this.columnSpacing;
       } else {
         // Right side: each column to the right of seed
         const columnIndex = rightDepths.indexOf(depth);
-        baseX = centerX + this.seedGap + (columnIndex * this.columnSpacing);
+        baseX = centerX + this.seedGap + columnIndex * this.columnSpacing;
       }
 
       const verticalSpacing =
@@ -2000,10 +2045,7 @@ export class SecurityGraphRenderer {
 
         const centerIndex = (nodesAtDepth.length - 1) / 2;
         const distanceFromCenterIndex = index - centerIndex;
-        const maxDistanceFromCenter = Math.max(
-          centerIndex,
-          nodesAtDepth.length - 1 - centerIndex,
-        );
+        const maxDistanceFromCenter = Math.max(centerIndex, nodesAtDepth.length - 1 - centerIndex);
         const normalizedPosition =
           maxDistanceFromCenter > 0 ? distanceFromCenterIndex / maxDistanceFromCenter : 0;
 
@@ -2032,7 +2074,10 @@ export class SecurityGraphRenderer {
       return;
     }
 
-    const numColumns = Math.max(1, Math.min(this.maxColumns, Math.ceil(nodes.length / this.maxNodesPerColumn)));
+    const numColumns = Math.max(
+      1,
+      Math.min(this.maxColumns, Math.ceil(nodes.length / this.maxNodesPerColumn)),
+    );
     const nodesPerColumn = Math.ceil(nodes.length / numColumns);
 
     for (let i = 0; i < numColumns; i++) {
@@ -2041,7 +2086,7 @@ export class SecurityGraphRenderer {
       if (start < nodes.length) {
         const columnNodes = nodes.slice(start, end);
         if (columnNodes.length > 0) {
-          const columnDepth = baseDepth + (i * increment);
+          const columnDepth = baseDepth + i * increment;
           nodesByDepth.set(columnDepth, columnNodes);
         }
       }

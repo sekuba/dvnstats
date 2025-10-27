@@ -23,17 +23,13 @@ export class GraphQLClient {
     });
 
     if (!response.ok) {
-      throw new Error(
-        `GraphQL request failed: ${response.status} ${response.statusText}`,
-      );
+      throw new Error(`GraphQL request failed: ${response.status} ${response.statusText}`);
     }
 
     const result = await response.json();
 
     if (result.errors && result.errors.length > 0) {
-      const message = result.errors
-        .map((error) => error.message || "Unknown error")
-        .join("; ");
+      const message = result.errors.map((error) => error.message || "Unknown error").join("; ");
       throw new Error(message);
     }
 
@@ -180,9 +176,7 @@ export class ChainMetadata {
       }
     }
 
-    console.warn(
-      "[ChainMetadata] No metadata found; endpoint names will not be resolved",
-    );
+    console.warn("[ChainMetadata] No metadata found; endpoint names will not be resolved");
     this.loaded = true;
   }
 
@@ -199,8 +193,7 @@ export class ChainMetadata {
       Object.entries(dvns).forEach(([address, info]) => {
         if (!address) return;
         const normalized = String(address).toLowerCase();
-        const label =
-          info?.canonicalName || info?.name || info?.id || address;
+        const label = info?.canonicalName || info?.name || info?.id || address;
         if (!normalized) return;
 
         this.dvnLookup.set(`local:${localEid}:${normalized}`, label);
@@ -226,9 +219,7 @@ export class ChainMetadata {
 
           const localEid = String(deployment.eid);
           const stage =
-            deployment.stage && deployment.stage !== "mainnet"
-              ? ` (${deployment.stage})`
-              : "";
+            deployment.stage && deployment.stage !== "mainnet" ? ` (${deployment.stage})` : "";
           const label = `${baseLabel}${stage}`;
 
           this.localEidLabels.set(localEid, label);
@@ -251,9 +242,7 @@ export class ChainMetadata {
 
   deriveChainLabel(entry, fallbackKey) {
     const details = entry.chainDetails || {};
-    return (
-      details.shortName || details.name || entry.chainKey || fallbackKey
-    );
+    return details.shortName || details.name || entry.chainKey || fallbackKey;
   }
 
   getChainLabel(localEid) {
@@ -278,9 +267,7 @@ export class ChainMetadata {
   }
 
   listLocalEndpoints() {
-    const entries = Array.from(this.localEidLabels.entries()).map(
-      ([id, label]) => ({ id, label }),
-    );
+    const entries = Array.from(this.localEidLabels.entries()).map(([id, label]) => ({ id, label }));
     return entries.sort((a, b) => a.label.localeCompare(b.label));
   }
 
@@ -301,9 +288,7 @@ export class ChainMetadata {
     if (!Array.isArray(addresses)) {
       return [];
     }
-    return addresses.map((address) =>
-      this.resolveDvnName(address, context),
-    );
+    return addresses.map((address) => this.resolveDvnName(address, context));
   }
 }
 

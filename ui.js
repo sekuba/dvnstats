@@ -184,7 +184,7 @@ export class QueryManager {
     const candidateLocal =
       localEidOverride !== undefined && localEidOverride !== null
         ? localEidOverride
-        : meta?.localEid ?? meta?.eid ?? null;
+        : (meta?.localEid ?? meta?.eid ?? null);
     const context =
       candidateLocal !== undefined && candidateLocal !== null && candidateLocal !== ""
         ? { localEid: String(candidateLocal) }
@@ -220,12 +220,7 @@ export class QueryManager {
 
           const rawLimit = limitInput?.value?.trim() ?? "";
           const parsedLimit = parseOptionalPositiveInt(rawLimit);
-          const minPackets = clampInteger(
-            minPacketsInput?.value,
-            0,
-            Number.MAX_SAFE_INTEGER,
-            0,
-          );
+          const minPackets = clampInteger(minPacketsInput?.value, 0, Number.MAX_SAFE_INTEGER, 0);
 
           const variables = {
             minPackets: String(minPackets),
@@ -237,9 +232,7 @@ export class QueryManager {
           return {
             variables,
             meta: {
-              limitLabel: Number.isFinite(parsedLimit)
-                ? `limit=${parsedLimit}`
-                : "limit=∞",
+              limitLabel: Number.isFinite(parsedLimit) ? `limit=${parsedLimit}` : "limit=∞",
             },
           };
         },
@@ -312,9 +305,7 @@ export class QueryManager {
             const updateLabel = () => {
               const localEid = endpointInput.value.trim();
               const display = this.getChainDisplayLabel(localEid);
-              chainLabel.textContent = display
-                ? `Endpoint: ${display}`
-                : "Endpoint not selected.";
+              chainLabel.textContent = display ? `Endpoint: ${display}` : "Endpoint not selected.";
             };
             endpointInput.addEventListener("input", updateLabel);
             updateLabel();
@@ -380,8 +371,7 @@ export class QueryManager {
             }
           }
 
-          const localLabel =
-            this.getChainDisplayLabel(localEid) || `EID ${localEid}`;
+          const localLabel = this.getChainDisplayLabel(localEid) || `EID ${localEid}`;
           const summary = `${localLabel} • ${address}`;
           return {
             variables: { oappId },
@@ -403,14 +393,11 @@ export class QueryManager {
           if (oapp) {
             const localEid = String(oapp.localEid ?? "");
             const chainDisplay =
-              this.getChainDisplayLabel(localEid) ||
-              enrichedMeta.chainLabel ||
-              `EID ${localEid}`;
+              this.getChainDisplayLabel(localEid) || enrichedMeta.chainLabel || `EID ${localEid}`;
             enrichedMeta.oappInfo = oapp;
             enrichedMeta.chainLabel = chainDisplay;
             enrichedMeta.localEid = localEid;
-            enrichedMeta.summary =
-              enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
+            enrichedMeta.summary = enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
             enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
           }
 
@@ -537,9 +524,9 @@ export class QueryManager {
 
           const isCrawl = !!seedOAppId;
 
-        if (file && seedOAppIdInput) {
-          seedOAppIdInput.value = "";
-        }
+          if (file && seedOAppIdInput) {
+            seedOAppIdInput.value = "";
+          }
 
           return {
             variables: {
@@ -597,7 +584,11 @@ export class QueryManager {
     packets.forEach((packet) => {
       if (!packet) return;
 
-      const inferredKey = packet.oappId || (packet.localEid && packet.receiver ? `${packet.localEid}_${packet.receiver.toLowerCase()}` : null);
+      const inferredKey =
+        packet.oappId ||
+        (packet.localEid && packet.receiver
+          ? `${packet.localEid}_${packet.receiver.toLowerCase()}`
+          : null);
       if (!inferredKey) return;
 
       const [localPart, addressPart] = inferredKey.split("_");
@@ -613,7 +604,8 @@ export class QueryManager {
       };
 
       group.count += 1;
-      if (packet.srcEid !== undefined && packet.srcEid !== null) group.eids.add(String(packet.srcEid));
+      if (packet.srcEid !== undefined && packet.srcEid !== null)
+        group.eids.add(String(packet.srcEid));
 
       const timestamp = Number(packet.blockTimestamp ?? 0);
       if (Number.isFinite(timestamp)) {
@@ -622,7 +614,10 @@ export class QueryManager {
       }
 
       const blockNumber = packet.blockNumber !== undefined ? Number(packet.blockNumber) : null;
-      if (Number.isFinite(blockNumber) && (group.lastBlock === null || blockNumber > group.lastBlock)) {
+      if (
+        Number.isFinite(blockNumber) &&
+        (group.lastBlock === null || blockNumber > group.lastBlock)
+      ) {
         group.lastBlock = blockNumber;
       }
 
@@ -638,8 +633,7 @@ export class QueryManager {
 
     const limited = sortedGroups.slice(0, resultLimit);
     const rows = limited.map((group, index) => {
-      const chainDisplay =
-        this.getChainDisplayLabel(group.localEid) || group.localEid || "—";
+      const chainDisplay = this.getChainDisplayLabel(group.localEid) || group.localEid || "—";
       const address = group.address || (group.oappId.split("_")[1] ?? "—");
       const eids = Array.from(group.eids).sort();
 
@@ -653,10 +647,7 @@ export class QueryManager {
 
       const eidLines = [`Count ${eids.length}`];
       const eidCopyValue = eids.join(", ");
-      const eidCell = this.createFormattedCell(
-        eidLines,
-        eidCopyValue || `Count ${eids.length}`,
-      );
+      const eidCell = this.createFormattedCell(eidLines, eidCopyValue || `Count ${eids.length}`);
 
       const lastLines = [];
       if (group.lastTimestamp) {
@@ -717,10 +708,7 @@ export class QueryManager {
     formatted.Peer = this.formatPeer(row);
     formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
-    formatted.Fallbacks = this.formatFallbackFields(
-      row.fallbackFields,
-      row.usesDefaultConfig,
-    );
+    formatted.Fallbacks = this.formatFallbackFields(row.fallbackFields, row.usesDefaultConfig);
     formatted["Last Update"] = this.formatLastComputed(row);
 
     return formatted;
@@ -760,26 +748,16 @@ export class QueryManager {
   formatOptionalDvns(row, meta) {
     const count = row.effectiveOptionalDVNCount ?? 0;
     const threshold = row.effectiveOptionalDVNThreshold ?? "—";
-    return this.formatDvnSet(
-      row.effectiveOptionalDVNs,
-      count,
-      meta,
-      row.localEid,
-      [`Threshold ${threshold}`]
-    );
+    return this.formatDvnSet(row.effectiveOptionalDVNs, count, meta, row.localEid, [
+      `Threshold ${threshold}`,
+    ]);
   }
 
   formatDvnSet(addresses, count, meta, localEid, extraLines = []) {
     const addrs = Array.isArray(addresses) ? addresses.filter(Boolean) : [];
     const lines = [`Count ${count ?? addrs.length ?? 0}`, ...extraLines];
     if (addrs.length) {
-      lines.push(
-        ...this.resolveDvnLabels(
-          addrs,
-          meta,
-          localEid ?? meta?.localEid ?? meta?.eid,
-        ),
-      );
+      lines.push(...this.resolveDvnLabels(addrs, meta, localEid ?? meta?.localEid ?? meta?.eid));
     }
     return this.createFormattedCell(lines, addrs.join(", ") || String(count));
   }
@@ -791,12 +769,9 @@ export class QueryManager {
     }
 
     const eid = row.eid ?? null;
-    const localEid =
-      eid !== null && eid !== undefined ? String(eid) : null;
+    const localEid = eid !== null && eid !== undefined ? String(eid) : null;
     const endpointLabel =
-      localEid !== null
-        ? this.getChainDisplayLabel(localEid) || `EID ${localEid}`
-        : null;
+      localEid !== null ? this.getChainDisplayLabel(localEid) || `EID ${localEid}` : null;
 
     let decodedAddress = bytes32ToAddress(peerHex);
     let oappId = null;
@@ -928,9 +903,8 @@ export class QueryManager {
     if (eventId) lines.push(eventId);
     if (txHash) {
       const hashStr = String(txHash);
-      const truncated = hashStr.length > 20
-        ? `${hashStr.slice(0, 10)}…${hashStr.slice(-6)}`
-        : hashStr;
+      const truncated =
+        hashStr.length > 20 ? `${hashStr.slice(0, 10)}…${hashStr.slice(-6)}` : hashStr;
       lines.push(`Tx ${truncated}`);
     }
 
@@ -953,15 +927,13 @@ export class QueryManager {
 
     const buildResult = config.buildVariables?.(card) ?? {};
     const variables =
-      Object.prototype.hasOwnProperty.call(buildResult, "variables") &&
-      buildResult.variables
+      Object.prototype.hasOwnProperty.call(buildResult, "variables") && buildResult.variables
         ? buildResult.variables
         : buildResult.variables === null
           ? {}
           : buildResult;
     const extraMeta =
-      Object.prototype.hasOwnProperty.call(buildResult, "meta") &&
-      buildResult.meta
+      Object.prototype.hasOwnProperty.call(buildResult, "meta") && buildResult.meta
         ? buildResult.meta
         : {};
 
@@ -978,10 +950,7 @@ export class QueryManager {
       if (variables.isCrawl) {
         const { SecurityWebCrawler } = await import("./crawler.js");
         this.setStatus(statusEl, "Crawling...", "loading");
-        const crawler = new SecurityWebCrawler(
-          this.client,
-          this.chainMetadata,
-        );
+        const crawler = new SecurityWebCrawler(this.client, this.chainMetadata);
         const webData = await crawler.crawl(variables.seedOAppId, {
           depth: variables.depth,
           onProgress: (status) => this.setStatus(statusEl, status, "loading"),
@@ -1012,8 +981,7 @@ export class QueryManager {
       let finalMeta = { ...baseMeta };
 
       if (typeof config.processResponse === "function") {
-        const result =
-          (await config.processResponse(payload, { ...baseMeta })) || {};
+        const result = (await config.processResponse(payload, { ...baseMeta })) || {};
         rows = Array.isArray(result.rows) ? result.rows : [];
         if (result.meta && typeof result.meta === "object") {
           finalMeta = { ...baseMeta, ...result.meta };
@@ -1073,8 +1041,7 @@ export class QueryManager {
     let finalMeta = { ...baseMeta };
 
     if (typeof config.processResponse === "function") {
-      const result =
-        config.processResponse(this.lastPayload, { ...baseMeta }) || {};
+      const result = config.processResponse(this.lastPayload, { ...baseMeta }) || {};
       rows = Array.isArray(result.rows) ? result.rows : [];
       if (result.meta && typeof result.meta === "object") {
         finalMeta = { ...baseMeta, ...result.meta };
@@ -1176,8 +1143,7 @@ export class ResultsRenderer {
     const metaSnapshot = { ...meta };
     this.lastRender = { rows, payload, meta: metaSnapshot };
 
-    this.copyJsonButton.disabled =
-      metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
+    this.copyJsonButton.disabled = metaSnapshot.renderMode === "graph" ? false : rows.length === 0;
     this.copyJsonButton.textContent =
       metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
 
@@ -1299,10 +1265,7 @@ export class ResultsRenderer {
   }
 
   renderCell(column, value) {
-    const { nodes, copyValue, isCopyable, meta } = this.interpretValue(
-      column,
-      value,
-    );
+    const { nodes, copyValue, isCopyable, meta } = this.interpretValue(column, value);
 
     if (!isCopyable) {
       const fragment = document.createDocumentFragment();
@@ -1314,7 +1277,11 @@ export class ResultsRenderer {
     container.className = "copyable";
 
     const content =
-      copyValue ?? nodes.map((node) => node.textContent ?? "").join(" ").trim();
+      copyValue ??
+      nodes
+        .map((node) => node.textContent ?? "")
+        .join(" ")
+        .trim();
     if (content) {
       container.dataset.copyValue = content;
     }
@@ -1336,8 +1303,7 @@ export class ResultsRenderer {
       const lines = Array.isArray(value.lines) ? value.lines : [value.lines ?? ""];
       lines.forEach((line) => {
         const span = document.createElement("span");
-        const content =
-          line === null || line === undefined || line === "" ? " " : String(line);
+        const content = line === null || line === undefined || line === "" ? " " : String(line);
         span.textContent = content;
         nodes.push(span);
       });
@@ -1472,9 +1438,7 @@ export class ResultsRenderer {
     }
     this.appendSummaryRow(list, "OApp ID", info.id ?? "");
     const localEid =
-      info.localEid !== undefined && info.localEid !== null
-        ? String(info.localEid)
-        : "—";
+      info.localEid !== undefined && info.localEid !== null ? String(info.localEid) : "—";
     const localLabel = meta.chainLabel || this.getChainDisplayLabel(localEid) || `EID ${localEid}`;
     this.appendSummaryRow(list, "Local EID", `${localLabel}`);
     // Native chain ids removed; local EIDs provide canonical context.
@@ -1647,8 +1611,7 @@ export class ResultsRenderer {
       return;
     }
 
-    const source =
-      this.lastRender?.payload?.data ?? this.lastRender?.rows ?? [];
+    const source = this.lastRender?.payload?.data ?? this.lastRender?.rows ?? [];
     if (!source || (Array.isArray(source) && !source.length)) {
       return;
     }
