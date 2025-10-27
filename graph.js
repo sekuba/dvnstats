@@ -900,8 +900,7 @@ export class SecurityGraphRenderer {
               if (!metric || !metric.id || typeof metric.id !== "string") {
                 return false;
               }
-              const idParts = metric.id.toLowerCase().split("_");
-              const idAddress = idParts.length > 1 ? idParts[idParts.length - 1] : "";
+              const idAddress = metric.id.toLowerCase().split("_").at(-1) || "";
               const nodeAddress = String(metric.node?.address || "")
                 .toLowerCase()
                 .trim();
@@ -1005,6 +1004,31 @@ export class SecurityGraphRenderer {
       return { low, high };
     };
 
+    const collectExtremes = (extremes, accessor) => {
+      const lows = [];
+      const highs = [];
+      const lowValue = accessor(extremes.low);
+      const highValue = accessor(extremes.high);
+
+      if (extremes.low && extremes.high && lowValue !== highValue) {
+        for (const metric of eligibleNodes) {
+          const value = accessor(metric);
+          if (value === lowValue) {
+            lows.push(metric.id);
+          }
+          if (value === highValue) {
+            highs.push(metric.id);
+          }
+        }
+      }
+
+      return {
+        lows,
+        highs,
+        variation: lows.length > 0 || highs.length > 0,
+      };
+    };
+
     const edgeMedian = computeMedian(eligibleNodes.map((metric) => metric.activeIncomingCount));
     const packetMedian = computeMedian(eligibleNodes.map((metric) => metric.totalPackets));
     const edgeExtremes = pickExtremes(
@@ -1028,18 +1052,10 @@ export class SecurityGraphRenderer {
 
     const formatNumber = (value) => Number(value || 0).toLocaleString("en-US");
 
-    const edgeLowId = edgeExtremes.low?.id ?? null;
-    const edgeHighId = edgeExtremes.high?.id ?? null;
-    const packetLowId = packetExtremes.low?.id ?? null;
-    const packetHighId = packetExtremes.high?.id ?? null;
-    const hasEdgeVariation =
-      edgeExtremes.low &&
-      edgeExtremes.high &&
-      edgeExtremes.low.activeIncomingCount !== edgeExtremes.high.activeIncomingCount;
-    const hasPacketVariation =
-      packetExtremes.low &&
-      packetExtremes.high &&
-      packetExtremes.low.totalPackets !== packetExtremes.high.totalPackets;
+    const { lows: edgeLows, highs: edgeHighs, variation: hasEdgeVariation } =
+      collectExtremes(edgeExtremes, (metric) => metric?.activeIncomingCount);
+    const { lows: packetLows, highs: packetHighs, variation: hasPacketVariation } =
+      collectExtremes(packetExtremes, (metric) => metric?.totalPackets);
 
     const insightGrid = document.createElement("div");
     insightGrid.className = "node-insight-grid";
@@ -1511,35 +1527,24 @@ export class SecurityGraphRenderer {
         edgeParts.push(`${metric.blockedIncomingCount} blocked`);
       }
       edgesCell.textContent = edgeParts.join(" / ");
-      if (hasEdgeVariation && metric.id === edgeLowId && metric.isTracked && !metric.isBlocked) {
-        edgesCell.classList.add("cell-extreme-low");
-      } else if (
-        hasEdgeVariation &&
-        metric.id === edgeHighId &&
-        metric.isTracked &&
-        !metric.isBlocked
-      ) {
-        edgesCell.classList.add("cell-extreme-high");
+      if (hasEdgeVariation && metric.isTracked && !metric.isBlocked) {
+        if (edgeLows.includes(metric.id)) {
+          edgesCell.classList.add("cell-extreme-low");
+        } else if (edgeHighs.includes(metric.id)) {
+          edgesCell.classList.add("cell-extreme-high");
+        }
       }
       tr.appendChild(edgesCell);
 
       const packetsCell = document.createElement("td");
       packetsCell.className = "metric-cell";
       packetsCell.textContent = formatNumber(metric.totalPackets);
-      if (
-        hasPacketVariation &&
-        metric.id === packetLowId &&
-        metric.isTracked &&
-        !metric.isBlocked
-      ) {
-        packetsCell.classList.add("cell-extreme-low");
-      } else if (
-        hasPacketVariation &&
-        metric.id === packetHighId &&
-        metric.isTracked &&
-        !metric.isBlocked
-      ) {
-        packetsCell.classList.add("cell-extreme-high");
+      if (hasPacketVariation && metric.isTracked && !metric.isBlocked) {
+        if (packetLows.includes(metric.id)) {
+          packetsCell.classList.add("cell-extreme-low");
+        } else if (packetHighs.includes(metric.id)) {
+          packetsCell.classList.add("cell-extreme-high");
+        }
       }
       tr.appendChild(packetsCell);
 
