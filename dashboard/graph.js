@@ -9,7 +9,7 @@ import { CONFIG } from "./config.js";
  * Main graph renderer
  */
 export class SecurityGraphRenderer {
-  constructor(getOAppAlias, getChainDisplayLabel) {
+  constructor({ getOAppAlias, getChainDisplayLabel, requestUniformAlias } = {}) {
     this.width = CONFIG.SVG.WIDTH;
     this.height = CONFIG.SVG.HEIGHT;
     this.nodeRadius = CONFIG.SVG.NODE_RADIUS;
@@ -20,8 +20,11 @@ export class SecurityGraphRenderer {
     this.maxColumns = CONFIG.SVG.MAX_COLUMNS;
     this.deadAddress = CONFIG.DEAD_ADDRESS;
     this.zeroPeer = CONFIG.ZERO_PEER;
-    this.getOAppAlias = getOAppAlias;
-    this.getChainDisplayLabel = getChainDisplayLabel;
+    this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
+    this.getChainDisplayLabel =
+      typeof getChainDisplayLabel === "function" ? getChainDisplayLabel : () => "";
+    this.requestUniformAlias =
+      typeof requestUniformAlias === "function" ? requestUniformAlias : null;
   }
 
   /**
@@ -109,7 +112,7 @@ export class SecurityGraphRenderer {
           <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Matches dominant DVN combo and highest requirement<br>
           <span style="color: #ff1df5; opacity: 0.8; font-weight: bold;">Magenta</span>: DVN combo deviates from dominant (names/count/sentinel)<br>
           <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower required DVN count vs web max (still dominant mix)<br>
-          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer or dead DVN)
+          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer, dead DVN, or blocking DVN)
         </dd>
         <dt style="margin-top: 0.5rem;">Node Border</dt>
         <dd>
@@ -474,6 +477,8 @@ export class SecurityGraphRenderer {
     let blockMessage = null;
     if (isBlocked && blockReason === "zero-peer") {
       blockMessage = "STATUS: BLOCKED (peer set to zero address - no packets accepted)";
+    } else if (isBlocked && blockReason === "blocking-dvn") {
+      blockMessage = "STATUS: BLOCKED (blocking DVN present in required set)";
     } else if (isBlocked && blockReason === "dead-dvn") {
       blockMessage = "STATUS: BLOCKED (dead address in DVNs)";
     } else if (isBlocked) {
@@ -605,7 +610,9 @@ export class SecurityGraphRenderer {
       ];
 
       if (isBlocked) {
-        titleLines.push(`BLOCKED: Cannot send packets to monitored nodes (zero-peer or dead DVN)`);
+        titleLines.push(
+          `BLOCKED: Cannot send packets to monitored nodes (zero-peer, dead DVN, or blocking DVN)`,
+        );
       }
 
       const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peer) || [];
@@ -615,7 +622,7 @@ export class SecurityGraphRenderer {
       }
 
       if (hasBlockedConfig) {
-        titleLines.push(`WARNING: Has blocked config(s) with dead address`);
+        titleLines.push(`WARNING: Has blocked config(s) with dead or blocking DVN entries`);
       }
 
       if (!isBlocked && minRequiredDVNs < maxMinRequiredDVNsForNodes) {
@@ -673,6 +680,8 @@ export class SecurityGraphRenderer {
     const heading = document.createElement("h3");
     heading.textContent = "Node Security Highlights";
     container.appendChild(heading);
+
+    let renameActions = null;
 
     if (!nodes.length) {
       const placeholder = document.createElement("p");
@@ -742,6 +751,8 @@ export class SecurityGraphRenderer {
           blockReasonSet.add("Zero peer (no packets accepted)");
         } else if (edge.blockReason === "dead-dvn") {
           blockReasonSet.add("Dead DVN inside required set");
+        } else if (edge.blockReason === "blocking-dvn") {
+          blockReasonSet.add("Blocking DVN present (LZDeadDVN)");
         } else {
           blockReasonSet.add("Blocked route");
         }
@@ -874,6 +885,54 @@ export class SecurityGraphRenderer {
     });
 
     nodeMetrics.forEach((metric) => metricsById.set(metric.id, metric));
+
+    if (this.requestUniformAlias && nodeMetrics.length) {
+      const ZERO_ADDRESS20 = "0x0000000000000000000000000000000000000000";
+      const ZERO_ADDRESS32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+      const renameTargets = Array.from(
+        new Set(
+          nodeMetrics
+            .filter((metric) => {
+              if (!metric || !metric.id || typeof metric.id !== "string") {
+                return false;
+              }
+              const idStr = metric.id.toLowerCase();
+              const idParts = idStr.split("_");
+              const idAddress = idParts.length > 1 ? idParts[idParts.length - 1] : "";
+              const nodeAddress = String(metric.node?.address || "")
+                .toLowerCase()
+                .trim();
+              if (
+                idAddress === ZERO_ADDRESS20 ||
+                idAddress === ZERO_ADDRESS32 ||
+                nodeAddress === ZERO_ADDRESS20 ||
+                nodeAddress === ZERO_ADDRESS32
+              ) {
+                return false;
+              }
+              return true;
+            })
+            .map((metric) => metric.id),
+        ),
+      );
+
+      if (renameTargets.length) {
+        renameActions = document.createElement("div");
+        renameActions.className = "summary-actions node-actions";
+        const renameButton = document.createElement("button");
+        renameButton.type = "button";
+        renameButton.textContent = "Rename All Nodes";
+        renameButton.title =
+          "Set a shared alias for every node in this crawl (excludes zero-peer sentinels)";
+        renameButton.addEventListener("click", () => {
+          if (!Array.isArray(renameTargets) || !renameTargets.length) {
+            return;
+          }
+          this.requestUniformAlias([...renameTargets]);
+        });
+        renameActions.appendChild(renameButton);
+      }
+    }
 
     const formatNodeDescriptor = (metric) => {
       if (!metric) {
@@ -1090,17 +1149,22 @@ export class SecurityGraphRenderer {
     };
 
     const blockedItems = nodeMetrics
-      .filter((metric) => metric.isBlocked)
-      .map((metric) => ({
-        metric,
-        detail: metric.blockReasons.length
+      .filter((metric) => metric.isBlocked || metric.blockReasons.length)
+      .map((metric) => {
+        const detail = metric.blockReasons.length
           ? metric.blockReasons.join("; ")
-          : "All inbound edges blocked",
-      }));
+          : "All inbound edges blocked";
+        return {
+          metric,
+          detail: metric.isBlocked ? detail : `Blocked route: ${detail}`,
+        };
+      });
     appendAnomalyGroup("Blocked", blockedItems);
 
     const variantItems = nodeMetrics
-      .filter((metric) => metric.hasConfigDifference)
+      .filter(
+        (metric) => metric.hasConfigDifference && !metric.isBlocked && !metric.blockReasons.length,
+      )
       .map((metric) => ({
         metric,
         detail: metric.diffReasonSummary.length
@@ -1127,14 +1191,6 @@ export class SecurityGraphRenderer {
         };
       });
     appendAnomalyGroup("Sentinel DVNs", sentinelItems);
-
-    const untrackedItems = nodeMetrics
-      .filter((metric) => !metric.isTracked)
-      .map((metric) => ({
-        metric,
-        detail: metric.isDangling ? "Dangling / unresolved peer" : "Not crawled in window",
-      }));
-    appendAnomalyGroup("Untracked Nodes", untrackedItems);
 
     if (!anomalyContainer.childElementCount) {
       const emptyAnomaly = document.createElement("p");
@@ -1236,15 +1292,16 @@ export class SecurityGraphRenderer {
       const nodeCell = document.createElement("td");
       const nodeBlock = document.createElement("div");
       nodeBlock.className = "node-identity";
-      if (metric.alias) {
-        const aliasSpan = document.createElement("span");
-        aliasSpan.className = "node-alias";
-        aliasSpan.textContent = metric.alias;
-        nodeBlock.appendChild(aliasSpan);
-      }
       const nodeInfo = document.createElement("span");
       nodeInfo.className = "node-id copyable";
       nodeInfo.dataset.copyValue = metric.id;
+      nodeInfo.dataset.oappId = metric.id;
+      if (metric.alias) {
+        const aliasLine = document.createElement("span");
+        aliasLine.className = "node-alias";
+        aliasLine.textContent = metric.alias;
+        nodeInfo.appendChild(aliasLine);
+      }
 
       const chainLine = document.createElement("span");
       chainLine.className = "node-id-chain";
@@ -1532,6 +1589,9 @@ export class SecurityGraphRenderer {
     });
 
     table.appendChild(tbody);
+    if (renameActions) {
+      container.appendChild(renameActions);
+    }
     container.appendChild(table);
 
     return container;
@@ -1579,6 +1639,10 @@ export class SecurityGraphRenderer {
           if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
             isBlocked = true;
             blockReason = "dead-dvn";
+          }
+          if (!isBlocked && requiredDVNLabels.some((label) => this.isBlockingDvnLabel(label))) {
+            isBlocked = true;
+            blockReason = "blocking-dvn";
           }
         }
       }
@@ -1763,13 +1827,16 @@ export class SecurityGraphRenderer {
     for (const node of nodes) {
       if (node.isDangling || !node.securityConfigs?.length) continue;
 
-      const nonBlockedConfigs = node.securityConfigs.filter((cfg) => {
-        const dvns = cfg.requiredDVNs || [];
-        return !dvns.some((addr) => this.isDeadAddress(addr));
-      });
+      const nonBlockedConfigs = node.securityConfigs.filter(
+        (cfg) => !this.configHasBlockingDvn(cfg),
+      );
 
       if (nonBlockedConfigs.length > 0) {
-        const min = Math.min(...nonBlockedConfigs.map((c) => c.requiredDVNCount));
+        const min = Math.min(
+          ...nonBlockedConfigs.map((c) =>
+            Number.isFinite(c.requiredDVNCount) ? c.requiredDVNCount : 0,
+          ),
+        );
         if (min > max) max = min;
       }
     }
@@ -1779,6 +1846,25 @@ export class SecurityGraphRenderer {
 
   isDeadAddress(address) {
     return String(address).toLowerCase() === this.deadAddress.toLowerCase();
+  }
+
+  isBlockingDvnLabel(label) {
+    if (label === null || label === undefined) {
+      return false;
+    }
+    return String(label).trim().toLowerCase() === "lzdeaddvn";
+  }
+
+  configHasBlockingDvn(config) {
+    if (!config) {
+      return false;
+    }
+    const requiredAddresses = Array.isArray(config.requiredDVNs) ? config.requiredDVNs : [];
+    const requiredLabels = Array.isArray(config.requiredDVNLabels) ? config.requiredDVNLabels : [];
+    return (
+      requiredAddresses.some((addr) => this.isDeadAddress(addr)) ||
+      requiredLabels.some((label) => this.isBlockingDvnLabel(label))
+    );
   }
 
   isZeroPeer(peerAddress) {
@@ -1918,20 +2004,21 @@ export class SecurityGraphRenderer {
   }
 
   getNodeSecurityMetrics(node) {
-    const nonBlockedConfigs =
-      node.securityConfigs?.filter(
-        (cfg) => !(cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr)),
-      ) || [];
+    const configs = Array.isArray(node?.securityConfigs) ? node.securityConfigs : [];
+    const nonBlockedConfigs = configs.filter((cfg) => !this.configHasBlockingDvn(cfg));
+
+    const minRequiredDVNs =
+      nonBlockedConfigs.length > 0
+        ? Math.min(
+            ...nonBlockedConfigs.map((c) =>
+              Number.isFinite(c.requiredDVNCount) ? c.requiredDVNCount : 0,
+            ),
+          )
+        : 0;
 
     return {
-      minRequiredDVNs:
-        nonBlockedConfigs.length > 0
-          ? Math.min(...nonBlockedConfigs.map((c) => c.requiredDVNCount))
-          : 0,
-      hasBlockedConfig:
-        node.securityConfigs?.some((cfg) =>
-          (cfg.requiredDVNs || []).some((addr) => this.isDeadAddress(addr)),
-        ) || false,
+      minRequiredDVNs,
+      hasBlockedConfig: configs.some((cfg) => this.configHasBlockingDvn(cfg)),
     };
   }
 

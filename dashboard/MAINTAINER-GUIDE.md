@@ -218,10 +218,11 @@ const webData = await crawler.crawl(seedOAppId, {
 
 **Constructor**:
 ```javascript
-new SecurityGraphRenderer(
-  getOAppAlias,           // Function to get alias for oappId
-  getChainDisplayLabel    // Function to format chain labels
-)
+new SecurityGraphRenderer({
+  getOAppAlias,        // Function to get alias for oappId
+  getChainDisplayLabel,// Function to format chain labels
+  requestUniformAlias, // Optional: bulk alias hook (ids: string[]) => void
+});
 ```
 
 **Main Method**:
@@ -426,8 +427,8 @@ handleAliasFormClick(event)
 ```
 
 **Event Handlers**:
-- Copy JSON button
-- Refresh all button
+- Copy JSON / Download JSON button
+- Download aliases button
 - Copyable cell clicks
 - Double-click for alias editing
 - Alias modal (submit, clear, export, cancel)
@@ -1325,7 +1326,7 @@ class Component {
 - [ ] Clear removes alias
 
 **General**:
-- [ ] Refresh all button works
+- [ ] Download aliases button works
 - [ ] Copy JSON works (table)
 - [ ] Copy JSON → Download (graph)
 - [ ] No console errors

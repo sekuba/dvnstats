@@ -3,7 +3,7 @@
  * Main application bootstrap
  */
 
-import { GraphQLClient, ChainMetadata, normalizeOAppId } from "./core.js";
+import { GraphQLClient, ChainMetadata } from "./core.js";
 import { AliasManager, QueryManager, ResultsRenderer, ToastManager } from "./ui.js";
 import { SecurityWebCrawler } from "./crawler.js";
 
@@ -23,11 +23,14 @@ class Dashboard {
     this.resultsMeta = document.getElementById("results-meta");
     this.resultsBody = document.getElementById("results-body");
     this.copyJsonButton = document.getElementById("copy-json");
-    this.refreshAllButton = document.getElementById("refresh-all");
+    this.downloadAliasesButton = document.getElementById("download-aliases");
     this.aliasEditor = document.getElementById("alias-editor");
     this.aliasEditorForm = document.getElementById("alias-editor-form");
     this.aliasEditorIdInput = this.aliasEditorForm?.querySelector('input[name="oappId"]');
     this.aliasEditorAliasInput = this.aliasEditorForm?.querySelector('input[name="alias"]');
+    this.aliasEditorTitle = document.getElementById("alias-editor-title");
+    this.aliasEditorTitleDefault = this.aliasEditorTitle?.textContent || "Set OApp Name";
+    this.bulkAliasTargets = null;
 
     // Results renderer
     this.resultsRenderer = new ResultsRenderer(
@@ -137,17 +140,13 @@ class Dashboard {
       this.resultsRenderer.handleCopyJson();
     });
 
-    // Refresh all button
-    this.refreshAllButton?.addEventListener("click", async () => {
-      const cards = document.querySelectorAll("[data-query-key]");
-      for (const card of cards) {
-        const key = card.getAttribute("data-query-key");
-        const statusEl = card.querySelector("[data-status]");
-        try {
-          await this.queryManager.runQuery(key, card, statusEl);
-        } catch (error) {
-          console.error(`[Dashboard] Refresh failed: ${key}`, error);
-        }
+    // Download aliases button
+    this.downloadAliasesButton?.addEventListener("click", () => {
+      try {
+        this.aliasManager.export();
+      } catch (error) {
+        console.error("[Dashboard] Failed to export aliases", error);
+        this.toastManager.show("Failed to export aliases", "error");
       }
     });
 
@@ -161,13 +160,30 @@ class Dashboard {
       this.handleAliasDblClick(event);
     });
 
+    document.addEventListener("alias:rename-all", (event) => {
+      const detail = event?.detail;
+      if (!detail) {
+        return;
+      }
+      const filteredTargets = this.filterAliasTargets(detail.oappIds);
+      if (!filteredTargets.length) {
+        this.toastManager.show("No eligible nodes available for renaming.", "info");
+        return;
+      }
+      this.openAliasEditor(null, { mode: "bulk", targets: filteredTargets });
+    });
+
     // Alias editor form
     this.aliasEditorForm?.addEventListener("submit", (event) => {
-      this.handleAliasSubmit(event);
+      this.handleAliasSubmit(event).catch((error) => {
+        console.error("[Dashboard] Alias submit failed", error);
+      });
     });
 
     this.aliasEditorForm?.addEventListener("click", (event) => {
-      this.handleAliasFormClick(event);
+      this.handleAliasFormClick(event).catch((error) => {
+        console.error("[Dashboard] Alias action failed", error);
+      });
     });
 
     // Close alias editor on Escape
@@ -212,7 +228,7 @@ class Dashboard {
   /**
    * Open alias editor modal
    */
-  openAliasEditor(oappId) {
+  openAliasEditor(oappId, options = {}) {
     if (
       !this.aliasEditor ||
       !this.aliasEditorForm ||
@@ -222,8 +238,43 @@ class Dashboard {
       return;
     }
 
-    this.aliasEditorIdInput.value = oappId;
-    this.aliasEditorAliasInput.value = this.aliasManager.get(oappId) || "";
+    const mode = options.mode === "bulk" ? "bulk" : "single";
+
+    if (mode === "bulk") {
+      const targets = this.filterAliasTargets(options.targets);
+
+      if (!targets.length) {
+        this.toastManager.show("No eligible nodes available for renaming.", "info");
+        return;
+      }
+
+      this.bulkAliasTargets = targets;
+      if (this.aliasEditorTitle) {
+        this.aliasEditorTitle.textContent =
+          targets.length === 1 ? this.aliasEditorTitleDefault : "Set OApp Name (All Nodes)";
+      }
+
+      this.aliasEditorIdInput.value =
+        targets.length === 1 ? targets[0] : `${targets.length} nodes selected`;
+
+      const aliases = targets
+        .map((id) => this.aliasManager.get(id))
+        .filter((value) => typeof value === "string" && value.length > 0);
+      const sharedAlias =
+        aliases.length && aliases.every((value) => value === aliases[0]) ? aliases[0] : "";
+      this.aliasEditorAliasInput.value = sharedAlias;
+    } else {
+      this.bulkAliasTargets = null;
+      if (!oappId) {
+        return;
+      }
+      if (this.aliasEditorTitle) {
+        this.aliasEditorTitle.textContent = this.aliasEditorTitleDefault;
+      }
+      this.aliasEditorIdInput.value = oappId;
+      this.aliasEditorAliasInput.value = this.aliasManager.get(oappId) || "";
+    }
+
     this.aliasEditor.classList.remove("hidden");
 
     setTimeout(() => {
@@ -242,30 +293,54 @@ class Dashboard {
 
     this.aliasEditor.classList.add("hidden");
     this.aliasEditorForm.reset();
+    this.bulkAliasTargets = null;
+    if (this.aliasEditorTitle) {
+      this.aliasEditorTitle.textContent = this.aliasEditorTitleDefault;
+    }
   }
 
   /**
    * Handle alias form submission
    */
-  handleAliasSubmit(event) {
+  async handleAliasSubmit(event) {
     event.preventDefault();
 
     if (!this.aliasEditorIdInput || !this.aliasEditorAliasInput) {
       return;
     }
 
-    const oappId = this.aliasEditorIdInput.value;
     const alias = this.aliasEditorAliasInput.value;
+    const targets = this.filterAliasTargets(this.bulkAliasTargets);
+
+    if (targets && targets.length) {
+      targets.forEach((id) => this.aliasManager.set(id, alias));
+      await this.queryManager.reprocessLastResults();
+      this.closeAliasEditor();
+
+      const normalized = alias && alias.trim().length > 0;
+      const tone = normalized ? "success" : "info";
+      const message = normalized
+        ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}.`
+        : `Cleared aliases for ${targets.length} node${targets.length === 1 ? "" : "s"}.`;
+      this.toastManager.show(message, tone);
+      return;
+    }
+
+    const oappId = this.aliasEditorIdInput.value;
+    if (!oappId) {
+      this.closeAliasEditor();
+      return;
+    }
 
     this.aliasManager.set(oappId, alias);
-    this.queryManager.reprocessLastResults();
+    await this.queryManager.reprocessLastResults();
     this.closeAliasEditor();
   }
 
   /**
    * Handle alias form button clicks
    */
-  handleAliasFormClick(event) {
+  async handleAliasFormClick(event) {
     const target = event.target;
     if (!(target instanceof HTMLButtonElement)) {
       return;
@@ -278,15 +353,66 @@ class Dashboard {
       this.closeAliasEditor();
     } else if (action === "clear") {
       event.preventDefault();
-      if (this.aliasEditorIdInput) {
-        this.aliasManager.set(this.aliasEditorIdInput.value, "");
-        this.queryManager.reprocessLastResults();
+      const targets = this.filterAliasTargets(this.bulkAliasTargets);
+      if (targets && targets.length) {
+        targets.forEach((id) => this.aliasManager.set(id, ""));
+        await this.queryManager.reprocessLastResults();
+        this.closeAliasEditor();
+        this.toastManager.show(
+          `Cleared aliases for ${targets.length} node${targets.length === 1 ? "" : "s"}.`,
+          "info",
+        );
+      } else if (this.aliasEditorIdInput) {
+        const oappId = this.aliasEditorIdInput.value;
+        if (oappId) {
+          this.aliasManager.set(oappId, "");
+          await this.queryManager.reprocessLastResults();
+        }
+        this.closeAliasEditor();
       }
-      this.closeAliasEditor();
     } else if (action === "export") {
       event.preventDefault();
       this.aliasManager.export();
     }
+  }
+
+  filterAliasTargets(input) {
+    const ZERO_ADDRESS20 = "0x0000000000000000000000000000000000000000";
+    const ZERO_ADDRESS32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
+    const seen = new Set();
+    const result = [];
+
+    const candidates = Array.isArray(input) ? input : [];
+    candidates.forEach((raw) => {
+      if (raw === null || raw === undefined) {
+        return;
+      }
+      const trimmed = String(raw).trim();
+      if (!trimmed) {
+        return;
+      }
+      const parts = trimmed.split("_");
+      if (parts.length < 2) {
+        return;
+      }
+      const address = parts[parts.length - 1].toLowerCase();
+      if (address === ZERO_ADDRESS20 || address === ZERO_ADDRESS32) {
+        if (this.aliasManager) {
+          this.aliasManager.set(trimmed, "");
+        }
+        return;
+      }
+      if (!address.startsWith("0x")) {
+        return;
+      }
+      if (seen.has(trimmed)) {
+        return;
+      }
+      seen.add(trimmed);
+      result.push(trimmed);
+    });
+
+    return result;
   }
 }
 

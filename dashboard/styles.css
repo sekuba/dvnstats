@@ -414,6 +414,22 @@ td {
   word-break: break-all;
 }
 
+.summary-actions {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.summary-actions button {
+  font-size: 0.7rem;
+  padding: 0.45rem 0.9rem;
+}
+
+.node-detail-board .node-actions {
+  margin: 1rem 0 0.5rem;
+}
+
 .error-banner {
   padding: 1rem 1.2rem;
   border-top: 4px solid var(--danger);
