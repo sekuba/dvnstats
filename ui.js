@@ -3,26 +3,26 @@
  * Handles queries, results rendering, tables, aliases, and user interactions
  */
 
-import { CONFIG } from "./config.js";
+import { APP_CONFIG } from "./config.js";
 import {
+  bytes32ToAddress,
   clampInteger,
-  parseOptionalPositiveInt,
-  stringifyScalar,
   formatTimestampValue,
+  looksLikeEidColumn,
   looksLikeHash,
   looksLikeTimestampColumn,
+  makeOAppId,
   normalizeAddress,
   normalizeOAppId,
-  makeOAppId,
-  bytes32ToAddress,
-  looksLikeEidColumn,
+  parseOptionalPositiveInt,
+  stringifyScalar,
 } from "./core.js";
 
 /**
  * Manages OApp aliases (friendly names for OApp IDs)
  */
-export class AliasManager {
-  constructor(storageKey = CONFIG.STORAGE.OAPP_ALIASES) {
+export class AliasStore {
+  constructor(storageKey = APP_CONFIG.STORAGE.OAPP_ALIASES) {
     this.map = new Map();
     this.storageKey = storageKey;
     this.loaded = false;
@@ -37,7 +37,7 @@ export class AliasManager {
 
     // Load from static file
     try {
-      const response = await fetch(CONFIG.DATA_SOURCES.OAPP_ALIASES, {
+      const response = await fetch(APP_CONFIG.DATA_SOURCES.OAPP_ALIASES, {
         cache: "no-store",
       });
       if (response.ok) {
@@ -51,7 +51,7 @@ export class AliasManager {
         }
       }
     } catch (error) {
-      console.warn("[AliasManager] Failed to load oapp-aliases.json", error);
+      console.warn("[AliasStore] Failed to load oapp-aliases.json", error);
     }
 
     // Merge from localStorage
@@ -70,11 +70,11 @@ export class AliasManager {
         }
       }
     } catch (error) {
-      console.warn("[AliasManager] Failed to restore from localStorage", error);
+      console.warn("[AliasStore] Failed to restore from localStorage", error);
     }
 
     this.loaded = true;
-    console.log(`[AliasManager] Loaded ${this.map.size} aliases`);
+    console.log(`[AliasStore] Loaded ${this.map.size} aliases`);
   }
 
   get(oappId) {
@@ -102,7 +102,7 @@ export class AliasManager {
       const obj = Object.fromEntries(this.map.entries());
       localStorage.setItem(this.storageKey, JSON.stringify(obj));
     } catch (error) {
-      console.warn("[AliasManager] Failed to persist", error);
+      console.warn("[AliasStore] Failed to persist", error);
     }
   }
 
@@ -124,11 +124,11 @@ export class AliasManager {
 /**
  * Manages queries and their execution
  */
-export class QueryManager {
-  constructor(client, metadata, aliasManager, onResultsUpdate) {
+export class QueryCoordinator {
+  constructor(client, metadata, aliasStore, onResultsUpdate) {
     this.client = client;
     this.chainMetadata = metadata.chain;
-    this.aliasManager = aliasManager;
+    this.aliasStore = aliasStore;
     this.onResultsUpdate = onResultsUpdate;
     this.requestSeq = 0;
     this.latestRequest = 0;
@@ -136,7 +136,7 @@ export class QueryManager {
     this.lastQueryKey = null;
     this.lastMetaBase = null;
     this.lastVariables = null;
-    this.bootstrapTriggered = false;
+    this.registry = null;
   }
 
   getChainDisplayLabel(chainId) {
@@ -159,7 +159,7 @@ export class QueryManager {
     if (!oappId) {
       return this.createFormattedCell(["—"], "");
     }
-    const alias = this.aliasManager.get(oappId);
+    const alias = this.aliasStore.get(oappId);
     const lines = alias ? [alias, `ID ${oappId}`] : [oappId];
     return this.createFormattedCell(lines, oappId, { oappId });
   }
@@ -194,7 +194,11 @@ export class QueryManager {
   }
 
   buildQueryRegistry() {
-    return {
+    if (this.registry) {
+      return this.registry;
+    }
+
+    this.registry = {
       "top-oapps": {
         label: "Top OApps",
         description: "Ordered by total packets received",
@@ -559,6 +563,7 @@ export class QueryManager {
         },
       },
     };
+    return this.registry;
   }
 
   populateChainDatalist(datalist) {
@@ -782,9 +787,9 @@ export class QueryManager {
       try {
         normalizedAddress = normalizeAddress(decodedAddress);
         oappId = makeOAppId(localEid, normalizedAddress);
-        alias = this.aliasManager.get(oappId);
+        alias = this.aliasStore.get(oappId);
       } catch (error) {
-        console.debug("[QueryManager] Failed to normalize peer address", {
+        console.debug("[QueryCoordinator] Failed to normalize peer address", {
           peerHex,
           decodedAddress,
           error,
@@ -948,9 +953,9 @@ export class QueryManager {
 
       // Handle web-of-security crawler
       if (variables.isCrawl) {
-        const { SecurityWebCrawler } = await import("./crawler.js");
+        const { SecurityGraphCrawler } = await import("./crawler.js");
         this.setStatus(statusEl, "Crawling...", "loading");
-        const crawler = new SecurityWebCrawler(this.client, this.chainMetadata);
+        const crawler = new SecurityGraphCrawler(this.client, this.chainMetadata);
         const webData = await crawler.crawl(variables.seedOAppId, {
           depth: variables.depth,
           onProgress: (status) => this.setStatus(statusEl, status, "loading"),
@@ -1054,7 +1059,7 @@ export class QueryManager {
         rows = config.extractRows(this.lastPayload.data) ?? [];
       }
     } catch (error) {
-      console.error("[QueryManager] Failed to reprocess results", error);
+      console.error("[QueryCoordinator] Failed to reprocess results", error);
       return;
     }
 
@@ -1077,7 +1082,7 @@ export class QueryManager {
 /**
  * Toast notification system
  */
-export class ToastManager {
+export class ToastQueue {
   constructor() {
     this.container = null;
     this.timers = [];
@@ -1100,10 +1105,10 @@ export class ToastManager {
       setTimeout(() => {
         toast.remove();
       }, 220);
-    }, CONFIG.UI.TOAST_DURATION);
+    }, APP_CONFIG.UI.TOAST_DURATION);
 
     this.timers.push(timeout);
-    if (this.timers.length > CONFIG.UI.MAX_TOASTS) {
+    if (this.timers.length > APP_CONFIG.UI.MAX_TOASTS) {
       const removedTimeout = this.timers.shift();
       if (removedTimeout) {
         clearTimeout(removedTimeout);
@@ -1126,23 +1131,23 @@ export class ToastManager {
 /**
  * Results renderer
  */
-export class ResultsRenderer {
+export class ResultsView {
   constructor(
     resultsTitle,
     resultsMeta,
     resultsBody,
     copyJsonButton,
     chainMetadata,
-    aliasManager,
-    toastManager,
+    aliasStore,
+    toastQueue,
   ) {
     this.resultsTitle = resultsTitle;
     this.resultsMeta = resultsMeta;
     this.resultsBody = resultsBody;
     this.copyJsonButton = copyJsonButton;
     this.chainMetadata = chainMetadata;
-    this.aliasManager = aliasManager;
-    this.toastManager = toastManager;
+    this.aliasStore = aliasStore;
+    this.toastQueue = toastQueue;
     this.lastRender = null;
     this.copyFeedbackTimers = new WeakMap();
   }
@@ -1223,9 +1228,9 @@ export class ResultsRenderer {
     this.resultsBody.classList.remove("empty");
     this.resultsBody.innerHTML = "";
 
-    const { SecurityGraphRenderer } = await import("./graph.js");
-    const renderer = new SecurityGraphRenderer({
-      getOAppAlias: (oappId) => this.aliasManager.get(oappId),
+    const { SecurityGraphView } = await import("./graph.js");
+    const renderer = new SecurityGraphView({
+      getOAppAlias: (oappId) => this.aliasStore.get(oappId),
       getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
       requestUniformAlias: (ids) => {
         if (!Array.isArray(ids) || !ids.length) {
@@ -1467,7 +1472,7 @@ export class ResultsRenderer {
     const list = document.createElement("dl");
     panel.appendChild(list);
 
-    const alias = this.aliasManager.get(info.id);
+    const alias = this.aliasStore.get(info.id);
     if (alias) {
       this.appendSummaryRow(list, "OApp Alias", alias);
     }
@@ -1600,11 +1605,11 @@ export class ResultsRenderer {
     try {
       await navigator.clipboard.writeText(value);
       this.flashCopyFeedback(target, true);
-      this.toastManager.show("Copied", "success");
+      this.toastQueue.show("Copied", "success");
     } catch (error) {
       console.error("Copy failed", error);
       this.flashCopyFeedback(target, false);
-      this.toastManager.show("Copy failed", "error");
+      this.toastQueue.show("Copy failed", "error");
     }
   }
 
@@ -1622,7 +1627,9 @@ export class ResultsRenderer {
         element.classList.remove("copied", "copy-failed");
         this.copyFeedbackTimers.delete(element);
       },
-      didSucceed ? CONFIG.UI.COPY_FEEDBACK_DURATION : CONFIG.UI.COPY_FEEDBACK_DURATION + 400,
+      didSucceed
+        ? APP_CONFIG.UI.COPY_FEEDBACK_DURATION
+        : APP_CONFIG.UI.COPY_FEEDBACK_DURATION + 400,
     );
     this.copyFeedbackTimers.set(element, timeout);
   }
@@ -1668,6 +1675,6 @@ export class ResultsRenderer {
     setTimeout(() => {
       button.textContent = original;
       button.disabled = this.lastRender?.rows?.length === 0;
-    }, CONFIG.UI.BUTTON_FEEDBACK_DURATION);
+    }, APP_CONFIG.UI.BUTTON_FEEDBACK_DURATION);
   }
 }

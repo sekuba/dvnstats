@@ -3,24 +3,26 @@
  * Renders interactive force-directed graph of OApp security connections
  */
 
-import { CONFIG } from "./config.js";
+import { APP_CONFIG } from "./config.js";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 /**
  * Main graph renderer
  */
-export class SecurityGraphRenderer {
+export class SecurityGraphView {
   constructor({ getOAppAlias, getChainDisplayLabel, requestUniformAlias } = {}) {
-    this.width = CONFIG.SVG.WIDTH;
-    this.height = CONFIG.SVG.HEIGHT;
-    this.nodeRadius = CONFIG.SVG.NODE_RADIUS;
-    this.padding = CONFIG.SVG.PADDING;
-    this.seedGap = CONFIG.SVG.SEED_GAP;
-    this.columnSpacing = CONFIG.SVG.COLUMN_SPACING;
-    this.maxNodesPerColumn = CONFIG.SVG.MAX_NODES_PER_COLUMN;
-    this.maxColumns = CONFIG.SVG.MAX_COLUMNS;
-    this.deadAddress = CONFIG.DEAD_ADDRESS;
-    this.zeroPeer = CONFIG.ZERO_PEER;
-    this.zeroAddress = CONFIG.ZERO_ADDRESS;
+    this.width = APP_CONFIG.SVG.WIDTH;
+    this.height = APP_CONFIG.SVG.HEIGHT;
+    this.nodeRadius = APP_CONFIG.SVG.NODE_RADIUS;
+    this.padding = APP_CONFIG.SVG.PADDING;
+    this.seedGap = APP_CONFIG.SVG.SEED_GAP;
+    this.columnSpacing = APP_CONFIG.SVG.COLUMN_SPACING;
+    this.maxNodesPerColumn = APP_CONFIG.SVG.MAX_NODES_PER_COLUMN;
+    this.maxColumns = APP_CONFIG.SVG.MAX_COLUMNS;
+    this.deadAddress = APP_CONFIG.DEAD_ADDRESS;
+    this.zeroPeer = APP_CONFIG.ZERO_PEER;
+    this.zeroAddress = APP_CONFIG.ZERO_ADDRESS;
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.getChainDisplayLabel =
       typeof getChainDisplayLabel === "function" ? getChainDisplayLabel : () => "";
@@ -126,8 +128,7 @@ export class SecurityGraphRenderer {
   }
 
   renderSVG(webData, context) {
-    const svgNS = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(svgNS, "svg");
+    const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("width", "100%");
     svg.setAttribute("height", this.height);
     svg.setAttribute("viewBox", `0 0 ${this.width} ${this.height}`);
@@ -136,7 +137,7 @@ export class SecurityGraphRenderer {
     svg.style.marginTop = "1rem";
     svg.style.cursor = "grab";
 
-    const contentGroup = document.createElementNS(svgNS, "g");
+    const contentGroup = document.createElementNS(SVG_NS, "g");
     contentGroup.setAttribute("class", "zoom-content");
 
     this.setupZoomAndPan(svg, contentGroup);
@@ -154,7 +155,7 @@ export class SecurityGraphRenderer {
 
     // Render edges
     const edgesGroup = this.renderEdges(
-      svgNS,
+      SVG_NS,
       edgeSecurityInfo,
       nodePositions,
       maxRequiredDVNsInWeb,
@@ -165,7 +166,7 @@ export class SecurityGraphRenderer {
 
     // Render nodes
     const nodesGroup = this.renderNodes(
-      svgNS,
+      SVG_NS,
       webData.nodes,
       nodePositions,
       maxMinRequiredDVNsForNodes,
@@ -1052,10 +1053,16 @@ export class SecurityGraphRenderer {
 
     const formatNumber = (value) => Number(value || 0).toLocaleString("en-US");
 
-    const { lows: edgeLows, highs: edgeHighs, variation: hasEdgeVariation } =
-      collectExtremes(edgeExtremes, (metric) => metric?.activeIncomingCount);
-    const { lows: packetLows, highs: packetHighs, variation: hasPacketVariation } =
-      collectExtremes(packetExtremes, (metric) => metric?.totalPackets);
+    const {
+      lows: edgeLows,
+      highs: edgeHighs,
+      variation: hasEdgeVariation,
+    } = collectExtremes(edgeExtremes, (metric) => metric?.activeIncomingCount);
+    const {
+      lows: packetLows,
+      highs: packetHighs,
+      variation: hasPacketVariation,
+    } = collectExtremes(packetExtremes, (metric) => metric?.totalPackets);
 
     const insightGrid = document.createElement("div");
     insightGrid.className = "node-insight-grid";
