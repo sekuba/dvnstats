@@ -104,6 +104,13 @@ export class SecurityGraphCrawler {
           const optionalDVNLabels = resolveDvnNamesCached(optionalDVNs, cfgEid);
           const peerOAppId = peer?.oappId ?? null;
 
+          // Create synthetic ID for blocked/unresolved peers so they appear in the graph
+          let edgeFromId = peerOAppId;
+          if (!peerOAppId && peer?.localEid) {
+            // Use zero address to create a synthetic OApp ID for the blocked peer
+            edgeFromId = `${peer.localEid}_${ZERO_ADDRESS_HEX}`;
+          }
+
           node.securityConfigs.push({
             srcEid: cfg.eid,
             localEid: cfgEid,
@@ -125,7 +132,7 @@ export class SecurityGraphCrawler {
 
           return {
             config: cfg,
-            edgeFrom: peerOAppId,
+            edgeFrom: edgeFromId,
             edgeTo: oappId,
             peerInfo: peer,
             peerResolved: peer?.resolved ?? Boolean(peerOAppId),
