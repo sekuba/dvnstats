@@ -33,7 +33,7 @@ export class SecurityGraphView {
   /**
    * Renders the complete web of security visualization
    */
-  render(webData) {
+  render(webData, options = {}) {
     if (!webData?.nodes || !webData?.edges) return this.renderError();
 
     const container = document.createElement("div");
@@ -44,6 +44,9 @@ export class SecurityGraphView {
     const maxMinRequiredDVNsForNodes = this.calculateMaxMinRequiredDVNsForNodes(webData.nodes);
     const blockedNodes = this.findBlockedNodes(webData.nodes, edgeAnalysis.edgeSecurityInfo);
 
+    // Find the most connected tracked node to use as center
+    const centerNodeId = options.centerNodeId || this.findMostConnectedNode(webData.nodes, webData.edges);
+
     const context = {
       edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
       maxRequiredDVNsInWeb: edgeAnalysis.maxRequiredDVNsInWeb,
@@ -51,10 +54,11 @@ export class SecurityGraphView {
       combinationStats: edgeAnalysis.combinationStats,
       maxMinRequiredDVNsForNodes,
       blockedNodes,
+      centerNodeId,
     };
 
     container.append(
-      this.renderSummary(webData),
+      this.renderSummary(webData, centerNodeId),
       this.renderSVG(webData, context),
       this.renderNodeList(webData, context),
     );
@@ -70,7 +74,10 @@ export class SecurityGraphView {
     return el;
   }
 
-  renderSummary(webData) {
+  renderSummary(webData, centerNodeId) {
+    const centerNode = webData.nodes.find(n => n.id === centerNodeId);
+    const centerAlias = centerNode ? this.getOAppAlias(centerNode.id) || centerNode.id : centerNodeId || "—";
+
     const summary = document.createElement("div");
     summary.className = "summary-panel";
     summary.innerHTML = `
@@ -78,6 +85,8 @@ export class SecurityGraphView {
       <dl>
         <dt>Seed OApp</dt>
         <dd>${webData.seed || "—"}</dd>
+        <dt>Center Node</dt>
+        <dd>${centerAlias}</dd>
         <dt>Crawl Depth</dt>
         <dd>${webData.crawlDepth || 0}</dd>
         <dt>Total Nodes</dt>
@@ -98,6 +107,10 @@ export class SecurityGraphView {
           <span style="display: inline-block; background: #ffff99; padding: 2px 6px; border: 1px solid #000; margin-right: 4px;">Yellow</span>: Maximum security (min DVN count ≥ web max, excl. blocked configs)<br>
           <span style="display: inline-block; background: #ff9999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Red</span>: Weak link (min DVN count &lt; web max)<br>
           <span style="display: inline-block; background: #999999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Grey</span>: Blocked (cannot send packets to monitored nodes)
+        </dd>
+        <dt style="margin-top: 0.5rem;">Interaction</dt>
+        <dd>
+          Double-click any node to re-center the view around it
         </dd>
         <dt style="margin-top: 0.5rem;">Edge Color</dt>
         <dd>
@@ -128,7 +141,7 @@ export class SecurityGraphView {
     this.setupZoomAndPan(svg, contentGroup);
     const showPersistentTooltip = this.setupPersistentTooltips(svg);
 
-    const nodePositions = this.layoutNodes(webData.nodes);
+    const nodePositions = this.layoutNodes(webData.nodes, webData.edges, context.centerNodeId);
 
     const {
       edgeSecurityInfo,
@@ -136,6 +149,7 @@ export class SecurityGraphView {
       dominantCombination,
       maxMinRequiredDVNsForNodes,
       blockedNodes,
+      centerNodeId,
     } = context;
 
     // Render edges
@@ -157,6 +171,7 @@ export class SecurityGraphView {
       maxMinRequiredDVNsForNodes,
       blockedNodes,
       showPersistentTooltip,
+      centerNodeId,
     );
     contentGroup.appendChild(nodesGroup);
 
@@ -587,6 +602,7 @@ export class SecurityGraphView {
     maxMinRequiredDVNsForNodes,
     blockedNodes,
     showPersistentTooltip,
+    centerNodeId,
   ) {
     const nodesGroup = document.createElementNS(svgNS, "g");
     nodesGroup.setAttribute("class", "nodes");
@@ -597,6 +613,7 @@ export class SecurityGraphView {
 
       const { minRequiredDVNs, hasBlockedConfig } = this.getNodeSecurityMetrics(node);
       const isBlocked = blockedNodes.has(node.id);
+      const isCenterNode = node.id === centerNodeId;
 
       const radius = node.isTracked
         ? this.nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
@@ -635,6 +652,10 @@ export class SecurityGraphView {
         `Tracked: ${node.isTracked ? "Yes" : "No"}`,
       ];
 
+      if (isCenterNode) {
+        titleLines.push(`CENTER NODE (most connected tracked node)`);
+      }
+
       if (node.isTracked) {
         titleLines.push(`Total Packets: ${node.totalPacketsReceived}`);
         titleLines.push(`Min Required DVNs: ${minRequiredDVNs}`);
@@ -645,6 +666,8 @@ export class SecurityGraphView {
           `BLOCKED: Cannot send packets to monitored nodes (zero-peer, dead DVN, or blocking DVN)`,
         );
       }
+
+      titleLines.push(`Double-click to center view on this node`);
 
       const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peerOAppId || cfg.peer) || [];
       if (peerConfigs.length > 0) {
@@ -674,6 +697,14 @@ export class SecurityGraphView {
       circle.addEventListener("click", (e) => {
         e.stopPropagation();
         showPersistentTooltip(nodeTooltipText, e.pageX + 10, e.pageY + 10);
+      });
+
+      // Add double-click handler to re-center on this node
+      circle.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        if (this.onRecenter) {
+          this.onRecenter(node.id);
+        }
       });
 
       nodeGroup.appendChild(circle);
@@ -2119,23 +2150,100 @@ export class SecurityGraphView {
     return Math.abs(hash);
   }
 
-  layoutNodes(nodes) {
+  /**
+   * Find the most connected tracked node (highest total edge count)
+   */
+  findMostConnectedNode(nodes, edges) {
+    const edgeCounts = new Map();
+
+    // Count edges for each node
+    for (const edge of edges) {
+      edgeCounts.set(edge.from, (edgeCounts.get(edge.from) || 0) + 1);
+      edgeCounts.set(edge.to, (edgeCounts.get(edge.to) || 0) + 1);
+    }
+
+    // Find tracked node with most edges
+    let maxCount = 0;
+    let mostConnected = nodes[0]?.id || null;
+
+    for (const node of nodes) {
+      if (!node.isTracked) continue;
+      const count = edgeCounts.get(node.id) || 0;
+      if (count > maxCount) {
+        maxCount = count;
+        mostConnected = node.id;
+      }
+    }
+
+    return mostConnected;
+  }
+
+  /**
+   * Calculate distance from center node using BFS
+   */
+  calculateDistancesFromCenter(nodes, edges, centerNodeId) {
+    const distances = new Map();
+    const adjacency = new Map();
+
+    // Build adjacency list (undirected graph)
+    for (const node of nodes) {
+      adjacency.set(node.id, []);
+    }
+    for (const edge of edges) {
+      if (adjacency.has(edge.from)) adjacency.get(edge.from).push(edge.to);
+      if (adjacency.has(edge.to)) adjacency.get(edge.to).push(edge.from);
+    }
+
+    // BFS from center
+    const queue = [{ id: centerNodeId, distance: 0 }];
+    const visited = new Set([centerNodeId]);
+    distances.set(centerNodeId, 0);
+
+    while (queue.length > 0) {
+      const { id, distance } = queue.shift();
+      const neighbors = adjacency.get(id) || [];
+
+      for (const neighborId of neighbors) {
+        if (!visited.has(neighborId)) {
+          visited.add(neighborId);
+          distances.set(neighborId, distance + 1);
+          queue.push({ id: neighborId, distance: distance + 1 });
+        }
+      }
+    }
+
+    // Assign max distance to unreachable nodes
+    const maxDistance = Math.max(...Array.from(distances.values()), 0);
+    for (const node of nodes) {
+      if (!distances.has(node.id)) {
+        distances.set(node.id, maxDistance + 1);
+      }
+    }
+
+    return distances;
+  }
+
+  layoutNodes(nodes, edges, centerNodeId) {
     const positions = new Map();
 
     if (nodes.length === 0) return positions;
 
-    const nodesByDepth = new Map();
+    // Calculate distances from center node
+    const distances = this.calculateDistancesFromCenter(nodes, edges, centerNodeId);
+
+    // Group nodes by distance
+    const nodesByDistance = new Map();
     for (const node of nodes) {
-      const depth = node.depth >= 0 ? node.depth : 999;
-      if (!nodesByDepth.has(depth)) {
-        nodesByDepth.set(depth, []);
+      const distance = distances.get(node.id) ?? 999;
+      if (!nodesByDistance.has(distance)) {
+        nodesByDistance.set(distance, []);
       }
-      nodesByDepth.get(depth).push(node);
+      nodesByDistance.get(distance).push(node);
     }
 
-    // Sort nodes within each depth: tracked first (by packet count), then untracked (by packet count)
-    for (const [depth, depthNodes] of nodesByDepth.entries()) {
-      depthNodes.sort((a, b) => {
+    // Sort nodes within each distance: tracked first (by packet count), then untracked (by packet count)
+    for (const [distance, distanceNodes] of nodesByDistance.entries()) {
+      distanceNodes.sort((a, b) => {
         // Tracked nodes come first
         if (a.isTracked !== b.isTracked) {
           return a.isTracked ? -1 : 1;
@@ -2151,72 +2259,72 @@ export class SecurityGraphView {
       });
     }
 
-    // Apply column splitting to all depths
-    const depthsToProcess = Array.from(nodesByDepth.keys()).filter((d) => d !== 0 && d < 999);
-    for (const originalDepth of depthsToProcess) {
-      const depthNodes = nodesByDepth.get(originalDepth);
-      if (!depthNodes || depthNodes.length <= 1) continue;
+    // Apply column splitting to all distances
+    const distancesToProcess = Array.from(nodesByDistance.keys()).filter((d) => d !== 0 && d < 999);
+    for (const originalDistance of distancesToProcess) {
+      const distanceNodes = nodesByDistance.get(originalDistance);
+      if (!distanceNodes || distanceNodes.length <= 1) continue;
 
-      // Special handling for depth 1: separate tracked (left) and untracked (right)
-      if (originalDepth === 1) {
-        const trackedNodes = depthNodes.filter((n) => n.isTracked);
-        const untrackedNodes = depthNodes.filter((n) => !n.isTracked);
+      // Special handling for distance 1: separate tracked (left) and untracked (right)
+      if (originalDistance === 1) {
+        const trackedNodes = distanceNodes.filter((n) => n.isTracked);
+        const untrackedNodes = distanceNodes.filter((n) => !n.isTracked);
 
         // Process tracked nodes (left side, mirrored)
         if (trackedNodes.length > 0) {
-          this.splitIntoColumns(trackedNodes, nodesByDepth, -0.1, -0.1);
+          this.splitIntoColumns(trackedNodes, nodesByDistance, -0.1, -0.1);
         }
 
         // Process untracked nodes (right side)
         if (untrackedNodes.length > 0) {
-          this.splitIntoColumns(untrackedNodes, nodesByDepth, originalDepth + 0.1, 0.1);
+          this.splitIntoColumns(untrackedNodes, nodesByDistance, originalDistance + 0.1, 0.1);
         }
       } else {
-        // For all other depths, just split into columns if needed
-        this.splitIntoColumns(depthNodes, nodesByDepth, originalDepth + 0.1, 0.1);
+        // For all other distances, just split into columns if needed
+        this.splitIntoColumns(distanceNodes, nodesByDistance, originalDistance + 0.1, 0.1);
       }
 
-      nodesByDepth.delete(originalDepth);
+      nodesByDistance.delete(originalDistance);
     }
 
-    const depths = Array.from(nodesByDepth.keys()).sort((a, b) => a - b);
+    const distanceKeys = Array.from(nodesByDistance.keys()).sort((a, b) => a - b);
     const centerX = this.width / 2;
 
-    // Pre-calculate left and right column depths for indexing
-    const leftDepths = depths.filter((d) => d < 0).sort((a, b) => b - a); // Sort descending: -0.1, -0.2, -0.3...
-    const rightDepths = depths.filter((d) => d > 1).sort((a, b) => a - b); // Sort ascending: 1.1, 1.2, 1.3...
+    // Pre-calculate left and right column distances for indexing
+    const leftDistances = distanceKeys.filter((d) => d < 0).sort((a, b) => b - a); // Sort descending: -0.1, -0.2, -0.3...
+    const rightDistances = distanceKeys.filter((d) => d > 0).sort((a, b) => a - b); // Sort ascending: 0.1, 0.2, 0.3...
 
-    for (const depth of depths) {
-      const nodesAtDepth = nodesByDepth.get(depth);
+    for (const distance of distanceKeys) {
+      const nodesAtDistance = nodesByDistance.get(distance);
 
       // Calculate x position using simple constant spacing
       let baseX;
-      if (depth === 0) {
-        // Seed node at center
+      if (distance === 0) {
+        // Center node
         baseX = centerX;
-      } else if (depth < 0) {
-        // Left side: each column to the left of seed
-        const columnIndex = leftDepths.indexOf(depth);
+      } else if (distance < 0) {
+        // Left side: each column to the left of center
+        const columnIndex = leftDistances.indexOf(distance);
         baseX = centerX - this.seedGap - columnIndex * this.columnSpacing;
       } else {
-        // Right side: each column to the right of seed
-        const columnIndex = rightDepths.indexOf(depth);
+        // Right side: each column to the right of center
+        const columnIndex = rightDistances.indexOf(distance);
         baseX = centerX + this.seedGap + columnIndex * this.columnSpacing;
       }
 
       const verticalSpacing =
-        (this.height - 2 * this.padding) / Math.max(nodesAtDepth.length - 1, 1);
+        (this.height - 2 * this.padding) / Math.max(nodesAtDistance.length - 1, 1);
 
-      for (const [index, node] of nodesAtDepth.entries()) {
+      for (const [index, node] of nodesAtDistance.entries()) {
         const baseY =
           this.padding +
-          (nodesAtDepth.length === 1
+          (nodesAtDistance.length === 1
             ? (this.height - 2 * this.padding) / 2
             : verticalSpacing * index);
 
-        const centerIndex = (nodesAtDepth.length - 1) / 2;
+        const centerIndex = (nodesAtDistance.length - 1) / 2;
         const distanceFromCenterIndex = index - centerIndex;
-        const maxDistanceFromCenter = Math.max(centerIndex, nodesAtDepth.length - 1 - centerIndex);
+        const maxDistanceFromCenter = Math.max(centerIndex, nodesAtDistance.length - 1 - centerIndex);
         const normalizedPosition =
           maxDistanceFromCenter > 0 ? distanceFromCenterIndex / maxDistanceFromCenter : 0;
 
@@ -2227,8 +2335,8 @@ export class SecurityGraphView {
         const yJitter =
           (nodeHash % APP_CONFIG.GRAPH_VISUAL.HASH_MOD) - APP_CONFIG.GRAPH_VISUAL.Y_JITTER_MAX;
 
-        // Mirror arc direction: left side (negative depth) arcs left, right side arcs right
-        const x = depth < 0 ? baseX + xOffset : baseX - xOffset;
+        // Mirror arc direction: left side (negative distance) arcs left, right side arcs right
+        const x = distance < 0 ? baseX + xOffset : baseX - xOffset;
         const y = baseY + yJitter;
 
         positions.set(node.id, { x, y });
@@ -2323,9 +2431,12 @@ export class SecurityGraphView {
   }
 
   setupPersistentTooltips(svg) {
+    // Clear any existing tooltips from previous renders
+    this.clearAllTooltips();
+
     let persistentTooltip = null;
 
-    function show(text, x, y) {
+    const show = (text, x, y) => {
       hide();
 
       persistentTooltip = document.createElement("div");
@@ -2356,23 +2467,44 @@ export class SecurityGraphView {
       if (rect.bottom > window.innerHeight - 10) {
         persistentTooltip.style.top = `${y - rect.height - 20}px`;
       }
-    }
+    };
 
-    function hide() {
+    const hide = () => {
       if (persistentTooltip) {
         persistentTooltip.remove();
         persistentTooltip = null;
       }
-    }
+    };
 
-    document.addEventListener("keydown", (e) => {
+    const keyHandler = (e) => {
       if (e.key === "Escape") hide();
-    });
+    };
 
-    svg.addEventListener("click", (e) => {
+    const clickHandler = (e) => {
       if (e.target === svg) hide();
-    });
+    };
+
+    document.addEventListener("keydown", keyHandler);
+    svg.addEventListener("click", clickHandler);
+
+    // Store cleanup function
+    this.cleanupTooltipHandlers = () => {
+      hide();
+      document.removeEventListener("keydown", keyHandler);
+      svg.removeEventListener("click", clickHandler);
+    };
 
     return show;
+  }
+
+  clearAllTooltips() {
+    // Remove all persistent tooltips from DOM
+    document.querySelectorAll('.persistent-tooltip').forEach(el => el.remove());
+
+    // Clean up previous handlers if they exist
+    if (this.cleanupTooltipHandlers) {
+      this.cleanupTooltipHandlers();
+      this.cleanupTooltipHandlers = null;
+    }
   }
 }

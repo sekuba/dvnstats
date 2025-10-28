@@ -1199,7 +1199,7 @@ export class ResultsView {
     this.resultsBody.appendChild(payloadDetails);
   }
 
-  async renderGraph(webData) {
+  async renderGraph(webData, centerNodeId = null) {
     this.resultsBody.classList.remove("empty");
     this.resultsBody.innerHTML = "";
 
@@ -1229,7 +1229,12 @@ export class ResultsView {
       },
     });
 
-    const graphContainer = renderer.render(webData);
+    // Set up recenter callback
+    renderer.onRecenter = (newCenterNodeId) => {
+      this.renderGraph(webData, newCenterNodeId);
+    };
+
+    const graphContainer = renderer.render(webData, { centerNodeId });
     this.resultsBody.appendChild(graphContainer);
   }
 
