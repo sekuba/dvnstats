@@ -1,7 +1,10 @@
 import { APP_CONFIG } from "./config.js";
 
-const EVM_ADDRESS_REGEX = /^0x[0-9a-f]{40}$/;
-const BYTES32_REGEX = /^0x[0-9a-f]{64}$/;
+const HEX_PREFIX = "0x";
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const BYTES32_HEX_LENGTH = 64;
+const EVM_ADDRESS_HEX_LENGTH = 40;
+const HEX_BODY_REGEX = /^[0-9a-f]+$/i;
 const HASH_PATTERN = /^0x[a-f0-9]{16,}$/i;
 
 export class HasuraClient {
@@ -155,38 +158,42 @@ export class ChainDirectory {
 }
 
 export function normalizeAddress(address) {
-  if (!address && address !== 0) throw new Error("Address required");
-
-  const raw = String(address).trim().toLowerCase();
-  if (!raw) throw new Error("Address cannot be empty");
-
-  const prefixed = raw.startsWith("0x") ? raw : `0x${raw}`;
-  const trimmed = prefixed.replace(/^0x0+/, "0x");
-  if (trimmed === "0x") return null;
-
-  const body = trimmed.slice(2);
-  const normalized =
-    body.length < 40
-      ? `0x${body.padStart(40, "0")}`
-      : body.length > 40
-        ? `0x${body.slice(-40)}`
-        : trimmed;
-
-  if (!EVM_ADDRESS_REGEX.test(normalized)) {
-    throw new Error(`Invalid address: ${address}`);
+  if (address === undefined || address === null) {
+    throw new Error("Address required");
   }
 
-  return normalized;
-}
+  const raw = String(address).trim();
+  if (!raw) {
+    throw new Error("Address cannot be empty");
+  }
 
-export function bytes32ToAddress(value) {
-  if (!value) return null;
+  const hasHexPrefix = raw.slice(0, HEX_PREFIX.length).toLowerCase() === HEX_PREFIX;
+  if (!hasHexPrefix) {
+    return raw;
+  }
 
-  const hex = String(value).trim().toLowerCase();
-  if (!BYTES32_REGEX.test(hex)) return null;
+  const lower = `${HEX_PREFIX}${raw.slice(HEX_PREFIX.length).toLowerCase()}`;
+  const hexBody = lower.slice(HEX_PREFIX.length);
+  if (!HEX_BODY_REGEX.test(hexBody)) {
+    throw new Error(`Invalid hex address: ${address}`);
+  }
 
-  const tail = hex.slice(-40);
-  return /^0+$/.test(tail) ? null : `0x${tail}`;
+  if (hexBody.length === BYTES32_HEX_LENGTH) {
+    const trimmedHex = hexBody.replace(/^0+/, "");
+    if (trimmedHex.length === 0) {
+      return ZERO_ADDRESS;
+    }
+    if (trimmedHex.length <= EVM_ADDRESS_HEX_LENGTH) {
+      return `${HEX_PREFIX}${trimmedHex.padStart(EVM_ADDRESS_HEX_LENGTH, "0")}`;
+    }
+    return lower;
+  }
+
+  if (hexBody.length <= EVM_ADDRESS_HEX_LENGTH) {
+    return `${HEX_PREFIX}${hexBody.padStart(EVM_ADDRESS_HEX_LENGTH, "0")}`;
+  }
+
+  return lower;
 }
 
 export function makeOAppId(localEid, address) {
@@ -197,11 +204,29 @@ export function makeOAppId(localEid, address) {
 export function normalizeOAppId(value) {
   if (!value) throw new Error("OApp ID required");
 
-  const parts = String(value).trim().split("_");
-  if (parts.length !== 2) throw new Error("OApp ID must be 'localEid_address'");
-  if (!parts[0]) throw new Error("OApp ID must include localEid");
+  const trimmed = String(value).trim();
+  const separatorIndex = trimmed.indexOf("_");
+  if (separatorIndex === -1) throw new Error("OApp ID must be 'localEid_address'");
 
-  return `${parts[0]}_${normalizeAddress(parts[1])}`;
+  const localEid = trimmed.slice(0, separatorIndex);
+  if (!localEid) throw new Error("OApp ID must include localEid");
+
+  const address = trimmed.slice(separatorIndex + 1);
+  return `${localEid}_${normalizeAddress(address)}`;
+}
+
+export function splitOAppId(oappId) {
+  if (!oappId) {
+    return { localEid: null, address: null };
+  }
+  const raw = String(oappId);
+  const separatorIndex = raw.indexOf("_");
+  if (separatorIndex === -1) {
+    return { localEid: null, address: raw || null };
+  }
+  const localEid = raw.slice(0, separatorIndex) || null;
+  const address = raw.slice(separatorIndex + 1) || null;
+  return { localEid, address };
 }
 
 export function clampInteger(rawValue, min, max, fallback) {

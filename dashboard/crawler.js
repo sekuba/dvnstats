@@ -1,5 +1,5 @@
 import { APP_CONFIG } from "./config.js";
-import { bytes32ToAddress, makeOAppId, normalizeAddress } from "./core.js";
+import { splitOAppId } from "./core.js";
 
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
@@ -34,23 +34,25 @@ export class SecurityGraphCrawler {
       count++;
       onProgress(`Processing node ${count} [depth=${depth}]: ${oappId}`);
 
-      const { configs, oapp } = await this.fetchSecurityConfig(oappId);
+      const { configs, inboundConfigs, oapp } = await this.fetchSecurityConfig(oappId);
+      const { localEid: fallbackLocalEid, address: fallbackAddress } = splitOAppId(oappId);
       const localEid =
         oapp?.localEid !== undefined && oapp?.localEid !== null
           ? String(oapp.localEid)
-          : oappId.split("_")[0];
+          : fallbackLocalEid;
+      const resolvedAddress = oapp?.address || fallbackAddress || "unknown";
 
       const node = {
         id: oappId,
         localEid,
-        address: oapp?.address || oappId.split("_")[1],
+        address: resolvedAddress,
         totalPacketsReceived: oapp?.totalPacketsReceived || 0,
         isTracked: configs.length > 0,
         depth,
         securityConfigs: [],
       };
 
-      const configContexts = configs.map((cfg) => {
+      const outboundContexts = configs.map((cfg) => {
         const peer = this.derivePeer(cfg);
         const requiredDVNs = Array.isArray(cfg.effectiveRequiredDVNs)
           ? cfg.effectiveRequiredDVNs
@@ -77,17 +79,54 @@ export class SecurityGraphCrawler {
           optionalDVNThreshold: cfg.effectiveOptionalDVNThreshold || 0,
           usesRequiredDVNSentinel: cfg.usesRequiredDVNSentinel || false,
           isConfigTracked: cfg.isConfigTracked || false,
-          peer: peer?.rawPeer || null,
-          peerOAppId: peer?.oappId || null,
+          peer: peer?.rawPeer ?? cfg.peer ?? null,
+          peerOAppId: peer?.oappId ?? cfg.peerOappId ?? null,
           peerLocalEid: peer?.localEid || null,
           peerAddress: peer?.address || null,
-          peerResolved: peer?.resolved || false,
+          peerResolved: peer?.resolved ?? Boolean(cfg.peerOappId),
         });
-        return { config: cfg, peerInfo: peer };
+
+        return {
+          config: cfg,
+          edgeFrom: peer?.oappId || null,
+          edgeTo: oappId,
+          peerInfo: peer,
+          peerResolved: peer?.resolved ?? Boolean(cfg.peerOappId),
+          peerRaw: peer?.rawPeer ?? cfg.peer ?? null,
+          peerLocalEid: peer?.localEid || null,
+          queueNext: peer?.resolved ? peer.oappId : null,
+          linkType: "peer",
+        };
       });
 
+      const inboundContexts = inboundConfigs
+        .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
+        .map((cfg) => {
+          const remoteId = cfg.oappId;
+          const { localEid: remoteLocalEid } = splitOAppId(remoteId);
+          return {
+            config: cfg,
+            edgeFrom: remoteId,
+            edgeTo: oappId,
+            peerInfo: null,
+            peerResolved: true,
+            peerRaw: cfg.peer ?? null,
+            peerLocalEid: remoteLocalEid ?? null,
+            queueNext: remoteId,
+            linkType: "peer",
+          };
+        });
+
       nodes.set(oappId, node);
-      this.addPeerEdges({ oappId, depth, maxDepth, queue, visited, edges, configContexts });
+      this.addPeerEdges({
+        oappId,
+        depth,
+        maxDepth,
+        queue,
+        visited,
+        edges,
+        contexts: [...outboundContexts, ...inboundContexts],
+      });
     }
 
     this.addDanglingNodes(nodes, edges);
@@ -110,7 +149,7 @@ export class SecurityGraphCrawler {
     }
 
     for (const id of dangling) {
-      const [localEid, address] = id.split("_");
+      const { localEid, address } = splitOAppId(id);
       nodes.set(id, {
         id,
         localEid,
@@ -127,7 +166,7 @@ export class SecurityGraphCrawler {
   async fetchSecurityConfig(oappId) {
     const query = `
       query GetSecurityConfig($oappId: String!) {
-        OAppSecurityConfig(where: { oappId: { _eq: $oappId } }) {
+        origin: OAppSecurityConfig(where: { oappId: { _eq: $oappId } }) {
           id
           oappId
           eid
@@ -141,6 +180,27 @@ export class SecurityGraphCrawler {
           isConfigTracked
           usesRequiredDVNSentinel
           peer
+          peerOappId
+          peerTransactionHash
+          peerLastUpdatedBlock
+          peerLastUpdatedTimestamp
+          peerLastUpdatedEventId
+        }
+        referencing: OAppSecurityConfig(where: { peerOappId: { _eq: $oappId } }) {
+          id
+          oappId
+          eid
+          localEid
+          oapp
+          effectiveRequiredDVNCount
+          effectiveRequiredDVNs
+          effectiveOptionalDVNCount
+          effectiveOptionalDVNs
+          effectiveOptionalDVNThreshold
+          isConfigTracked
+          usesRequiredDVNSentinel
+          peer
+          peerOappId
           peerTransactionHash
           peerLastUpdatedBlock
           peerLastUpdatedTimestamp
@@ -157,69 +217,61 @@ export class SecurityGraphCrawler {
 
     const data = await this.client.query(query, { oappId });
     return {
-      configs: data.OAppSecurityConfig || [],
+      configs: data.origin || [],
+      inboundConfigs: data.referencing || [],
       oapp: data.OApp?.[0] || null,
     };
   }
 
   derivePeer(config) {
-    if (!config.peer) return null;
+    const peerOappId = config.peerOappId || null;
+    if (!peerOappId) return null;
 
-    const eid = config.eid !== undefined && config.eid !== null ? String(config.eid) : null;
-    if (!eid) {
-      return {
-        rawPeer: config.peer,
-        localEid: null,
-        address: null,
-        oappId: `unknown-eid_${config.peer.toLowerCase()}`,
-        resolved: false,
-      };
-    }
-
-    const decoded = bytes32ToAddress(config.peer);
-    if (decoded) {
-      try {
-        const normalized = normalizeAddress(decoded);
-        return {
-          rawPeer: config.peer,
-          localEid: eid,
-          address: normalized,
-          oappId: makeOAppId(eid, normalized),
-          resolved: true,
-        };
-      } catch (error) {
-        console.debug("[Crawler] Failed to normalize peer", { peer: config.peer, decoded, error });
-      }
-    }
-
+    const { localEid, address } = splitOAppId(peerOappId);
     return {
-      rawPeer: config.peer,
-      localEid: eid,
-      address: null,
-      oappId: `${eid}_${config.peer.toLowerCase()}`,
-      resolved: false,
+      rawPeer: config.peer ?? null,
+      localEid: localEid || null,
+      address: address || null,
+      oappId: peerOappId,
+      resolved: true,
     };
   }
 
-  addPeerEdges({ oappId, depth, maxDepth, queue, visited, edges, configContexts }) {
-    for (const { config, peerInfo } of configContexts) {
-      if (!peerInfo?.oappId) continue;
+  addPeerEdges({ oappId, depth, maxDepth, queue, visited, edges, contexts }) {
+    for (const context of contexts) {
+      const edgeFrom = context.edgeFrom;
+      const edgeTo = context.edgeTo || oappId;
+      if (!edgeFrom || !edgeTo) continue;
 
-      const key = `${peerInfo.oappId}->${oappId}`;
+      const key = `${edgeFrom}->${edgeTo}`;
       if (!edges.has(key)) {
         edges.set(key, {
-          from: peerInfo.oappId,
-          to: oappId,
-          srcEid: config.eid,
-          linkType: "peer",
-          peerResolved: peerInfo.resolved,
-          peerRaw: peerInfo.rawPeer,
-          peerLocalEid: peerInfo.localEid,
+          from: edgeFrom,
+          to: edgeTo,
+          srcEid: context.config?.eid,
+          linkType: context.linkType || "peer",
+          peerResolved:
+            context.peerResolved ??
+            (context.peerInfo ? context.peerInfo.resolved : undefined) ??
+            null,
+          peerRaw:
+            context.peerRaw ??
+            (context.peerInfo ? context.peerInfo.rawPeer : undefined) ??
+            null,
+          peerLocalEid:
+            context.peerLocalEid ??
+            (context.peerInfo ? context.peerInfo.localEid : undefined) ??
+            null,
+          peerOAppId: edgeFrom,
         });
       }
 
-      if (peerInfo.resolved && depth < maxDepth && !visited.has(peerInfo.oappId)) {
-        queue.push({ oappId: peerInfo.oappId, depth: depth + 1 });
+      const nextId = context.queueNext;
+      if (nextId && depth < maxDepth && !visited.has(nextId)) {
+        const alreadyQueued = queue.some((item) => item.oappId === nextId);
+        if (!alreadyQueued) {
+          queue.push({ oappId: nextId, depth: depth + 1 });
+        }
       }
     }
   }
