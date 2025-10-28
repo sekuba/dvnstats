@@ -1,6 +1,9 @@
 import { APP_CONFIG } from "./config.js";
 import { splitOAppId } from "./core.js";
 
+const ZERO_PEER_HEX = APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase();
+const ZERO_ADDRESS_HEX = APP_CONFIG.ADDRESSES.ZERO.toLowerCase();
+
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
     this.client = client;
@@ -99,7 +102,7 @@ export class SecurityGraphCrawler {
             cfg.localEid !== undefined && cfg.localEid !== null ? String(cfg.localEid) : localEid;
           const requiredDVNLabels = resolveDvnNamesCached(requiredDVNs, cfgEid);
           const optionalDVNLabels = resolveDvnNamesCached(optionalDVNs, cfgEid);
-          const peerOAppId = peer?.oappId ?? cfg.peerOappId ?? null;
+          const peerOAppId = peer?.oappId ?? null;
 
           node.securityConfigs.push({
             srcEid: cfg.eid,
@@ -117,7 +120,7 @@ export class SecurityGraphCrawler {
             peerOAppId,
             peerLocalEid: peer?.localEid || null,
             peerAddress: peer?.address || null,
-            peerResolved: Boolean(peerOAppId),
+            peerResolved: peer?.resolved ?? Boolean(peerOAppId),
           });
 
           return {
@@ -125,8 +128,8 @@ export class SecurityGraphCrawler {
             edgeFrom: peerOAppId,
             edgeTo: oappId,
             peerInfo: peer,
-            peerResolved: Boolean(peerOAppId),
-            peerRaw: cfg.peer ?? null,
+            peerResolved: peer?.resolved ?? Boolean(peerOAppId),
+            peerRaw: peer?.rawPeer ?? cfg.peer ?? null,
             peerLocalEid: peer?.localEid || null,
             queueNext: peerOAppId,
             linkType: "peer",
@@ -287,16 +290,44 @@ export class SecurityGraphCrawler {
   }
 
   derivePeer(config) {
+    const rawPeer = config.peer ?? null;
+    const normalizedRaw = rawPeer ? String(rawPeer).toLowerCase() : null;
+    const isZeroPeer = normalizedRaw === ZERO_PEER_HEX || normalizedRaw === ZERO_ADDRESS_HEX;
+
+    if (isZeroPeer) {
+      const eid = config.eid !== undefined && config.eid !== null ? String(config.eid) : null;
+      return {
+        rawPeer,
+        localEid: eid,
+        address: null,
+        oappId: null,
+        resolved: false,
+        isZeroPeer: true,
+      };
+    }
+
     const peerOappId = config.peerOappId || null;
     if (!peerOappId) return null;
 
     const { localEid, address } = splitOAppId(peerOappId);
+    if (address && address.toLowerCase() === ZERO_ADDRESS_HEX) {
+      const eid = config.eid !== undefined && config.eid !== null ? String(config.eid) : null;
+      return {
+        rawPeer,
+        localEid: eid,
+        address: null,
+        oappId: null,
+        resolved: false,
+        isZeroPeer: true,
+      };
+    }
+
     return {
-      rawPeer: config.peer ?? null,
+      rawPeer,
       localEid: localEid || null,
       address: address || null,
-      oappId: peerOappId,
-      resolved: true,
+      oappId: address ? peerOappId : null,
+      resolved: Boolean(address),
     };
   }
 

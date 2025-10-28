@@ -104,6 +104,7 @@ export class SecurityGraphView {
           <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Matches dominant DVN combo and highest requirement<br>
           <span style="color: #ff1df5; opacity: 0.8; font-weight: bold;">Magenta</span>: DVN combo deviates from dominant (names/count/sentinel)<br>
           <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower required DVN count vs web max (still dominant mix)<br>
+          <span style="color: #6b7280; opacity: 0.75; font-weight: bold;">Grey dashed</span>: Unknown security config (untracked target)<br>
           <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer, dead DVN, or blocking DVN)
         </dd>
       </dl>
@@ -250,6 +251,7 @@ export class SecurityGraphView {
   ) {
     const style = this.getEdgeStyle({
       isBlocked: info.isBlocked,
+      isUnknown: info.isUnknownSecurity,
       requiredDVNCount: info.requiredDVNCount,
       maxRequiredDVNsInWeb,
       differsFromPopular: info.differsFromPopular,
@@ -296,12 +298,14 @@ export class SecurityGraphView {
   ) {
     const forwardStyle = this.getEdgeStyle({
       isBlocked: forwardInfo.isBlocked,
+      isUnknown: forwardInfo.isUnknownSecurity,
       requiredDVNCount: forwardInfo.requiredDVNCount,
       maxRequiredDVNsInWeb,
       differsFromPopular: forwardInfo.differsFromPopular,
     });
     const reverseStyle = this.getEdgeStyle({
       isBlocked: reverseInfo.isBlocked,
+      isUnknown: reverseInfo.isUnknownSecurity,
       requiredDVNCount: reverseInfo.requiredDVNCount,
       maxRequiredDVNsInWeb,
       differsFromPopular: reverseInfo.differsFromPopular,
@@ -430,9 +434,12 @@ export class SecurityGraphView {
     edgesGroup.appendChild(line);
   }
 
-  getEdgeStyle({ isBlocked, requiredDVNCount, maxRequiredDVNsInWeb, differsFromPopular }) {
+  getEdgeStyle({ isBlocked, isUnknown, requiredDVNCount, maxRequiredDVNsInWeb, differsFromPopular }) {
     if (isBlocked) {
       return { color: "#ff0000", width: "1", opacity: "0.6", dashArray: "8,4" };
+    }
+    if (isUnknown) {
+      return { color: "#6b7280", width: "2", opacity: "0.55", dashArray: "6,4" };
     }
     if (differsFromPopular) {
       return { color: "#ff1df5", width: "3", opacity: "0.75", dashArray: "none" };
@@ -471,31 +478,35 @@ export class SecurityGraphView {
       blockMessage = "STATUS: BLOCKED";
     }
 
-    const requiredLine =
-      requiredDVNLabels && requiredDVNLabels.length > 0
-        ? `Required DVNs (${requiredDVNCount}): ${requiredDVNLabels.join(", ")}`
-        : `Required DVN Count: ${requiredDVNCount}`;
+    const hasSecurityConfig = Boolean(info.hasSecurityConfig);
+    const unknownMessage = info.isUnknownSecurity ? "WARNING: Unknown security config (untracked)" : null;
+    const routeLine = this.buildRouteLabel(info);
 
-    const optionalLine =
-      optionalDVNCount > 0
-        ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${
+    const requiredLine = hasSecurityConfig
+      ? requiredDVNLabels && requiredDVNLabels.length > 0
+        ? `Required DVNs (${requiredDVNCount}): ${requiredDVNLabels.join(", ")}`
+        : `Required DVN Count: ${requiredDVNCount}`
+      : "Required DVNs: unknown";
+
+    const optionalLine = hasSecurityConfig && optionalDVNCount > 0
+      ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${
             optionalDVNLabels && optionalDVNLabels.length
               ? ` → ${optionalDVNLabels.join(", ")}`
               : ""
           }`
-        : null;
+      : null;
 
-    const sentinelLine = usesSentinel
+    const sentinelLine = hasSecurityConfig && usesSentinel
       ? "Required DVN sentinel active (0 mandatory, optional quorum enforced)"
       : null;
 
     const anomalyLine =
-      !isBlocked && differsFromPopular
+      hasSecurityConfig && !isBlocked && differsFromPopular
         ? `ANOMALY: ${differenceReasons?.length ? differenceReasons.join("; ") : "non-standard DVN combo"}`
         : null;
 
     const lowerSecurityLine =
-      !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb
+      hasSecurityConfig && !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb
         ? `WARNING: Lower security (${requiredDVNCount} vs web max ${maxRequiredDVNsInWeb})`
         : null;
 
@@ -507,7 +518,9 @@ export class SecurityGraphView {
       `${edge.from} → ${edge.to}`,
       `Src EID: ${edge.srcEid}`,
       edge.linkType === "peer" && "Link: PeerSet",
+      routeLine,
       blockMessage,
+      unknownMessage,
       anomalyLine,
       lowerSecurityLine,
       requiredLine,
@@ -520,6 +533,20 @@ export class SecurityGraphView {
     ].filter(Boolean);
 
     return lines.join("\n");
+  }
+
+  buildRouteLabel(info) {
+    if (!info) {
+      return null;
+    }
+    const fromLabel = info.routeFromLabel;
+    const toLabel = info.routeToLabel;
+    if (!fromLabel && !toLabel) {
+      return null;
+    }
+    const source = fromLabel || "Unknown";
+    const target = toLabel || "Unknown";
+    return `Route: ${source} → ${target}`;
   }
 
   createArrowMarker(svgNS, x, y, angle, size, color) {
@@ -591,9 +618,12 @@ export class SecurityGraphView {
         alias ? `${alias} (${node.id})` : node.id,
         `Endpoint: ${endpointLabel}`,
         `Tracked: ${node.isTracked ? "Yes" : "No"}`,
-        `Total Packets: ${node.totalPacketsReceived}`,
-        `Min Required DVNs: ${minRequiredDVNs}`,
       ];
+
+      if (node.isTracked) {
+        titleLines.push(`Total Packets: ${node.totalPacketsReceived}`);
+        titleLines.push(`Min Required DVNs: ${minRequiredDVNs}`);
+      }
 
       if (isBlocked) {
         titleLines.push(
@@ -1597,7 +1627,9 @@ export class SecurityGraphView {
     const combinationStatsMap = new Map();
 
     for (const edge of edges) {
+      const fromNode = nodesById.get(edge.from);
       const toNode = nodesById.get(edge.to);
+      const isUntrackedTarget = Boolean(toNode) && !toNode.isTracked;
       let requiredDVNCount = 0;
       let requiredDVNAddresses = [];
       let requiredDVNLabels = [];
@@ -1614,11 +1646,14 @@ export class SecurityGraphView {
         blockReason = "zero-peer";
       }
 
-      if (toNode?.securityConfigs) {
+      let hasSecurityConfig = false;
+
+      if (toNode?.securityConfigs && toNode.isTracked) {
         const config = toNode.securityConfigs.find(
           (cfg) => String(cfg.srcEid) === String(edge.srcEid),
         );
         if (config) {
+          hasSecurityConfig = true;
           requiredDVNCount = config.requiredDVNCount || 0;
           requiredDVNAddresses = config.requiredDVNs || [];
           requiredDVNLabels = config.requiredDVNLabels || config.requiredDVNs || [];
@@ -1641,7 +1676,7 @@ export class SecurityGraphView {
         }
       }
 
-      if (!isBlocked && requiredDVNCount > maxRequiredDVNsInWeb) {
+      if (!isBlocked && hasSecurityConfig && requiredDVNCount > maxRequiredDVNsInWeb) {
         maxRequiredDVNsInWeb = requiredDVNCount;
       }
 
@@ -1652,11 +1687,18 @@ export class SecurityGraphView {
         .filter(Boolean)
         .sort();
 
-      const combinationFingerprint = JSON.stringify({
-        required: requiredDVNCount,
-        names: normalizedRequiredNames,
-        sentinel: usesSentinel,
-      });
+      const combinationFingerprint = hasSecurityConfig
+        ? JSON.stringify({
+            required: requiredDVNCount,
+            names: normalizedRequiredNames,
+            sentinel: usesSentinel,
+          })
+        : null;
+
+      const isUnknownSecurity = !hasSecurityConfig && isUntrackedTarget;
+
+      const routeFromLabel = this.resolveNodeChainLabel(fromNode, edge.from, edge.srcEid);
+      const routeToLabel = this.resolveNodeChainLabel(toNode, edge.to, toNode?.localEid);
 
       const info = {
         edge,
@@ -1669,10 +1711,14 @@ export class SecurityGraphView {
         optionalDVNThreshold,
         usesSentinel,
         combinationFingerprint,
+        hasSecurityConfig,
+        isUnknownSecurity,
         isBlocked,
         blockReason,
         peerResolved: edge.peerResolved ?? null,
         peerRaw: edge.peerRaw ?? null,
+        routeFromLabel,
+        routeToLabel,
         differsFromPopular: false,
         matchesPopularCombination: false,
         differenceReasons: [],
@@ -1680,7 +1726,7 @@ export class SecurityGraphView {
 
       edgeSecurityInfo.push(info);
 
-      if (!isBlocked) {
+      if (!isBlocked && hasSecurityConfig) {
         let entry = combinationStatsMap.get(combinationFingerprint);
         if (!entry) {
           entry = {
@@ -1741,6 +1787,7 @@ export class SecurityGraphView {
 
     for (const info of edgeSecurityInfo) {
       const matchesPopular =
+        info.hasSecurityConfig &&
         Boolean(dominantFingerprint) &&
         !info.isBlocked &&
         !info.usesSentinel &&
@@ -1748,14 +1795,17 @@ export class SecurityGraphView {
 
       info.matchesPopularCombination = matchesPopular;
 
-      const differsDueToSentinel = info.usesSentinel;
+      const differsDueToSentinel = info.hasSecurityConfig && info.usesSentinel;
       const differsDueToCombination =
+        info.hasSecurityConfig &&
         Boolean(dominantFingerprint) &&
         !info.isBlocked &&
         info.combinationFingerprint !== dominantFingerprint;
 
       info.differsFromPopular =
-        !info.isBlocked && (differsDueToSentinel || differsDueToCombination);
+        info.hasSecurityConfig &&
+        !info.isBlocked &&
+        (differsDueToSentinel || differsDueToCombination);
 
       if (differsDueToCombination && dominantEntry) {
         if (info.requiredDVNCount !== dominantEntry.requiredDVNCount) {
@@ -1779,6 +1829,7 @@ export class SecurityGraphView {
       }
 
       if (
+        info.hasSecurityConfig &&
         !info.isBlocked &&
         maxRequiredDVNsInWeb > 0 &&
         info.requiredDVNCount < maxRequiredDVNsInWeb
@@ -1991,6 +2042,27 @@ export class SecurityGraphView {
       return suffix ? `EID ${suffix} (unmapped)` : "EID (unmapped)";
     }
     return str;
+  }
+
+  resolveNodeChainLabel(node, nodeId, fallbackEid) {
+    let chainSource = null;
+    if (node && node.localEid !== undefined && node.localEid !== null && node.localEid !== "") {
+      chainSource = node.localEid;
+    } else if (node && typeof node.id === "string" && node.id.includes("_")) {
+      chainSource = node.id.split("_")[0];
+    } else if (typeof nodeId === "string" && nodeId.includes("_")) {
+      chainSource = nodeId.split("_")[0];
+    } else if (fallbackEid !== undefined && fallbackEid !== null && fallbackEid !== "") {
+      chainSource = fallbackEid;
+    }
+
+    if (chainSource === null || chainSource === undefined || chainSource === "") {
+      return "";
+    }
+
+    const normalized = typeof chainSource === "string" ? chainSource : String(chainSource);
+    const label = this.formatChainLabel(normalized);
+    return label || normalized;
   }
 
   getNodeSecurityMetrics(node) {
