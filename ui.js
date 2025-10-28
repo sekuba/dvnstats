@@ -5,15 +5,14 @@
 
 import { APP_CONFIG } from "./config.js";
 import {
-  bytes32ToAddress,
   clampInteger,
   formatTimestampValue,
   looksLikeEidColumn,
   looksLikeHash,
   looksLikeTimestampColumn,
-  makeOAppId,
   normalizeAddress,
   normalizeOAppId,
+  splitOAppId,
   parseOptionalPositiveInt,
   stringifyScalar,
 } from "./core.js";
@@ -264,6 +263,7 @@ export class QueryCoordinator {
               lastComputedByEventId
               lastComputedTransactionHash
               peer
+              peerOappId
               peerTransactionHash
               peerLastUpdatedBlock
               peerLastUpdatedTimestamp
@@ -743,45 +743,26 @@ export class QueryCoordinator {
   }
 
   derivePeerContext(row) {
-    const peerHex = row.peer;
-    if (!peerHex) {
+    const peerOappId = row.peerOappId ?? null;
+    if (!peerOappId) {
       return null;
     }
 
-    const eid = row.eid ?? null;
-    const localEid = eid !== null && eid !== undefined ? String(eid) : null;
+    const { localEid, address } = splitOAppId(peerOappId);
     const endpointLabel =
-      localEid !== null ? this.getChainDisplayLabel(localEid) || `EID ${localEid}` : null;
-
-    let decodedAddress = bytes32ToAddress(peerHex);
-    let oappId = null;
-    let alias = null;
-    let normalizedAddress = null;
-
-    if (decodedAddress && localEid) {
-      try {
-        normalizedAddress = normalizeAddress(decodedAddress);
-        oappId = makeOAppId(localEid, normalizedAddress);
-        alias = this.aliasStore.get(oappId);
-      } catch (error) {
-        console.debug("[QueryCoordinator] Failed to normalize peer address", {
-          peerHex,
-          decodedAddress,
-          error,
-        });
-        normalizedAddress = decodedAddress;
-        oappId = localEid ? makeOAppId(localEid, decodedAddress) : null;
-      }
-    }
+      localEid !== null && localEid !== undefined
+        ? this.getChainDisplayLabel(localEid) || `EID ${localEid}`
+        : null;
+    const alias = this.aliasStore.get(peerOappId) ?? null;
 
     return {
-      peerHex,
+      peerHex: row.peer ?? null,
       localEid,
       endpointLabel,
-      address: normalizedAddress || decodedAddress,
-      oappId,
+      address,
+      oappId: peerOappId,
       alias,
-      copyValue: oappId || peerHex,
+      copyValue: peerOappId,
     };
   }
 
