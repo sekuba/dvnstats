@@ -128,7 +128,6 @@ type MergeResult = {
 
 type ComputeEffectiveConfigArgs = {
   context: handlerContext;
-  chainId: number;
   localEid: bigint;
   oappId: string;
   oappAddress: string;
@@ -166,7 +165,7 @@ const validateUlnConfig = (
     optionalDVNs: string[];
   },
   source: string,
-  chainId: number,
+  localEid: bigint,
   eid: bigint,
 ): boolean => {
   let isValid = true;
@@ -174,13 +173,13 @@ const validateUlnConfig = (
   // Log sentinel value usage (informational)
   if (config.requiredDVNCount === SENTINEL_REQUIRED_DVN_COUNT) {
     context.log.debug(`UlnConfig using sentinel: requiredDVNCount=255 (NIL) in ${source}`, {
-      chainId,
+      localEid: localEid.toString(),
       eid: eid.toString(),
     });
   }
   if (config.optionalDVNCount === SENTINEL_OPTIONAL_DVN_COUNT) {
     context.log.debug(`UlnConfig using sentinel: optionalDVNCount=255 (NIL) in ${source}`, {
-      chainId,
+      localEid: localEid.toString(),
       eid: eid.toString(),
     });
   }
@@ -194,7 +193,7 @@ const validateUlnConfig = (
     config.requiredDVNCount !== config.requiredDVNs.length
   ) {
     context.log.warn(`UlnConfig validation: requiredDVNCount mismatch in ${source}`, {
-      chainId,
+      localEid: localEid.toString(),
       eid: eid.toString(),
       requiredDVNCount: config.requiredDVNCount,
       requiredDVNsLength: config.requiredDVNs.length,
@@ -212,7 +211,7 @@ const validateUlnConfig = (
     config.optionalDVNCount !== config.optionalDVNs.length
   ) {
     context.log.warn(`UlnConfig validation: optionalDVNCount mismatch in ${source}`, {
-      chainId,
+      localEid: localEid.toString(),
       eid: eid.toString(),
       optionalDVNCount: config.optionalDVNCount,
       optionalDVNsLength: config.optionalDVNs.length,
@@ -230,7 +229,7 @@ const validateUlnConfig = (
     context.log.warn(
       `UlnConfig validation: optionalDVNThreshold exceeds optionalDVNCount in ${source}`,
       {
-        chainId,
+        localEid: localEid.toString(),
         eid: eid.toString(),
         optionalDVNThreshold: config.optionalDVNThreshold,
         optionalDVNCount: config.optionalDVNCount,
@@ -250,14 +249,14 @@ const checkForZeroAddresses = (
   context: handlerContext,
   addresses: readonly string[],
   source: string,
-  chainId: number,
+  localEid: bigint,
   eid: bigint,
   dvnType: "required" | "optional",
 ): void => {
   for (const address of addresses) {
     if (isZeroAddress(address)) {
       context.log.warn(`Zero address detected in ${dvnType} DVNs for ${source}`, {
-        chainId,
+        localEid,
         eid: eid.toString(),
         dvnType,
         originalAddress: address,
@@ -619,7 +618,6 @@ const mergeSecurityConfig = (
 
 const computeAndPersistEffectiveConfig = async ({
   context,
-  chainId,
   localEid,
   oappId,
   oappAddress,
@@ -632,21 +630,14 @@ const computeAndPersistEffectiveConfig = async ({
   const defaultKey = makeDefaultScopedId(localEid, eid);
   const configId = makeSecurityConfigId(oappId, eid);
 
-  const [
-    defaultLibrary,
-    defaultConfig,
-    libraryOverride,
-    configOverride,
-    existingConfig,
-    peerState,
-  ] = await Promise.all([
-    context.DefaultReceiveLibrary.get(defaultKey),
-    context.DefaultUlnConfig.get(defaultKey),
-    context.OAppReceiveLibrary.get(configId),
-    context.OAppUlnConfig.get(configId),
-    context.OAppSecurityConfig.get(configId),
-    context.OAppPeer.get(configId),
-  ]);
+  const [defaultLibrary, defaultConfig, libraryOverride, configOverride, peerState] =
+    await Promise.all([
+      context.DefaultReceiveLibrary.get(defaultKey),
+      context.DefaultUlnConfig.get(defaultKey),
+      context.OAppReceiveLibrary.get(configId),
+      context.OAppUlnConfig.get(configId),
+      context.OAppPeer.get(configId),
+    ]);
 
   const defaults = {
     library: defaultLibrary?.library,
@@ -690,20 +681,15 @@ const computeAndPersistEffectiveConfig = async ({
     defaultResolved.isConfigTracked &&
     configsAreEqual(resolved.comparable, defaultResolved.comparable);
 
-  const derivedPeer = existingConfig?.peer ?? peerState?.peer;
+  const derivedPeer = peerState?.peer;
   const derivedPeerNormalized = derivedPeer ? normalizeOAppAddress(derivedPeer) : undefined;
-  const existingPeerOappId = existingConfig?.peerOappId;
-  const peerStatePeerOappId = peerState?.peerOappId;
   const derivedPeerOappId =
-    existingPeerOappId ??
-    peerStatePeerOappId ??
+    peerState?.peerOappId ??
     (derivedPeerNormalized ? makeOAppId(eid, derivedPeerNormalized) : undefined);
-  const derivedPeerBlock = existingConfig?.peerLastUpdatedBlock ?? peerState?.lastUpdatedBlock;
-  const derivedPeerTimestamp =
-    existingConfig?.peerLastUpdatedTimestamp ?? peerState?.lastUpdatedTimestamp;
-  const derivedPeerEventId =
-    existingConfig?.peerLastUpdatedEventId ?? peerState?.lastUpdatedByEventId;
-  const derivedPeerTxHash = existingConfig?.peerTransactionHash ?? peerState?.transactionHash;
+  const derivedPeerBlock = peerState?.lastUpdatedBlock;
+  const derivedPeerTimestamp = peerState?.lastUpdatedTimestamp;
+  const derivedPeerEventId = peerState?.lastUpdatedByEventId;
+  const derivedPeerTxHash = peerState?.transactionHash;
 
   const entity: OAppSecurityConfig = {
     id: configId,
@@ -745,7 +731,6 @@ const computeAndPersistEffectiveConfig = async ({
 
 const recomputeSecurityConfigsForScope = async (
   context: handlerContext,
-  chainId: number,
   localEid: bigint,
   eid: bigint,
   blockNumber: bigint,
@@ -757,7 +742,6 @@ const recomputeSecurityConfigsForScope = async (
     const configsForChain = await context.OAppSecurityConfig.getWhere.localEid.eq(localEid);
     if (!configsForChain || configsForChain.length === 0) {
       context.log.debug("No configs found for chain during recomputation", {
-        chainId,
         localEid: localEid.toString(),
         eid: eid.toString(),
       });
@@ -769,7 +753,6 @@ const recomputeSecurityConfigsForScope = async (
 
     if (configsForEid.length > 0) {
       context.log.debug("Recomputing security configs for scope", {
-        chainId,
         localEid: localEid.toString(),
         eid: eid.toString(),
         configCount: configsForEid.length,
@@ -780,7 +763,6 @@ const recomputeSecurityConfigsForScope = async (
       try {
         await computeAndPersistEffectiveConfig({
           context,
-          chainId,
           localEid,
           oappId: config.oappId,
           oappAddress: config.oapp,
@@ -796,7 +778,6 @@ const recomputeSecurityConfigsForScope = async (
           error instanceof Error ? error : new Error(String(error)),
         );
         context.log.error("Config recomputation context", {
-          chainId,
           localEid: localEid.toString(),
           eid: eid.toString(),
           oappId: config.oappId,
@@ -811,7 +792,6 @@ const recomputeSecurityConfigsForScope = async (
       error instanceof Error ? error : new Error(String(error)),
     );
     context.log.error("Recomputation scope context", {
-      chainId,
       localEid: localEid.toString(),
       eid: eid.toString(),
       eventId,
@@ -833,7 +813,6 @@ EndpointV2.DefaultReceiveLibrarySet.handler(async ({ event, context }) => {
   const normalizedLibrary = normalizeAddress(event.params.newLib);
   if (!normalizedLibrary) {
     context.log.warn("DefaultReceiveLibrarySet missing newLib", {
-      chainId: event.chainId,
       localEid: localEid.toString(),
       eid: event.params.eid,
       rawValue: event.params.newLib,
@@ -869,7 +848,6 @@ EndpointV2.DefaultReceiveLibrarySet.handler(async ({ event, context }) => {
 
   await recomputeSecurityConfigsForScope(
     context,
-    event.chainId,
     localEid,
     event.params.eid,
     blockNumber,
@@ -899,22 +877,8 @@ ReceiveUln302.DefaultUlnConfigsSet.handler(async ({ event, context }) => {
     ] = config;
 
     // Check for zero addresses before normalization
-    checkForZeroAddresses(
-      context,
-      requiredDVNs,
-      "DefaultUlnConfigsSet",
-      event.chainId,
-      eid,
-      "required",
-    );
-    checkForZeroAddresses(
-      context,
-      optionalDVNs,
-      "DefaultUlnConfigsSet",
-      event.chainId,
-      eid,
-      "optional",
-    );
+    checkForZeroAddresses(context, requiredDVNs, "DefaultUlnConfigsSet", localEid, eid, "required");
+    checkForZeroAddresses(context, optionalDVNs, "DefaultUlnConfigsSet", localEid, eid, "optional");
 
     const id = makeDefaultScopedId(localEid, eid);
     const normalizedRequired = uniqueNormalizedAddresses(requiredDVNs);
@@ -948,7 +912,7 @@ ReceiveUln302.DefaultUlnConfigsSet.handler(async ({ event, context }) => {
         optionalDVNs: entity.optionalDVNs,
       },
       "DefaultUlnConfigsSet",
-      event.chainId,
+      localEid,
       eid,
     );
 
@@ -978,7 +942,6 @@ ReceiveUln302.DefaultUlnConfigsSet.handler(async ({ event, context }) => {
 
     await recomputeSecurityConfigsForScope(
       context,
-      event.chainId,
       localEid,
       eid,
       blockNumber,
@@ -1000,7 +963,6 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
   const receiver = normalizeOAppAddress(event.params.receiver);
   if (!receiver) {
     context.log.warn("ReceiveLibrarySet missing receiver", {
-      chainId: event.chainId,
       localEid: localEid.toString(),
       eid: event.params.eid,
       rawValue: event.params.receiver,
@@ -1014,7 +976,6 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
   const normalizedLibrary = normalizeAddress(event.params.newLib);
   if (!normalizedLibrary) {
     context.log.warn("ReceiveLibrarySet missing newLib", {
-      chainId: event.chainId,
       localEid: localEid.toString(),
       eid: event.params.eid,
       receiver: event.params.receiver,
@@ -1065,7 +1026,6 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
 
   await computeAndPersistEffectiveConfig({
     context,
-    chainId: event.chainId,
     localEid,
     oappId,
     oappAddress: receiver,
@@ -1088,7 +1048,6 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
   const receiver = normalizeOAppAddress(event.params.oapp);
   if (!receiver) {
     context.log.warn("UlnConfigSet missing oapp address", {
-      chainId: event.chainId,
       localEid: localEid.toString(),
       eid: event.params.eid,
       rawValue: event.params.oapp,
@@ -1115,7 +1074,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
     context,
     requiredDVNs,
     `UlnConfigSet(${oappId})`,
-    event.chainId,
+    localEid,
     event.params.eid,
     "required",
   );
@@ -1123,7 +1082,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
     context,
     optionalDVNs,
     `UlnConfigSet(${oappId})`,
-    event.chainId,
+    localEid,
     event.params.eid,
     "optional",
   );
@@ -1170,7 +1129,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
       optionalDVNs: configEntity.optionalDVNs,
     },
     `UlnConfigSet(${oappId})`,
-    event.chainId,
+    localEid,
     event.params.eid,
   );
 
@@ -1197,7 +1156,6 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
 
   await computeAndPersistEffectiveConfig({
     context,
-    chainId: event.chainId,
     localEid,
     oappId,
     oappAddress: receiver,
@@ -1223,7 +1181,6 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
     const receiver = normalizeOAppAddress(event.params.receiver);
     if (!receiver) {
       context.log.error("PacketDelivered missing receiver", {
-        chainId: event.chainId,
         localEid: localEid.toString(),
         blockNumber: event.block.number,
         logIndex: event.logIndex,
@@ -1236,7 +1193,6 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
     const normalizedSender = normalizeOAppAddress(sender);
     if (!normalizedSender) {
       context.log.error("PacketDelivered missing sender", {
-        chainId: event.chainId,
         localEid: localEid.toString(),
         blockNumber: event.block.number,
         logIndex: event.logIndex,
@@ -1283,7 +1239,6 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
 
     const securityConfig = await computeAndPersistEffectiveConfig({
       context,
-      chainId: event.chainId,
       localEid,
       oappId,
       oappAddress: receiver,
@@ -1341,7 +1296,6 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       error instanceof Error ? error : new Error(String(error)),
     );
     context.log.error("PacketDelivered event context", {
-      chainId: event.chainId,
       blockNumber: event.block.number,
       logIndex: event.logIndex,
       receiver: event.params.receiver,
@@ -1364,7 +1318,6 @@ OAppOFT.PeerSet.handler(
     const oappAddress = normalizeOAppAddress(event.srcAddress);
     if (!oappAddress) {
       context.log.warn("PeerSet missing srcAddress", {
-        chainId: event.chainId,
         localEid: localEid.toString(),
         rawValue: event.srcAddress,
         eventId,
@@ -1421,7 +1374,6 @@ OAppOFT.PeerSet.handler(
 
     const securityConfig = await computeAndPersistEffectiveConfig({
       context,
-      chainId: event.chainId,
       localEid,
       oappId,
       oappAddress,
@@ -1458,7 +1410,6 @@ OAppOFT.RateLimiterSet.handler(
     const oappAddress = normalizeOAppAddress(event.srcAddress);
     if (!oappAddress) {
       context.log.warn("RateLimiterSet missing srcAddress", {
-        chainId: event.chainId,
         localEid: localEid.toString(),
         rawValue: event.srcAddress,
         eventId,
@@ -1520,7 +1471,6 @@ OAppOFT.RateLimitsChanged.handler(
     const oappAddress = normalizeOAppAddress(event.srcAddress);
     if (!oappAddress) {
       context.log.warn("RateLimitsChanged missing srcAddress", {
-        chainId: event.chainId,
         localEid: localEid.toString(),
         rawValue: event.srcAddress,
         eventId,
