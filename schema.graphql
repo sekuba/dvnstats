@@ -150,6 +150,7 @@ type OAppSecurityConfig {
   lastComputedTimestamp: BigInt!
   lastComputedByEventId: String! @index
   peer: String
+  peerOappId: String @index
   peerLastUpdatedBlock: BigInt
   peerLastUpdatedTimestamp: BigInt
   peerLastUpdatedEventId: String @index
@@ -176,6 +177,7 @@ type PacketDelivered {
   receiver: String! @index
   srcEid: BigInt! @index
   sender: String!
+  senderOappId: String! @index
   nonce: BigInt!
   oappId: String! @index
   securityConfigId: String
@@ -205,6 +207,7 @@ type OAppPeer {
   oapp: String! @index
   eid: BigInt! @index
   peer: String
+  peerOappId: String @index
   transactionHash: String! @index
   lastUpdatedBlock: BigInt!
   lastUpdatedTimestamp: BigInt!
@@ -218,6 +221,7 @@ type OAppPeerVersion {
   oapp: String! @index
   eid: BigInt! @index
   peer: String
+  peerOappId: String @index
   transactionHash: String! @index
   blockNumber: BigInt!
   blockTimestamp: BigInt!

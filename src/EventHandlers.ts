@@ -25,6 +25,9 @@ import {
 import { getTrackedReceiveLibraryAddress, resolveLocalEid } from "./localChainRegistry";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const HEX_PREFIX = "0x";
+const BYTES32_HEX_LENGTH = 64;
+const EVM_ADDRESS_HEX_LENGTH = 40;
 
 /**
  * Sentinel Values in LayerZero UlnConfig
@@ -59,6 +62,32 @@ type FallbackField = (typeof FALLBACK_FIELD_ORDER)[number];
 
 const normalizeAddress = (value: string | undefined | null): string | undefined =>
   value ? value.toLowerCase() : undefined;
+
+const normalizeOAppAddress = (value: string | undefined | null): string | undefined => {
+  if (!value) return undefined;
+
+  const trimmed = value.trim();
+  const hasHexPrefix = trimmed.slice(0, HEX_PREFIX.length).toLowerCase() === HEX_PREFIX;
+  if (!hasHexPrefix) {
+    return trimmed;
+  }
+
+  const lower = `${HEX_PREFIX}${trimmed.slice(HEX_PREFIX.length).toLowerCase()}`;
+  const hex = lower.slice(HEX_PREFIX.length);
+  if (hex.length === BYTES32_HEX_LENGTH) {
+    const trimmedHex = hex.replace(/^0+/, "");
+    if (trimmedHex.length === 0) {
+      return ZERO_ADDRESS;
+    }
+    if (trimmedHex.length <= EVM_ADDRESS_HEX_LENGTH) {
+      const evmHex = trimmedHex.padStart(EVM_ADDRESS_HEX_LENGTH, "0");
+      return `${HEX_PREFIX}${evmHex}`;
+    }
+    return lower;
+  }
+
+  return lower;
+};
 
 const isZeroAddress = (value: string | undefined | null): boolean =>
   value !== undefined && value !== null && value.toLowerCase() === ZERO_ADDRESS;
@@ -662,6 +691,13 @@ const computeAndPersistEffectiveConfig = async ({
     configsAreEqual(resolved.comparable, defaultResolved.comparable);
 
   const derivedPeer = existingConfig?.peer ?? peerState?.peer;
+  const derivedPeerNormalized = derivedPeer ? normalizeOAppAddress(derivedPeer) : undefined;
+  const existingPeerOappId = existingConfig?.peerOappId;
+  const peerStatePeerOappId = peerState?.peerOappId;
+  const derivedPeerOappId =
+    existingPeerOappId ??
+    peerStatePeerOappId ??
+    (derivedPeerNormalized ? makeOAppId(eid, derivedPeerNormalized) : undefined);
   const derivedPeerBlock = existingConfig?.peerLastUpdatedBlock ?? peerState?.lastUpdatedBlock;
   const derivedPeerTimestamp =
     existingConfig?.peerLastUpdatedTimestamp ?? peerState?.lastUpdatedTimestamp;
@@ -696,6 +732,7 @@ const computeAndPersistEffectiveConfig = async ({
     lastComputedTimestamp: blockTimestamp,
     lastComputedByEventId: eventId,
     peer: derivedPeer,
+    peerOappId: derivedPeerOappId,
     peerLastUpdatedBlock: derivedPeerBlock,
     peerLastUpdatedTimestamp: derivedPeerTimestamp,
     peerLastUpdatedEventId: derivedPeerEventId,
@@ -960,7 +997,7 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(localEid, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const receiver = normalizeAddress(event.params.receiver);
+  const receiver = normalizeOAppAddress(event.params.receiver);
   if (!receiver) {
     context.log.warn("ReceiveLibrarySet missing receiver", {
       chainId: event.chainId,
@@ -1048,7 +1085,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
   const blockTimestamp = toBigInt(event.block.timestamp);
   const eventId = makeEventId(localEid, event.block.number, event.logIndex);
   const transactionHash = event.transaction.hash;
-  const receiver = normalizeAddress(event.params.oapp);
+  const receiver = normalizeOAppAddress(event.params.oapp);
   if (!receiver) {
     context.log.warn("UlnConfigSet missing oapp address", {
       chainId: event.chainId,
@@ -1183,7 +1220,7 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
     const blockTimestamp = toBigInt(event.block.timestamp);
     const eventId = makeEventId(localEid, event.block.number, event.logIndex);
     const transactionHash = event.transaction.hash;
-    const receiver = normalizeAddress(event.params.receiver);
+    const receiver = normalizeOAppAddress(event.params.receiver);
     if (!receiver) {
       context.log.error("PacketDelivered missing receiver", {
         chainId: event.chainId,
@@ -1196,6 +1233,20 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       });
       return;
     }
+    const normalizedSender = normalizeOAppAddress(sender);
+    if (!normalizedSender) {
+      context.log.error("PacketDelivered missing sender", {
+        chainId: event.chainId,
+        localEid: localEid.toString(),
+        blockNumber: event.block.number,
+        logIndex: event.logIndex,
+        rawValue: sender,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+    const senderOappId = makeOAppId(srcEid, normalizedSender);
     const oappId = makeOAppId(localEid, receiver);
 
     const oappDefaults: OApp = {
@@ -1260,6 +1311,7 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       receiver,
       srcEid,
       sender,
+      senderOappId,
       nonce,
       oappId,
       securityConfigId: securityConfig.id,
@@ -1309,7 +1361,7 @@ OAppOFT.PeerSet.handler(
     const blockTimestamp = toBigInt(event.block.timestamp);
     const eventId = makeEventId(localEid, event.block.number, event.logIndex);
     const transactionHash = event.transaction.hash;
-    const oappAddress = normalizeAddress(event.srcAddress);
+    const oappAddress = normalizeOAppAddress(event.srcAddress);
     if (!oappAddress) {
       context.log.warn("PeerSet missing srcAddress", {
         chainId: event.chainId,
@@ -1324,6 +1376,8 @@ OAppOFT.PeerSet.handler(
     const eid = event.params.eid;
     const configId = makeSecurityConfigId(oappId, eid);
     const peerValue = event.params.peer;
+    const normalizedPeer = normalizeOAppAddress(peerValue);
+    const peerOappId = normalizedPeer ? makeOAppId(eid, normalizedPeer) : undefined;
 
     const oappDefaults: OApp = {
       id: oappId,
@@ -1342,6 +1396,7 @@ OAppOFT.PeerSet.handler(
       oapp: oappAddress,
       eid,
       peer: peerValue,
+      peerOappId,
       transactionHash,
       lastUpdatedBlock: blockNumber,
       lastUpdatedTimestamp: blockTimestamp,
@@ -1356,6 +1411,7 @@ OAppOFT.PeerSet.handler(
       oapp: oappAddress,
       eid,
       peer: peerValue,
+      peerOappId,
       transactionHash,
       blockNumber,
       blockTimestamp,
@@ -1379,6 +1435,7 @@ OAppOFT.PeerSet.handler(
     const updatedSecurityConfig: OAppSecurityConfig = {
       ...securityConfig,
       peer: peerValue,
+      peerOappId,
       peerLastUpdatedBlock: blockNumber,
       peerLastUpdatedTimestamp: blockTimestamp,
       peerLastUpdatedEventId: eventId,
@@ -1398,7 +1455,7 @@ OAppOFT.RateLimiterSet.handler(
     const blockTimestamp = toBigInt(event.block.timestamp);
     const eventId = makeEventId(localEid, event.block.number, event.logIndex);
     const transactionHash = event.transaction.hash;
-    const oappAddress = normalizeAddress(event.srcAddress);
+    const oappAddress = normalizeOAppAddress(event.srcAddress);
     if (!oappAddress) {
       context.log.warn("RateLimiterSet missing srcAddress", {
         chainId: event.chainId,
@@ -1460,7 +1517,7 @@ OAppOFT.RateLimitsChanged.handler(
     const blockTimestamp = toBigInt(event.block.timestamp);
     const eventId = makeEventId(localEid, event.block.number, event.logIndex);
     const transactionHash = event.transaction.hash;
-    const oappAddress = normalizeAddress(event.srcAddress);
+    const oappAddress = normalizeOAppAddress(event.srcAddress);
     if (!oappAddress) {
       context.log.warn("RateLimitsChanged missing srcAddress", {
         chainId: event.chainId,
