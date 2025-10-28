@@ -147,7 +147,30 @@ export class SecurityGraphCrawler {
           .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
           .map((cfg) => {
             const remoteId = cfg.oappId;
-            const { localEid: remoteLocalEid } = splitOAppId(remoteId);
+            const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
+
+            // Check if this is a stale peer: does our config for this srcEid point back to this remote node?
+            let isStalePeer = false;
+            if (remoteLocalEid) {
+              const ourConfigForThisSrc = configs.find(
+                (c) => String(c.eid) === String(remoteLocalEid)
+              );
+              if (ourConfigForThisSrc) {
+                // We have a config for this srcEid - check if the peer matches
+                const ourPeer = this.derivePeer(ourConfigForThisSrc);
+                const ourPeerAddress = ourPeer?.address?.toLowerCase();
+                const remoteAddr = remoteAddress?.toLowerCase();
+
+                // If we have a peer set for this srcEid and it doesn't match this remote node, it's stale
+                if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
+                  isStalePeer = true;
+                } else if (ourPeer?.isZeroPeer) {
+                  // If our peer is set to zero, all inbound from this srcEid are blocked
+                  isStalePeer = true;
+                }
+              }
+            }
+
             return {
               config: cfg,
               edgeFrom: remoteId,
@@ -158,6 +181,7 @@ export class SecurityGraphCrawler {
               peerLocalEid: remoteLocalEid ?? null,
               queueNext: remoteId,
               linkType: "peer",
+              isStalePeer,
             };
           });
 
@@ -362,6 +386,7 @@ export class SecurityGraphCrawler {
             (context.peerInfo ? context.peerInfo.localEid : undefined) ??
             null,
           peerOAppId: edgeFrom,
+          isStalePeer: context.isStalePeer ?? false,
         });
       }
 

@@ -105,7 +105,7 @@ export class SecurityGraphView {
           <span style="color: #ff1df5; opacity: 0.8; font-weight: bold;">Magenta</span>: DVN combo deviates from dominant (names/count/sentinel)<br>
           <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower required DVN count vs web max (still dominant mix)<br>
           <span style="color: #6b7280; opacity: 0.75; font-weight: bold;">Grey dashed</span>: Unknown security config (untracked target)<br>
-          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (zero-peer, dead DVN, or blocking DVN)
+          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (stale peer, zero-peer, dead DVN, or blocking DVN)
         </dd>
       </dl>
     `;
@@ -468,12 +468,14 @@ export class SecurityGraphView {
     } = info;
 
     let blockMessage = null;
-    if (isBlocked && blockReason === "zero-peer") {
-      blockMessage = "STATUS: BLOCKED (peer set to zero address - no packets accepted)";
+    if (isBlocked && blockReason === "stale-peer") {
+      blockMessage = "STATUS: BLOCKED (stale peer)";
+    } else if (isBlocked && blockReason === "zero-peer") {
+      blockMessage = "STATUS: BLOCKED (peer set to zero address)";
     } else if (isBlocked && blockReason === "blocking-dvn") {
-      blockMessage = "STATUS: BLOCKED (blocking DVN present in required set)";
+      blockMessage = "STATUS: BLOCKED (blocking DVN)";
     } else if (isBlocked && blockReason === "dead-dvn") {
-      blockMessage = "STATUS: BLOCKED (dead address in DVNs)";
+      blockMessage = "STATUS: BLOCKED (dead DVN)";
     } else if (isBlocked) {
       blockMessage = "STATUS: BLOCKED";
     }
@@ -763,12 +765,14 @@ export class SecurityGraphView {
 
       const blockReasonSet = new Set();
       for (const edge of blockedIncoming) {
-        if (edge.blockReason === "zero-peer") {
-          blockReasonSet.add("Zero peer (no packets accepted)");
+        if (edge.blockReason === "stale-peer") {
+          blockReasonSet.add("Stale peer");
+        } else if (edge.blockReason === "zero-peer") {
+          blockReasonSet.add("Zero peer");
         } else if (edge.blockReason === "dead-dvn") {
-          blockReasonSet.add("Dead DVN inside required set");
+          blockReasonSet.add("Dead DVN");
         } else if (edge.blockReason === "blocking-dvn") {
-          blockReasonSet.add("Blocking DVN present (LZDeadDVN)");
+          blockReasonSet.add("Blocking DVN");
         } else {
           blockReasonSet.add("Blocked route");
         }
@@ -1640,8 +1644,14 @@ export class SecurityGraphView {
       let isBlocked = false;
       let blockReason = null;
 
+      // Check if this is a stale peer (target node's config points to a different peer for this srcEid)
+      if (edge.isStalePeer) {
+        isBlocked = true;
+        blockReason = "stale-peer";
+      }
+
       // Check if peer is zero address (blocks all traffic from that EID)
-      if (edge.peerRaw && this.isZeroPeer(edge.peerRaw)) {
+      if (!isBlocked && edge.peerRaw && this.isZeroPeer(edge.peerRaw)) {
         isBlocked = true;
         blockReason = "zero-peer";
       }
@@ -2090,7 +2100,8 @@ export class SecurityGraphView {
   hashString(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
-      hash = ((hash << 5) - hash + str.charCodeAt(i)) & hash;
+      hash = (hash << 5) - hash + str.charCodeAt(i);
+      hash = hash | 0; // Convert to 32-bit integer
     }
     return Math.abs(hash);
   }
