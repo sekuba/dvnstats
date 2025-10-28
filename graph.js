@@ -45,7 +45,8 @@ export class SecurityGraphView {
     const blockedNodes = this.findBlockedNodes(webData.nodes, edgeAnalysis.edgeSecurityInfo);
 
     // Find the most connected tracked node to use as center
-    const centerNodeId = options.centerNodeId || this.findMostConnectedNode(webData.nodes, webData.edges);
+    const centerNodeId =
+      options.centerNodeId || this.findMostConnectedNode(webData.nodes, webData.edges);
 
     const context = {
       edgeSecurityInfo: edgeAnalysis.edgeSecurityInfo,
@@ -75,8 +76,10 @@ export class SecurityGraphView {
   }
 
   renderSummary(webData, centerNodeId) {
-    const centerNode = webData.nodes.find(n => n.id === centerNodeId);
-    const centerAlias = centerNode ? this.getOAppAlias(centerNode.id) || centerNode.id : centerNodeId || "—";
+    const centerNode = webData.nodes.find((n) => n.id === centerNodeId);
+    const centerAlias = centerNode
+      ? this.getOAppAlias(centerNode.id) || centerNode.id
+      : centerNodeId || "—";
 
     const summary = document.createElement("div");
     summary.className = "summary-panel";
@@ -100,27 +103,6 @@ export class SecurityGraphView {
         <dt>Crawled At</dt>
         <dd>${new Date(webData.timestamp).toLocaleString()}</dd>
       </dl>
-      <h4 style="margin-top: 1.5rem; margin-bottom: 0.5rem;">Legend</h4>
-      <dl style="font-size: 0.9em;">
-        <dt>Node Color</dt>
-        <dd>
-          <span style="display: inline-block; background: #ffff99; padding: 2px 6px; border: 1px solid #000; margin-right: 4px;">Yellow</span>: Maximum security (min DVN count ≥ web max, excl. blocked configs)<br>
-          <span style="display: inline-block; background: #ff9999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Red</span>: Weak link (min DVN count &lt; web max)<br>
-          <span style="display: inline-block; background: #999999; padding: 2px 6px; border: 1px solid #000; margin-right: 4px; margin-top: 4px;">Grey</span>: Blocked (cannot send packets to monitored nodes)
-        </dd>
-        <dt style="margin-top: 0.5rem;">Interaction</dt>
-        <dd>
-          Double-click any node to re-center the view around it
-        </dd>
-        <dt style="margin-top: 0.5rem;">Edge Color</dt>
-        <dd>
-          <span style="color: #000; opacity: 0.7; font-weight: bold;">Black</span>: Matches dominant DVN combo and highest requirement<br>
-          <span style="color: #ff1df5; opacity: 0.8; font-weight: bold;">Magenta</span>: DVN combo deviates from dominant (names/count/sentinel)<br>
-          <span style="color: #ff6666; opacity: 0.7;">Red</span>: Lower required DVN count vs web max (still dominant mix)<br>
-          <span style="color: #6b7280; opacity: 0.75; font-weight: bold;">Grey dashed</span>: Unknown security config (untracked target)<br>
-          <span style="color: #ff0000; font-weight: bold;">Dashed Red</span>: Blocked (stale peer, zero-peer, dead DVN, or blocking DVN)
-        </dd>
-      </dl>
     `;
     return summary;
   }
@@ -142,6 +124,61 @@ export class SecurityGraphView {
     const showPersistentTooltip = this.setupPersistentTooltips(svg);
 
     const nodePositions = this.layoutNodes(webData.nodes, webData.edges, context.centerNodeId);
+
+    // Focus state for hiding unconnected nodes
+    let focusedNodeId = null;
+    let visibleNodeIds = new Set();
+
+    // Build adjacency map for quick neighbor lookup
+    const adjacencyMap = new Map();
+    for (const node of webData.nodes) {
+      adjacencyMap.set(node.id, new Set());
+    }
+    for (const edge of webData.edges) {
+      if (adjacencyMap.has(edge.from)) adjacencyMap.get(edge.from).add(edge.to);
+      if (adjacencyMap.has(edge.to)) adjacencyMap.get(edge.to).add(edge.from);
+    }
+
+    const updateVisibility = (nodeId) => {
+      if (focusedNodeId === nodeId) {
+        // Toggle off - show everything
+        focusedNodeId = null;
+        visibleNodeIds.clear();
+
+        // Show all nodes and edges
+        nodesGroup.querySelectorAll(".node").forEach((node) => {
+          node.style.display = "";
+        });
+        edgesGroup.querySelectorAll("line, g").forEach((edge) => {
+          edge.style.display = "";
+        });
+      } else {
+        // Focus on this node
+        focusedNodeId = nodeId;
+        visibleNodeIds = new Set([nodeId, ...(adjacencyMap.get(nodeId) || [])]);
+
+        // Hide unconnected nodes
+        nodesGroup.querySelectorAll(".node").forEach((node) => {
+          const nodeData = node.getAttribute("data-node-id");
+          if (!visibleNodeIds.has(nodeData)) {
+            node.style.display = "none";
+          } else {
+            node.style.display = "";
+          }
+        });
+
+        // Hide edges where either endpoint is not visible
+        edgesGroup.querySelectorAll("[data-edge-from]").forEach((edge) => {
+          const from = edge.getAttribute("data-edge-from");
+          const to = edge.getAttribute("data-edge-to");
+          if (!visibleNodeIds.has(from) || !visibleNodeIds.has(to)) {
+            edge.style.display = "none";
+          } else {
+            edge.style.display = "";
+          }
+        });
+      }
+    };
 
     const {
       edgeSecurityInfo,
@@ -172,6 +209,7 @@ export class SecurityGraphView {
       blockedNodes,
       showPersistentTooltip,
       centerNodeId,
+      updateVisibility,
     );
     contentGroup.appendChild(nodesGroup);
 
@@ -296,6 +334,8 @@ export class SecurityGraphView {
         angle,
         8,
         style.color,
+        info.edge.from,
+        info.edge.to,
       ),
     );
   }
@@ -368,6 +408,8 @@ export class SecurityGraphView {
         angle,
         8,
         forwardStyle.color,
+        forwardInfo.edge.from,
+        forwardInfo.edge.to,
       ),
     );
     edgesGroup.appendChild(
@@ -378,6 +420,8 @@ export class SecurityGraphView {
         angle + Math.PI,
         8,
         reverseStyle.color,
+        reverseInfo.edge.from,
+        reverseInfo.edge.to,
       ),
     );
   }
@@ -424,6 +468,8 @@ export class SecurityGraphView {
     line.setAttribute("y1", fromPos.y);
     line.setAttribute("x2", toPos.x);
     line.setAttribute("y2", toPos.y);
+    line.setAttribute("data-edge-from", info.edge.from);
+    line.setAttribute("data-edge-to", info.edge.to);
     Object.assign(line.style, { cursor: "pointer" });
 
     Object.entries(style).forEach(([key, value]) => {
@@ -579,12 +625,16 @@ export class SecurityGraphView {
     return `Route: ${source} → ${target}`;
   }
 
-  createArrowMarker(svgNS, x, y, angle, size, color) {
+  createArrowMarker(svgNS, x, y, angle, size, color, edgeFrom, edgeTo) {
     const arrowGroup = document.createElementNS(svgNS, "g");
     arrowGroup.setAttribute(
       "transform",
       `translate(${x}, ${y}) rotate(${(angle * 180) / Math.PI})`,
     );
+    if (edgeFrom && edgeTo) {
+      arrowGroup.setAttribute("data-edge-from", edgeFrom);
+      arrowGroup.setAttribute("data-edge-to", edgeTo);
+    }
 
     const arrow = document.createElementNS(svgNS, "polygon");
     arrow.setAttribute("points", `0,0 -${size},-${size / 2} -${size},${size / 2}`);
@@ -603,6 +653,7 @@ export class SecurityGraphView {
     blockedNodes,
     showPersistentTooltip,
     centerNodeId,
+    updateVisibility,
   ) {
     const nodesGroup = document.createElementNS(svgNS, "g");
     nodesGroup.setAttribute("class", "nodes");
@@ -621,6 +672,7 @@ export class SecurityGraphView {
 
       const nodeGroup = document.createElementNS(svgNS, "g");
       nodeGroup.setAttribute("class", "node");
+      nodeGroup.setAttribute("data-node-id", node.id);
 
       let fillColor;
       if (isBlocked) {
@@ -667,7 +719,7 @@ export class SecurityGraphView {
         );
       }
 
-      titleLines.push(`Double-click to center view on this node`);
+      titleLines.push(`Click to focus (hide unconnected nodes), Double-click to re-center view`);
 
       const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peerOAppId || cfg.peer) || [];
       if (peerConfigs.length > 0) {
@@ -697,6 +749,9 @@ export class SecurityGraphView {
       circle.addEventListener("click", (e) => {
         e.stopPropagation();
         showPersistentTooltip(nodeTooltipText, e.pageX + 10, e.pageY + 10);
+        if (updateVisibility) {
+          updateVisibility(node.id);
+        }
       });
 
       // Add double-click handler to re-center on this node
@@ -2324,7 +2379,10 @@ export class SecurityGraphView {
 
         const centerIndex = (nodesAtDistance.length - 1) / 2;
         const distanceFromCenterIndex = index - centerIndex;
-        const maxDistanceFromCenter = Math.max(centerIndex, nodesAtDistance.length - 1 - centerIndex);
+        const maxDistanceFromCenter = Math.max(
+          centerIndex,
+          nodesAtDistance.length - 1 - centerIndex,
+        );
         const normalizedPosition =
           maxDistanceFromCenter > 0 ? distanceFromCenterIndex / maxDistanceFromCenter : 0;
 
@@ -2499,7 +2557,7 @@ export class SecurityGraphView {
 
   clearAllTooltips() {
     // Remove all persistent tooltips from DOM
-    document.querySelectorAll('.persistent-tooltip').forEach(el => el.remove());
+    document.querySelectorAll(".persistent-tooltip").forEach((el) => el.remove());
 
     // Clean up previous handlers if they exist
     if (this.cleanupTooltipHandlers) {
