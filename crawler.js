@@ -153,7 +153,7 @@ export class SecurityGraphCrawler {
             let isStalePeer = false;
             if (remoteLocalEid) {
               const ourConfigForThisSrc = configs.find(
-                (c) => String(c.eid) === String(remoteLocalEid)
+                (c) => String(c.eid) === String(remoteLocalEid),
               );
               if (ourConfigForThisSrc) {
                 // We have a config for this srcEid - check if the peer matches

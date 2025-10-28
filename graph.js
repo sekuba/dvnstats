@@ -434,7 +434,13 @@ export class SecurityGraphView {
     edgesGroup.appendChild(line);
   }
 
-  getEdgeStyle({ isBlocked, isUnknown, requiredDVNCount, maxRequiredDVNsInWeb, differsFromPopular }) {
+  getEdgeStyle({
+    isBlocked,
+    isUnknown,
+    requiredDVNCount,
+    maxRequiredDVNsInWeb,
+    differsFromPopular,
+  }) {
     if (isBlocked) {
       return { color: "#ff0000", width: "1", opacity: "0.6", dashArray: "8,4" };
     }
@@ -481,7 +487,9 @@ export class SecurityGraphView {
     }
 
     const hasSecurityConfig = Boolean(info.hasSecurityConfig);
-    const unknownMessage = info.isUnknownSecurity ? "WARNING: Unknown security config (untracked)" : null;
+    const unknownMessage = info.isUnknownSecurity
+      ? "WARNING: Unknown security config (untracked)"
+      : null;
     const routeLine = this.buildRouteLabel(info);
 
     const requiredLine = hasSecurityConfig
@@ -490,17 +498,19 @@ export class SecurityGraphView {
         : `Required DVN Count: ${requiredDVNCount}`
       : "Required DVNs: unknown";
 
-    const optionalLine = hasSecurityConfig && optionalDVNCount > 0
-      ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${
+    const optionalLine =
+      hasSecurityConfig && optionalDVNCount > 0
+        ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${
             optionalDVNLabels && optionalDVNLabels.length
               ? ` → ${optionalDVNLabels.join(", ")}`
               : ""
           }`
-      : null;
+        : null;
 
-    const sentinelLine = hasSecurityConfig && usesSentinel
-      ? "Required DVN sentinel active (0 mandatory, optional quorum enforced)"
-      : null;
+    const sentinelLine =
+      hasSecurityConfig && usesSentinel
+        ? "Required DVN sentinel active (0 mandatory, optional quorum enforced)"
+        : null;
 
     const anomalyLine =
       hasSecurityConfig && !isBlocked && differsFromPopular
@@ -508,7 +518,10 @@ export class SecurityGraphView {
         : null;
 
     const lowerSecurityLine =
-      hasSecurityConfig && !isBlocked && maxRequiredDVNsInWeb > 0 && requiredDVNCount < maxRequiredDVNsInWeb
+      hasSecurityConfig &&
+      !isBlocked &&
+      maxRequiredDVNsInWeb > 0 &&
+      requiredDVNCount < maxRequiredDVNsInWeb
         ? `WARNING: Lower security (${requiredDVNCount} vs web max ${maxRequiredDVNsInWeb})`
         : null;
 
