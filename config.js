@@ -27,6 +27,7 @@ export const APP_CONFIG = Object.freeze({
   CRAWLER: Object.freeze({
     DEFAULT_DEPTH: 10,
     MAX_DEPTH: 20,
+    BATCH_SIZE: 16,
   }),
 
   FEEDBACK: Object.freeze({

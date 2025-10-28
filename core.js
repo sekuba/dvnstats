@@ -51,6 +51,8 @@ export class ChainDirectory {
     this.localEidLabels = new Map();
     this.localEidDetails = new Map();
     this.dvnDirectory = new Map();
+    this.chainLabelCache = new Map();
+    this.dvnNameCache = new Map();
     this.loaded = false;
   }
 
@@ -75,6 +77,9 @@ export class ChainDirectory {
     if (!data || typeof data !== "object") return;
 
     let count = 0;
+
+    this.chainLabelCache.clear();
+    this.dvnNameCache.clear();
 
     Object.entries(data).forEach(([key, chain]) => {
       if (!chain || typeof chain !== "object") return;
@@ -116,21 +121,23 @@ export class ChainDirectory {
     console.log(`[ChainDirectory] Registered ${count} deployments`);
   }
 
-  getChainLabel(localEid) {
-    return localEid !== undefined && localEid !== null
-      ? this.localEidLabels.get(String(localEid)) || null
-      : null;
-  }
-
   getChainInfo(localEid) {
-    const info = this.localEidDetails.get(String(localEid));
-    return info
+    const key = String(localEid);
+    if (this.chainLabelCache.has(key)) {
+      return this.chainLabelCache.get(key);
+    }
+
+    const info = this.localEidDetails.get(key);
+    const result = info
       ? {
           primary: info.label,
           secondary: `eid ${localEid}`,
-          copyValue: String(localEid),
+          copyValue: key,
         }
       : null;
+
+    this.chainLabelCache.set(key, result);
+    return result;
   }
 
   listLocalEndpoints() {
@@ -143,11 +150,24 @@ export class ChainDirectory {
     if (!address) return address;
 
     const normalized = String(address).toLowerCase();
-    if (localEid !== undefined && localEid !== null) {
-      const scoped = this.dvnDirectory.get(`local:${localEid}:${normalized}`);
-      if (scoped) return scoped;
+    const cacheKey =
+      localEid !== undefined && localEid !== null
+        ? `${localEid}:${normalized}`
+        : `fallback:${normalized}`;
+    if (this.dvnNameCache.has(cacheKey)) {
+      return this.dvnNameCache.get(cacheKey);
     }
-    return this.dvnDirectory.get(`fallback:${normalized}`) || address;
+
+    let resolved = undefined;
+    if (localEid !== undefined && localEid !== null) {
+      resolved = this.dvnDirectory.get(`local:${localEid}:${normalized}`);
+    }
+    if (!resolved) {
+      resolved = this.dvnDirectory.get(`fallback:${normalized}`) || address;
+    }
+
+    this.dvnNameCache.set(cacheKey, resolved);
+    return resolved;
   }
 
   resolveDvnNames(addresses, context = {}) {
@@ -194,11 +214,6 @@ export function normalizeAddress(address) {
   }
 
   return lower;
-}
-
-export function makeOAppId(localEid, address) {
-  if (localEid === undefined || localEid === null) throw new Error("localEid required");
-  return `${localEid}_${normalizeAddress(address)}`;
 }
 
 export function normalizeOAppId(value) {
