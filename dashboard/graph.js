@@ -601,8 +601,7 @@ export class SecurityGraphView {
         );
       }
 
-      const peerConfigs =
-        node.securityConfigs?.filter((cfg) => cfg.peerOAppId || cfg.peer) || [];
+      const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peerOAppId || cfg.peer) || [];
       if (peerConfigs.length > 0) {
         const resolvedPeers = peerConfigs.filter((cfg) => cfg.peerResolved).length;
         titleLines.push(`Peers: ${resolvedPeers}/${peerConfigs.length} resolved`);

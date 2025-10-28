@@ -111,6 +111,8 @@ export class QueryCoordinator {
     this.lastMetaBase = null;
     this.lastVariables = null;
     this.registry = null;
+    this.chainLabelCache = new Map();
+    this.dvnLabelCache = new Map();
   }
 
   getChainDisplayLabel(chainId) {
@@ -119,14 +121,14 @@ export class QueryCoordinator {
     }
 
     const key = String(chainId);
-
-    // Use chain metadata (falls back to eid label)
-    const chainInfo = this.chainMetadata.getChainInfo(key);
-    if (chainInfo) {
-      return `${chainInfo.primary} (${key})`;
+    if (this.chainLabelCache.has(key)) {
+      return this.chainLabelCache.get(key);
     }
 
-    return key;
+    const chainInfo = this.chainMetadata.getChainInfo(key);
+    const display = chainInfo ? `${chainInfo.primary} (${key})` : key;
+    this.chainLabelCache.set(key, display);
+    return display;
   }
 
   formatOAppIdCell(oappId) {
@@ -159,12 +161,24 @@ export class QueryCoordinator {
       localEidOverride !== undefined && localEidOverride !== null
         ? localEidOverride
         : (meta?.localEid ?? meta?.eid ?? null);
-    const context =
-      candidateLocal !== undefined && candidateLocal !== null && candidateLocal !== ""
-        ? { localEid: String(candidateLocal) }
-        : {};
+    const normalizedAddresses = addresses.filter(Boolean);
+    if (!normalizedAddresses.length) {
+      return [];
+    }
 
-    return this.chainMetadata.resolveDvnNames(addresses, context);
+    const localKey =
+      candidateLocal !== undefined && candidateLocal !== null && candidateLocal !== ""
+        ? String(candidateLocal)
+        : "";
+    const cacheKey = `${localKey}|${normalizedAddresses.join(",").toLowerCase()}`;
+    if (this.dvnLabelCache.has(cacheKey)) {
+      return this.dvnLabelCache.get(cacheKey);
+    }
+
+    const context = localKey ? { localEid: localKey } : {};
+    const labels = this.chainMetadata.resolveDvnNames(normalizedAddresses, context);
+    this.dvnLabelCache.set(cacheKey, labels);
+    return labels;
   }
 
   buildQueryRegistry() {
@@ -886,6 +900,9 @@ export class QueryCoordinator {
       throw new Error(`Unknown query: ${key}`);
     }
 
+    this.dvnLabelCache.clear();
+    this.chainLabelCache.clear();
+
     const buildResult = config.buildVariables?.(card) ?? {};
     const variables =
       Object.prototype.hasOwnProperty.call(buildResult, "variables") && buildResult.variables
@@ -1106,9 +1123,11 @@ export class ResultsView {
     this.toastQueue = toastQueue;
     this.lastRender = null;
     this.copyFeedbackTimers = new WeakMap();
+    this.chainLabelCache = new Map();
   }
 
   render(rows, payload, meta) {
+    this.chainLabelCache.clear();
     const metaSnapshot = { ...meta };
     this.lastRender = { rows, payload, meta: metaSnapshot };
 
@@ -1212,6 +1231,22 @@ export class ResultsView {
 
     const graphContainer = renderer.render(webData);
     this.resultsBody.appendChild(graphContainer);
+  }
+
+  getChainDisplayLabel(chainId) {
+    if (!chainId && chainId !== 0) {
+      return "";
+    }
+
+    const key = String(chainId);
+    if (this.chainLabelCache.has(key)) {
+      return this.chainLabelCache.get(key);
+    }
+
+    const chainInfo = this.chainMetadata.getChainInfo(key);
+    const display = chainInfo ? `${chainInfo.primary} (${key})` : key;
+    this.chainLabelCache.set(key, display);
+    return display;
   }
 
   renderError(meta) {
@@ -1522,20 +1557,6 @@ export class ResultsView {
       parts.push(`${key}=${value}`);
     }
     return parts.join(", ");
-  }
-
-  getChainDisplayLabel(chainId) {
-    if (!chainId && chainId !== 0) {
-      return "";
-    }
-
-    const key = String(chainId);
-    const chainInfo = this.chainMetadata.getChainInfo(key, "native");
-    if (chainInfo) {
-      return `${chainInfo.primary} (${key})`;
-    }
-
-    return key;
   }
 
   async handleCopyableClick(event) {
