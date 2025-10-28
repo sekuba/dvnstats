@@ -11,7 +11,7 @@ export const APP_CONFIG = Object.freeze({
   }),
 
   GRAPH_VISUAL: Object.freeze({
-    WIDTH: 1600,
+    WIDTH: 2300,
     HEIGHT: 1200,
     NODE_RADIUS: 40,
     PADDING: 150,
