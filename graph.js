@@ -1335,6 +1335,14 @@ export class SecurityGraphView {
       });
     appendAnomalyGroup("Sentinel DVNs", sentinelItems);
 
+    const fromPacketItems = nodeMetrics
+      .filter((metric) => metric.fromPacketDelivered)
+      .map((metric) => ({
+        metric,
+        detail: "Auto-discovered from packet delivery (unconfigured route)",
+      }));
+    appendAnomalyGroup("From Packet", fromPacketItems);
+
     if (!anomalyContainer.childElementCount) {
       const emptyAnomaly = document.createElement("p");
       emptyAnomaly.textContent = "No anomalies detected in this crawl.";
@@ -1682,9 +1690,7 @@ export class SecurityGraphView {
         );
       }
       if (metric.fromPacketDelivered) {
-        noteBadges.push(
-          createBadge("From packet", "info", "Auto-discovered from packet delivery"),
-        );
+        noteBadges.push(createBadge("From packet", "info", "Auto-discovered from packet delivery"));
       }
       metric.notes.forEach((note) => {
         if (note === "Blocked" || note === "Sentinel quorum") {
