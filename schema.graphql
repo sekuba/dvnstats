@@ -52,7 +52,7 @@ type DefaultUlnConfigVersion {
   transactionHash: String! @index
 }
 
-type OApp {
+type OAppStats {
   id: ID!
   localEid: BigInt! @index
   address: String! @index
@@ -157,7 +157,7 @@ type OAppSecurityConfig {
   peerTransactionHash: String @index
 }
 
-type OAppEidPacketStats {
+type OAppRouteStats {
   id: ID!
   oappId: String! @index
   localEid: BigInt! @index
@@ -208,6 +208,7 @@ type OAppPeer {
   eid: BigInt! @index
   peer: String
   peerOappId: String @index
+  fromPacketDelivered: Boolean!
   transactionHash: String! @index
   lastUpdatedBlock: BigInt!
   lastUpdatedTimestamp: BigInt!
@@ -222,6 +223,7 @@ type OAppPeerVersion {
   eid: BigInt! @index
   peer: String
   peerOappId: String @index
+  fromPacketDelivered: Boolean!
   transactionHash: String! @index
   blockNumber: BigInt!
   blockTimestamp: BigInt!

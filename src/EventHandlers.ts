@@ -3,8 +3,8 @@ import {
   DefaultReceiveLibraryVersion,
   DefaultUlnConfig,
   DefaultUlnConfigVersion,
-  OApp,
-  OAppEidPacketStats,
+  OAppStats,
+  OAppRouteStats,
   OAppReceiveLibrary,
   OAppReceiveLibraryVersion,
   OAppPeer,
@@ -339,7 +339,7 @@ const makeDefaultScopedId = (localEid: bigint, eid: bigint): string =>
 const makeOAppId = (localEid: bigint, address: string): string =>
   `${localEid.toString()}_${address}`;
 
-const makeSecurityConfigId = (oappId: string, eid: bigint): string => `${oappId}_${eid.toString()}`;
+const makeRouteId = (oappId: string, eid: bigint): string => `${oappId}_${eid.toString()}`;
 
 const toBigInt = (value: number | bigint): bigint => BigInt(value);
 
@@ -628,7 +628,7 @@ const computeAndPersistEffectiveConfig = async ({
   transactionHash,
 }: ComputeEffectiveConfigArgs): Promise<OAppSecurityConfig> => {
   const defaultKey = makeDefaultScopedId(localEid, eid);
-  const configId = makeSecurityConfigId(oappId, eid);
+  const configId = makeRouteId(oappId, eid);
 
   const [defaultLibrary, defaultConfig, libraryOverride, configOverride, peerState] =
     await Promise.all([
@@ -972,7 +972,7 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
     return;
   }
   const oappId = makeOAppId(localEid, receiver);
-  const configId = makeSecurityConfigId(oappId, event.params.eid);
+  const configId = makeRouteId(oappId, event.params.eid);
   const normalizedLibrary = normalizeAddress(event.params.newLib);
   if (!normalizedLibrary) {
     context.log.warn("ReceiveLibrarySet missing newLib", {
@@ -986,7 +986,7 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
     return;
   }
 
-  const oappDefaults: OApp = {
+  const oappDefaults: OAppStats = {
     id: oappId,
     localEid,
     address: receiver,
@@ -994,7 +994,7 @@ EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
     lastPacketBlock: undefined,
     lastPacketTimestamp: undefined,
   };
-  await context.OApp.getOrCreate(oappDefaults);
+  await context.OAppStats.getOrCreate(oappDefaults);
 
   const libraryEntity: OAppReceiveLibrary = {
     id: configId,
@@ -1057,7 +1057,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
     return;
   }
   const oappId = makeOAppId(localEid, receiver);
-  const configId = makeSecurityConfigId(oappId, event.params.eid);
+  const configId = makeRouteId(oappId, event.params.eid);
 
   // Use destructuring for better readability and type safety
   const [
@@ -1090,7 +1090,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
   const normalizedRequired = uniqueNormalizedAddresses(requiredDVNs);
   const normalizedOptional = uniqueNormalizedAddresses(optionalDVNs);
 
-  const oappDefaults: OApp = {
+  const oappDefaults: OAppStats = {
     id: oappId,
     localEid,
     address: receiver,
@@ -1098,7 +1098,7 @@ ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
     lastPacketBlock: undefined,
     lastPacketTimestamp: undefined,
   };
-  await context.OApp.getOrCreate(oappDefaults);
+  await context.OAppStats.getOrCreate(oappDefaults);
 
   const configEntity: OAppUlnConfig = {
     id: configId,
@@ -1205,7 +1205,7 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
     const senderOappId = makeOAppId(srcEid, normalizedSender);
     const oappId = makeOAppId(localEid, receiver);
 
-    const oappDefaults: OApp = {
+    const oappDefaults: OAppStats = {
       id: oappId,
       localEid,
       address: receiver,
@@ -1213,18 +1213,18 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       lastPacketBlock: undefined,
       lastPacketTimestamp: undefined,
     };
-    const oapp = await context.OApp.getOrCreate(oappDefaults);
+    const oapp = await context.OAppStats.getOrCreate(oappDefaults);
 
-    const updatedOApp: OApp = {
+    const updatedOApp: OAppStats = {
       ...oapp,
       totalPacketsReceived: oapp.totalPacketsReceived + 1n,
       lastPacketBlock: blockNumber,
       lastPacketTimestamp: blockTimestamp,
     };
-    context.OApp.set(updatedOApp);
+    context.OAppStats.set(updatedOApp);
 
-    const statsId = makeSecurityConfigId(oappId, srcEid);
-    const statsDefaults: OAppEidPacketStats = {
+    const statsId = makeRouteId(oappId, srcEid);
+    const statsDefaults: OAppRouteStats = {
       id: statsId,
       oappId,
       localEid,
@@ -1235,7 +1235,79 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       lastPacketTimestamp: undefined,
       lastPacketSecurityConfigId: undefined,
     };
-    const stats = await context.OAppEidPacketStats.getOrCreate(statsDefaults);
+    const stats = await context.OAppRouteStats.getOrCreate(statsDefaults);
+
+    // Check if peer is configured and track unconfigured deliveries
+    const peerRouteId = makeRouteId(oappId, srcEid);
+    const existingPeer = await context.OAppPeer.get(peerRouteId);
+
+    if (!existingPeer) {
+      // No peer configured for this route - create OAppPeer + OAppPeerVersion to track it
+      const autoPeer: OAppPeer = {
+        id: peerRouteId,
+        oappId,
+        localEid,
+        oapp: receiver,
+        eid: srcEid,
+        peer: sender,
+        peerOappId: senderOappId,
+        fromPacketDelivered: true,
+        transactionHash,
+        lastUpdatedBlock: blockNumber,
+        lastUpdatedTimestamp: blockTimestamp,
+        lastUpdatedByEventId: eventId,
+      };
+      context.OAppPeer.set(autoPeer);
+
+      const autoPeerVersion: OAppPeerVersion = {
+        id: eventId,
+        oappId,
+        localEid,
+        oapp: receiver,
+        eid: srcEid,
+        peer: sender,
+        peerOappId: senderOappId,
+        fromPacketDelivered: true,
+        transactionHash,
+        blockNumber,
+        blockTimestamp,
+        eventId,
+      };
+      context.OAppPeerVersion.set(autoPeerVersion);
+    } else if (existingPeer.fromPacketDelivered === false) {
+      // Peer was explicitly configured via PeerSet - verify sender matches
+      const configuredPeerNormalized = existingPeer.peer
+        ? normalizeOAppAddress(existingPeer.peer)
+        : undefined;
+
+      if (!configuredPeerNormalized) {
+        context.log.warn("PacketDelivered: failed to normalize configured peer", {
+          localEid: localEid.toString(),
+          srcEid: srcEid.toString(),
+          receiver,
+          sender: normalizedSender,
+          configuredPeer: existingPeer.peer,
+          blockNumber: event.block.number,
+          logIndex: event.logIndex,
+          eventId,
+          transactionHash,
+        });
+      } else if (configuredPeerNormalized !== normalizedSender) {
+        context.log.warn("PacketDelivered: sender does not match configured peer", {
+          localEid: localEid.toString(),
+          srcEid: srcEid.toString(),
+          receiver,
+          sender: normalizedSender,
+          configuredPeer: configuredPeerNormalized,
+          blockNumber: event.block.number,
+          logIndex: event.logIndex,
+          eventId,
+          transactionHash,
+        });
+      }
+      // If sender matches configured peer, all is good - no log, no action
+    }
+    // If existingPeer.fromPacketDelivered === true, we already auto-tracked this - skip silently
 
     const securityConfig = await computeAndPersistEffectiveConfig({
       context,
@@ -1249,14 +1321,14 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       transactionHash,
     });
 
-    const updatedStats: OAppEidPacketStats = {
+    const updatedStats: OAppRouteStats = {
       ...stats,
       packetCount: stats.packetCount + 1n,
       lastPacketBlock: blockNumber,
       lastPacketTimestamp: blockTimestamp,
       lastPacketSecurityConfigId: securityConfig.id,
     };
-    context.OAppEidPacketStats.set(updatedStats);
+    context.OAppRouteStats.set(updatedStats);
 
     const packetEntity: PacketDeliveredEntity = {
       id: eventId,
@@ -1327,12 +1399,12 @@ OAppOFT.PeerSet.handler(
     }
     const oappId = makeOAppId(localEid, oappAddress);
     const eid = event.params.eid;
-    const configId = makeSecurityConfigId(oappId, eid);
+    const configId = makeRouteId(oappId, eid);
     const peerValue = event.params.peer;
     const normalizedPeer = normalizeOAppAddress(peerValue);
     const peerOappId = normalizedPeer ? makeOAppId(eid, normalizedPeer) : undefined;
 
-    const oappDefaults: OApp = {
+    const oappDefaults: OAppStats = {
       id: oappId,
       localEid,
       address: oappAddress,
@@ -1340,7 +1412,7 @@ OAppOFT.PeerSet.handler(
       lastPacketBlock: undefined,
       lastPacketTimestamp: undefined,
     };
-    await context.OApp.getOrCreate(oappDefaults);
+    await context.OAppStats.getOrCreate(oappDefaults);
 
     const peerEntity: OAppPeer = {
       id: configId,
@@ -1350,6 +1422,7 @@ OAppOFT.PeerSet.handler(
       eid,
       peer: peerValue,
       peerOappId,
+      fromPacketDelivered: false,
       transactionHash,
       lastUpdatedBlock: blockNumber,
       lastUpdatedTimestamp: blockTimestamp,
@@ -1365,6 +1438,7 @@ OAppOFT.PeerSet.handler(
       eid,
       peer: peerValue,
       peerOappId,
+      fromPacketDelivered: false,
       transactionHash,
       blockNumber,
       blockTimestamp,
@@ -1420,7 +1494,7 @@ OAppOFT.RateLimiterSet.handler(
     const oappId = makeOAppId(localEid, oappAddress);
     const normalizedRateLimiter = normalizeAddress(event.params.rateLimiter);
 
-    const oappDefaults: OApp = {
+    const oappDefaults: OAppStats = {
       id: oappId,
       localEid,
       address: oappAddress,
@@ -1428,7 +1502,7 @@ OAppOFT.RateLimiterSet.handler(
       lastPacketBlock: undefined,
       lastPacketTimestamp: undefined,
     };
-    await context.OApp.getOrCreate(oappDefaults);
+    await context.OAppStats.getOrCreate(oappDefaults);
 
     const rateLimiterEntity: OAppRateLimiter = {
       id: oappId,
@@ -1480,7 +1554,7 @@ OAppOFT.RateLimitsChanged.handler(
     }
     const oappId = makeOAppId(localEid, oappAddress);
 
-    const oappDefaults: OApp = {
+    const oappDefaults: OAppStats = {
       id: oappId,
       localEid,
       address: oappAddress,
@@ -1488,13 +1562,13 @@ OAppOFT.RateLimitsChanged.handler(
       lastPacketBlock: undefined,
       lastPacketTimestamp: undefined,
     };
-    await context.OApp.getOrCreate(oappDefaults);
+    await context.OAppStats.getOrCreate(oappDefaults);
 
     for (const [rawDstEid, rawLimit, rawWindow] of event.params.rateLimitConfigs) {
       const dstEid = BigInt(rawDstEid);
       const limit = BigInt(rawLimit);
       const window = BigInt(rawWindow);
-      const configId = makeSecurityConfigId(oappId, dstEid);
+      const configId = makeRouteId(oappId, dstEid);
       const versionId = `${eventId}_${dstEid.toString()}`;
 
       const rateLimitEntity: OAppRateLimit = {
