@@ -177,7 +177,7 @@ try {
   const slimChainCount = Object.keys(slimData).length;
 
   console.log('Writing output file:', outputPath);
-  const slimContent = JSON.stringify(slimData, null, 2);
+  const slimContent = JSON.stringify(slimData);
   const slimSize = Buffer.byteLength(slimContent, 'utf8');
 
   fs.writeFileSync(outputPath, slimContent, 'utf8');
