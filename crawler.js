@@ -80,12 +80,25 @@ export class SecurityGraphCrawler {
             : fallbackLocalEid;
         const resolvedAddress = oapp?.address || fallbackAddress || "unknown";
 
+        // Check if this node was discovered via packet delivery
+        let fromPacketDelivered = false;
+        if (batchData.peers) {
+          // Check all possible source eids for this oappId
+          for (const [key, peer] of batchData.peers.entries()) {
+            if (key.startsWith(`${oappId}_`) && peer.fromPacketDelivered === true) {
+              fromPacketDelivered = true;
+              break;
+            }
+          }
+        }
+
         const node = {
           id: oappId,
           localEid,
           address: resolvedAddress,
           totalPacketsReceived: oapp?.totalPacketsReceived || 0,
           isTracked: configs.length > 0,
+          fromPacketDelivered,
           depth,
           securityConfigs: [],
         };
@@ -226,6 +239,7 @@ export class SecurityGraphCrawler {
         address,
         isTracked: false,
         isDangling: true,
+        fromPacketDelivered: false,
         depth: -1,
         securityConfigs: [],
         totalPacketsReceived: 0,
@@ -235,7 +249,7 @@ export class SecurityGraphCrawler {
 
   async fetchSecurityConfigBatch(oappIds) {
     if (!Array.isArray(oappIds) || oappIds.length === 0) {
-      return { origin: new Map(), referencing: new Map(), oapps: new Map() };
+      return { origin: new Map(), referencing: new Map(), oapps: new Map(), peers: new Map() };
     }
 
     const uniqueIds = Array.from(new Set(oappIds));
@@ -288,6 +302,12 @@ export class SecurityGraphCrawler {
           address
           totalPacketsReceived
         }
+        OAppPeer(where: { oappId: { _in: $oappIds } }) {
+          id
+          oappId
+          eid
+          fromPacketDelivered
+        }
       }
     `;
 
@@ -313,10 +333,17 @@ export class SecurityGraphCrawler {
       oappMap.set(String(oapp.id), oapp);
     });
 
+    const peerMap = new Map();
+    (data.OAppPeer || []).forEach((peer) => {
+      const key = `${peer.oappId}_${peer.eid}`;
+      peerMap.set(key, peer);
+    });
+
     return {
       origin: originMap,
       referencing: referencingMap,
       oapps: oappMap,
+      peers: peerMap,
     };
   }
 

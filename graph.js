@@ -704,6 +704,10 @@ export class SecurityGraphView {
         `Tracked: ${node.isTracked ? "Yes" : "No"}`,
       ];
 
+      if (node.fromPacketDelivered) {
+        titleLines.push(`From Packet: Auto-discovered from packet delivery`);
+      }
+
       if (isCenterNode) {
         titleLines.push(`CENTER NODE (most connected tracked node)`);
       }
@@ -984,6 +988,7 @@ export class SecurityGraphView {
         depth: node.depth >= 0 ? node.depth : "—",
         isTracked: Boolean(node.isTracked),
         isDangling: Boolean(node.isDangling),
+        fromPacketDelivered: Boolean(node.fromPacketDelivered),
         isBlocked: blockedNodes.has(node.id),
         totalPackets,
         incoming,
@@ -1404,7 +1409,6 @@ export class SecurityGraphView {
     thead.innerHTML = `
       <tr>
         <th>Node</th>
-        <th>Status</th>
         <th>DVN Configs</th>
         <th>Optional Quorum</th>
         <th>Inbound Edges</th>
@@ -1454,27 +1458,6 @@ export class SecurityGraphView {
       nodeBlock.appendChild(nodeInfo);
       nodeCell.appendChild(nodeBlock);
       tr.appendChild(nodeCell);
-
-      const statusCell = document.createElement("td");
-      statusCell.className = "status-cell";
-      const statusBadges = [];
-      statusBadges.push(
-        metric.isTracked ? createBadge("Tracked") : createBadge("Untracked", "muted"),
-      );
-      if (metric.isDangling) {
-        statusBadges.push(createBadge("Dangling", "alert"));
-      }
-      if (metric.isBlocked) {
-        statusBadges.push(
-          createBadge(
-            "Blocked",
-            "danger",
-            metric.blockReasons.length ? metric.blockReasons.join("; ") : null,
-          ),
-        );
-      }
-      statusBadges.forEach((badge) => statusCell.appendChild(badge));
-      tr.appendChild(statusCell);
 
       const configCell = document.createElement("td");
       configCell.className = "config-cell";
@@ -1696,6 +1679,11 @@ export class SecurityGraphView {
             "info",
             sentinelDetails.length ? sentinelDetails.join("; ") : null,
           ),
+        );
+      }
+      if (metric.fromPacketDelivered) {
+        noteBadges.push(
+          createBadge("From packet", "info", "Auto-discovered from packet delivery"),
         );
       }
       metric.notes.forEach((note) => {
