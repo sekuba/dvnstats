@@ -192,7 +192,7 @@ export class QueryCoordinator {
         description: "Ordered by total packets received",
         query: `
           query TopOApps($limit: Int, $minPackets: numeric!) {
-            OApp(
+            OAppStats(
               order_by: { totalPacketsReceived: desc }
               limit: $limit
               where: { totalPacketsReceived: { _gte: $minPackets } }
@@ -229,7 +229,7 @@ export class QueryCoordinator {
           };
         },
         extractRows: (data) =>
-          (data?.OApp ?? []).map((row) => ({
+          (data?.OAppStats ?? []).map((row) => ({
             ...row,
             id: this.formatOAppIdCell(row.id),
           })),
@@ -240,7 +240,7 @@ export class QueryCoordinator {
         description: "Resolve the current security posture for a single OApp",
         query: `
           query CurrentSecurityConfig($oappId: String!) {
-            OApp(where: { id: { _eq: $oappId } }) {
+            OAppStats(where: { id: { _eq: $oappId } }) {
               id
               localEid
               address
@@ -379,7 +379,7 @@ export class QueryCoordinator {
           };
         },
         processResponse: (payload, meta) => {
-          const oapp = payload?.data?.OApp?.[0] ?? null;
+          const oapp = payload?.data?.OAppStats?.[0] ?? null;
           const configs = payload?.data?.OAppSecurityConfig ?? [];
           const enrichedMeta = { ...meta };
 

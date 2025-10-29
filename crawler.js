@@ -282,7 +282,7 @@ export class SecurityGraphCrawler {
           peerLastUpdatedTimestamp
           peerLastUpdatedEventId
         }
-        OApp(where: { id: { _in: $oappIds } }) {
+        OAppStats(where: { id: { _in: $oappIds } }) {
           id
           localEid
           address
@@ -309,7 +309,7 @@ export class SecurityGraphCrawler {
     });
 
     const oappMap = new Map();
-    (data.OApp || []).forEach((oapp) => {
+    (data.OAppStats || []).forEach((oapp) => {
       oappMap.set(String(oapp.id), oapp);
     });
 
