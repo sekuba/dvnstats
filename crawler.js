@@ -140,7 +140,6 @@ export class SecurityGraphCrawler {
             peerOAppId,
             peerLocalEid: peer?.localEid || null,
             peerAddress: peer?.address || null,
-            peerResolved: peer?.resolved ?? Boolean(peerOAppId),
           });
 
           return {
@@ -148,11 +147,9 @@ export class SecurityGraphCrawler {
             edgeFrom: edgeFromId,
             edgeTo: oappId,
             peerInfo: peer,
-            peerResolved: peer?.resolved ?? Boolean(peerOAppId),
             peerRaw: peer?.rawPeer ?? cfg.peer ?? null,
             peerLocalEid: peer?.localEid || null,
             queueNext: peerOAppId,
-            linkType: "peer",
           };
         });
 
@@ -189,11 +186,9 @@ export class SecurityGraphCrawler {
               edgeFrom: remoteId,
               edgeTo: oappId,
               peerInfo: null,
-              peerResolved: true,
               peerRaw: cfg.peer ?? null,
               peerLocalEid: remoteLocalEid ?? null,
               queueNext: remoteId,
-              linkType: "peer",
               isStalePeer,
             };
           });
@@ -401,11 +396,6 @@ export class SecurityGraphCrawler {
           from: edgeFrom,
           to: edgeTo,
           srcEid: context.config?.eid,
-          linkType: context.linkType || "peer",
-          peerResolved:
-            context.peerResolved ??
-            (context.peerInfo ? context.peerInfo.resolved : undefined) ??
-            null,
           peerRaw:
             context.peerRaw ?? (context.peerInfo ? context.peerInfo.rawPeer : undefined) ?? null,
           peerLocalEid:

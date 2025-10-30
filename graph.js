@@ -530,27 +530,23 @@ export class SecurityGraphView {
       usesSentinel,
       differsFromPopular,
       differenceReasons,
-      peerResolved,
-      peerRaw,
     } = info;
 
     let blockMessage = null;
     if (isBlocked && blockReason === "stale-peer") {
-      blockMessage = "STATUS: BLOCKED (stale peer)";
+      blockMessage = "Status: BLOCKED (stale peer)";
     } else if (isBlocked && blockReason === "zero-peer") {
-      blockMessage = "STATUS: BLOCKED (peer set to zero address)";
+      blockMessage = "Status: BLOCKED (peer set to zero address)";
     } else if (isBlocked && blockReason === "blocking-dvn") {
-      blockMessage = "STATUS: BLOCKED (blocking DVN)";
+      blockMessage = "Status: BLOCKED (blocking DVN)";
     } else if (isBlocked && blockReason === "dead-dvn") {
-      blockMessage = "STATUS: BLOCKED (dead DVN)";
+      blockMessage = "Status: BLOCKED (dead DVN)";
     } else if (isBlocked) {
-      blockMessage = "STATUS: BLOCKED";
+      blockMessage = "Status: BLOCKED";
     }
 
     const hasSecurityConfig = Boolean(info.hasSecurityConfig);
-    const unknownMessage = info.isUnknownSecurity
-      ? "WARNING: Unknown security config (untracked)"
-      : null;
+    const unknownMessage = info.isUnknownSecurity ? "Unknown security config (untracked)" : null;
     const routeLine = this.buildRouteLabel(info);
 
     const requiredLine = hasSecurityConfig
@@ -569,13 +565,11 @@ export class SecurityGraphView {
         : null;
 
     const sentinelLine =
-      hasSecurityConfig && usesSentinel
-        ? "Required DVN sentinel active (0 mandatory, optional quorum enforced)"
-        : null;
+      hasSecurityConfig && usesSentinel ? "Sentinel: Only optional quorum enforced" : null;
 
     const anomalyLine =
       hasSecurityConfig && !isBlocked && differsFromPopular
-        ? `ANOMALY: ${differenceReasons?.length ? differenceReasons.join("; ") : "non-standard DVN combo"}`
+        ? `Anomaly: ${differenceReasons?.length ? differenceReasons.join("; ") : "non-standard DVN set"}`
         : null;
 
     const lowerSecurityLine =
@@ -583,29 +577,25 @@ export class SecurityGraphView {
       !isBlocked &&
       maxRequiredDVNsInWeb > 0 &&
       requiredDVNCount < maxRequiredDVNsInWeb
-        ? `WARNING: Lower security (${requiredDVNCount} vs web max ${maxRequiredDVNsInWeb})`
+        ? `Warning: Lower security (${requiredDVNCount} vs web max ${maxRequiredDVNsInWeb})`
         : null;
 
     const dominantLine = dominantCombination
-      ? `Dominant combo: ${this.describeCombination(dominantCombination)}`
+      ? `Dominant set: ${this.describeCombination(dominantCombination)}`
       : null;
 
     const lines = [
       `${edge.from} → ${edge.to}`,
-      `Src EID: ${edge.srcEid}`,
-      edge.linkType === "peer" && "Link: PeerSet",
       routeLine,
+      `Src EID: ${edge.srcEid}`,
       blockMessage,
       unknownMessage,
-      anomalyLine,
-      lowerSecurityLine,
       requiredLine,
       optionalLine,
       sentinelLine,
+      anomalyLine,
+      lowerSecurityLine,
       dominantLine,
-      peerResolved === false && "Peer unresolved (non-EVM or unknown address)",
-      peerResolved === false && peerRaw && `Peer Raw: ${peerRaw}`,
-      peerResolved === true && "Peer resolved",
     ].filter(Boolean);
 
     return lines.join("\n");
@@ -700,50 +690,38 @@ export class SecurityGraphView {
       const endpointLabel = this.formatChainLabel(endpointId) || endpointId;
       const titleLines = [
         alias ? `${alias} (${node.id})` : node.id,
-        `Endpoint: ${endpointLabel}`,
-        `Tracked: ${node.isTracked ? "Yes" : "No"}`,
+        `Chain: ${endpointLabel}`,
+        `Node security config tracked: ${node.isTracked ? "Yes" : "No"}`,
       ];
 
       if (node.fromPacketDelivered) {
-        titleLines.push(`From Packet: Auto-discovered from packet delivery`);
-      }
-
-      if (isCenterNode) {
-        titleLines.push(`CENTER NODE (most connected tracked node)`);
+        titleLines.push(`No peer info: Inferred from packet`);
       }
 
       if (node.isTracked) {
-        titleLines.push(`Total Packets: ${node.totalPacketsReceived}`);
-        titleLines.push(`Min Required DVNs: ${minRequiredDVNs}`);
+        titleLines.push(`Lifetime packets received: ${node.totalPacketsReceived}`);
+        titleLines.push(`Min required DVNs: ${minRequiredDVNs}`);
       }
 
       if (isBlocked) {
-        titleLines.push(
-          `BLOCKED: Cannot send packets to monitored nodes (zero-peer, dead DVN, or blocking DVN)`,
-        );
-      }
-
-      titleLines.push(`Click to focus (hide unconnected nodes), Double-click to re-center view`);
-
-      const peerConfigs = node.securityConfigs?.filter((cfg) => cfg.peerOAppId || cfg.peer) || [];
-      if (peerConfigs.length > 0) {
-        const resolvedPeers = peerConfigs.filter((cfg) => cfg.peerResolved).length;
-        titleLines.push(`Peers: ${resolvedPeers}/${peerConfigs.length} resolved`);
+        titleLines.push(`Blocked: Cannot send packets to monitored nodes`);
       }
 
       if (hasBlockedConfig) {
-        titleLines.push(`WARNING: Has blocked config(s) with dead or blocking DVN entries`);
+        titleLines.push(`Has blocking config(s)`);
       }
 
       if (!isBlocked && minRequiredDVNs < maxMinRequiredDVNsForNodes) {
         if (node.isTracked) {
           titleLines.push(
-            `WEAK LINK: Lower than best node security (${minRequiredDVNs} vs ${maxMinRequiredDVNsForNodes})`,
+            `Lower than highest DVN threshold (${minRequiredDVNs} vs ${maxMinRequiredDVNsForNodes})`,
           );
         } else {
-          titleLines.push(`POTENTIAL WEAK LINK: Unknown security config (untracked)`);
+          titleLines.push(`Potential weak link: Untracked security config`);
         }
       }
+
+      titleLines.push(`Click to toggle unconnected nodes, Double-click to put this node at center`);
 
       const nodeTooltipText = titleLines.join("\n");
       const title = document.createElementNS(svgNS, "title");
@@ -1193,7 +1171,7 @@ export class SecurityGraphView {
     const dominantCard = document.createElement("div");
     dominantCard.className = "insight-card";
     const domTitle = document.createElement("h4");
-    domTitle.textContent = "Dominant DVN Combo";
+    domTitle.textContent = "Dominant DVN Set";
     dominantCard.appendChild(domTitle);
 
     if (dominantCombination) {
@@ -1208,7 +1186,7 @@ export class SecurityGraphView {
         typeof dominantCombination.share === "number"
           ? ` (${(dominantCombination.share * 100).toFixed(1)}%)`
           : "";
-      this.appendSummaryRow(dl, "Edges Using Combo", `${dominantCombination.count}${shareText}`);
+      this.appendSummaryRow(dl, "Edges Using Set", `${dominantCombination.count}${shareText}`);
 
       const destIds = Array.from(dominantCombination.toNodes || []);
       if (destIds.length) {
@@ -1244,7 +1222,7 @@ export class SecurityGraphView {
       dominantCard.appendChild(dl);
     } else {
       const empty = document.createElement("p");
-      empty.textContent = "No dominant DVN combination detected.";
+      empty.textContent = "No dominant DVN set detected.";
       dominantCard.appendChild(empty);
     }
 
@@ -1312,7 +1290,7 @@ export class SecurityGraphView {
         metric,
         detail: metric.diffReasonSummary.length
           ? metric.diffReasonSummary.join("; ")
-          : "DVN mix differs from dominant",
+          : "DVN set differs from dominant",
       }));
     appendAnomalyGroup("Non-standard DVNs", variantItems);
 
@@ -1339,7 +1317,7 @@ export class SecurityGraphView {
       .filter((metric) => metric.fromPacketDelivered)
       .map((metric) => ({
         metric,
-        detail: "Auto-discovered from packet delivery (unconfigured route)",
+        detail: "Inferred from packet (no peer info)",
       }));
     appendAnomalyGroup("From Packet", fromPacketItems);
 
@@ -1551,7 +1529,7 @@ export class SecurityGraphView {
           line.className = "config-line config-line--standard";
           const header = document.createElement("div");
           header.className = "config-line-header";
-          header.textContent = `Dominant combo • ${group.count} EID${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
+          header.textContent = `Dominant set • ${group.count} EID${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
           line.appendChild(header);
 
           const uniqueEids = Array.from(
@@ -1668,7 +1646,7 @@ export class SecurityGraphView {
       const noteBadges = [];
 
       if (metric.diffReasonSummary.length) {
-        noteBadges.push(createBadge("Δ DVN mix", "alert", metric.diffReasonSummary.join("; ")));
+        noteBadges.push(createBadge("Δ DVN set", "alert", metric.diffReasonSummary.join("; ")));
       }
       if (metric.blockReasons.length) {
         noteBadges.push(createBadge("Blocked", "danger", metric.blockReasons.join("; ")));
@@ -1690,7 +1668,7 @@ export class SecurityGraphView {
         );
       }
       if (metric.fromPacketDelivered) {
-        noteBadges.push(createBadge("From packet", "info", "Auto-discovered from packet delivery"));
+        noteBadges.push(createBadge("From packet", "info", "Inferred from packet"));
       }
       metric.notes.forEach((note) => {
         if (note === "Blocked" || note === "Sentinel quorum") {
@@ -1818,8 +1796,6 @@ export class SecurityGraphView {
         isUnknownSecurity,
         isBlocked,
         blockReason,
-        peerResolved: edge.peerResolved ?? null,
-        peerRaw: edge.peerRaw ?? null,
         routeFromLabel,
         routeToLabel,
         differsFromPopular: false,
@@ -1871,7 +1847,7 @@ export class SecurityGraphView {
     const combinationStatsList = Array.from(combinationStatsMap.values());
     const totalActiveEdges = combinationStatsList.reduce((sum, entry) => sum + entry.count, 0);
 
-    // Determine dominant combination (prefer non-sentinel combos)
+    // Determine dominant combination (prefer non-sentinel sets)
     let dominantEntry = null;
     const primaryPool = combinationStatsList.filter((entry) => !entry.usesSentinel);
     const fallbackPool = primaryPool.length > 0 ? primaryPool : combinationStatsList;
