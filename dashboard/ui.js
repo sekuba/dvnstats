@@ -298,7 +298,7 @@ export class QueryCoordinator {
             const updateLabel = () => {
               const localEid = endpointInput.value.trim();
               const display = this.getChainDisplayLabel(localEid);
-              chainLabel.textContent = display ? `Endpoint: ${display}` : "Endpoint not selected.";
+              chainLabel.textContent = display ? `Chain: ${display}` : "Chain not selected.";
             };
             endpointInput.addEventListener("input", updateLabel);
             updateLabel();
