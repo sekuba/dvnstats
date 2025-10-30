@@ -26,19 +26,19 @@
  *   - dvns[address].id
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const inputPath = args[0] || path.join(__dirname, 'layerzero.json');
-const outputPath = args[1] || path.join(__dirname, 'layerzero-slim.json');
+const inputPath = args[0] || path.join(__dirname, "layerzero.json");
+const outputPath = args[1] || path.join(__dirname, "layerzero-slim.json");
 
 /**
  * Filters a deployment object to keep only used fields
  */
 function slimifyDeployment(deployment) {
-  if (!deployment || typeof deployment !== 'object') {
+  if (!deployment || typeof deployment !== "object") {
     return deployment;
   }
 
@@ -55,7 +55,7 @@ function slimifyDeployment(deployment) {
  * Filters a DVN entry to keep only used fields
  */
 function slimifyDvn(dvn) {
-  if (!dvn || typeof dvn !== 'object') {
+  if (!dvn || typeof dvn !== "object") {
     return dvn;
   }
 
@@ -73,7 +73,7 @@ function slimifyDvn(dvn) {
  * Filters a chain object to keep only used fields
  */
 function slimifyChain(chain) {
-  if (!chain || typeof chain !== 'object') {
+  if (!chain || typeof chain !== "object") {
     return chain;
   }
 
@@ -85,7 +85,7 @@ function slimifyChain(chain) {
   }
 
   // Keep only used fields from chainDetails
-  if (chain.chainDetails && typeof chain.chainDetails === 'object') {
+  if (chain.chainDetails && typeof chain.chainDetails === "object") {
     slim.chainDetails = {};
 
     if (chain.chainDetails.shortName !== undefined) {
@@ -106,7 +106,7 @@ function slimifyChain(chain) {
   }
 
   // Process DVNs object
-  if (chain.dvns && typeof chain.dvns === 'object') {
+  if (chain.dvns && typeof chain.dvns === "object") {
     slim.dvns = {};
     for (const [address, dvn] of Object.entries(chain.dvns)) {
       slim.dvns[address] = slimifyDvn(dvn);
@@ -120,8 +120,8 @@ function slimifyChain(chain) {
  * Main slimify function
  */
 function slimifyLayerzero(data) {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid input data: expected an object');
+  if (!data || typeof data !== "object") {
+    throw new Error("Invalid input data: expected an object");
   }
 
   const slim = {};
@@ -129,7 +129,7 @@ function slimifyLayerzero(data) {
 
   for (const [chainName, chain] of Object.entries(data)) {
     // Skip any chains with 'testnet' in their key
-    if (chainName.toLowerCase().includes('testnet')) {
+    if (chainName.toLowerCase().includes("testnet")) {
       filteredCount++;
       continue;
     }
@@ -147,7 +147,7 @@ function displayStats(originalSize, slimSize, originalChainCount, slimChainCount
   const reduction = originalSize - slimSize;
   const percentReduction = ((reduction / originalSize) * 100).toFixed(2);
 
-  console.log('\n✓ Slimification complete!');
+  console.log("\n✓ Slimification complete!");
   console.log(`  Original chains:  ${originalChainCount}`);
   console.log(`  Filtered out:     ${filteredCount} testnet chains`);
   console.log(`  Remaining chains: ${slimChainCount}`);
@@ -158,34 +158,33 @@ function displayStats(originalSize, slimSize, originalChainCount, slimChainCount
 
 // Main execution
 try {
-  console.log('Reading input file:', inputPath);
+  console.log("Reading input file:", inputPath);
 
   if (!fs.existsSync(inputPath)) {
     console.error(`Error: Input file not found: ${inputPath}`);
     process.exit(1);
   }
 
-  const originalContent = fs.readFileSync(inputPath, 'utf8');
-  const originalSize = Buffer.byteLength(originalContent, 'utf8');
+  const originalContent = fs.readFileSync(inputPath, "utf8");
+  const originalSize = Buffer.byteLength(originalContent, "utf8");
 
-  console.log('Parsing JSON...');
+  console.log("Parsing JSON...");
   const data = JSON.parse(originalContent);
   const originalChainCount = Object.keys(data).length;
 
-  console.log('Slimifying data...');
+  console.log("Slimifying data...");
   const { data: slimData, filteredCount } = slimifyLayerzero(data);
   const slimChainCount = Object.keys(slimData).length;
 
-  console.log('Writing output file:', outputPath);
+  console.log("Writing output file:", outputPath);
   const slimContent = JSON.stringify(slimData);
-  const slimSize = Buffer.byteLength(slimContent, 'utf8');
+  const slimSize = Buffer.byteLength(slimContent, "utf8");
 
-  fs.writeFileSync(outputPath, slimContent, 'utf8');
+  fs.writeFileSync(outputPath, slimContent, "utf8");
 
   displayStats(originalSize, slimSize, originalChainCount, slimChainCount, filteredCount);
-  console.log('\nOutput written to:', outputPath);
-
+  console.log("\nOutput written to:", outputPath);
 } catch (error) {
-  console.error('Error:', error.message);
+  console.error("Error:", error.message);
   process.exit(1);
 }
