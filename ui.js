@@ -15,6 +15,7 @@ import {
   splitOAppId,
   parseOptionalPositiveInt,
   stringifyScalar,
+  isZeroAddress,
 } from "./core.js";
 
 /**
@@ -282,6 +283,38 @@ export class QueryCoordinator {
               lastPacketBlock
               lastPacketTimestamp
             }
+            OAppPeer(where: { oappId: { _eq: $oappId } }) {
+              id
+              oappId
+              eid
+              peer
+              peerOappId
+              fromPacketDelivered
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+            }
+            OAppRouteStats(where: { oappId: { _eq: $oappId } }, order_by: { packetCount: desc }) {
+              id
+              oappId
+              srcEid
+              packetCount
+              lastPacketBlock
+              lastPacketTimestamp
+            }
+            OAppRateLimiter(where: { oappId: { _eq: $oappId } }) {
+              id
+              rateLimiter
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+            }
+            OAppRateLimit(where: { oappId: { _eq: $oappId } }) {
+              id
+              dstEid
+              limit
+              window
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+            }
             OAppSecurityConfig(
               where: { oappId: { _eq: $oappId } }
               order_by: { eid: asc }
@@ -415,6 +448,10 @@ export class QueryCoordinator {
         processResponse: (payload, meta) => {
           const oapp = payload?.data?.OAppStats?.[0] ?? null;
           const configs = payload?.data?.OAppSecurityConfig ?? [];
+          const peers = payload?.data?.OAppPeer ?? [];
+          const routeStats = payload?.data?.OAppRouteStats ?? [];
+          const rateLimiter = payload?.data?.OAppRateLimiter?.[0] ?? null;
+          const rateLimits = payload?.data?.OAppRateLimit ?? [];
           const enrichedMeta = { ...meta };
 
           if (oapp) {
@@ -427,6 +464,19 @@ export class QueryCoordinator {
             enrichedMeta.summary = enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
             enrichedMeta.resultLabel = `OApp Security Config – ${chainDisplay}`;
           }
+
+          // Create peer lookup map
+          const peerMap = new Map();
+          peers.forEach((peer) => {
+            const key = String(peer.eid);
+            peerMap.set(key, peer);
+          });
+          enrichedMeta.peerMap = peerMap;
+
+          // Store route stats, rate limiting info
+          enrichedMeta.routeStats = routeStats;
+          enrichedMeta.rateLimiter = rateLimiter;
+          enrichedMeta.rateLimits = rateLimits;
 
           const formattedRows = this.formatSecurityConfigRows(configs, enrichedMeta);
 
@@ -795,7 +845,7 @@ export class QueryCoordinator {
       commonValues.mostCommonOptional && optKey !== commonValues.mostCommonOptional;
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta, highlightOptional);
 
-    formatted.Peer = this.formatPeer(row);
+    formatted.Peer = this.formatPeer(row, meta.peerMap);
     formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
 
@@ -806,6 +856,7 @@ export class QueryCoordinator {
     formatted.Fallbacks = this.formatFallbackFields(
       row.fallbackFields,
       row.usesDefaultConfig,
+      row.libraryStatus,
       highlightFallback,
     );
 
@@ -818,15 +869,22 @@ export class QueryCoordinator {
     const address = row.effectiveReceiveLibrary || "—";
     const statusBits = [];
 
-    // Handle three library states: "tracked", "unsupported", "none"
+    // Handle three library states with explanations: "tracked", "unsupported", "none"
     const libraryStatus = row.libraryStatus || "unknown";
-    statusBits.push(libraryStatus);
+    const statusExplanations = {
+      tracked: "✓ Tracked (ULN config available)",
+      unsupported: "⚠ Unsupported library (no ULN config)",
+      none: "○ No library configured",
+      unknown: "? Unknown status",
+    };
+    statusBits.push(statusExplanations[libraryStatus] || libraryStatus);
 
-    if (row.usesDefaultLibrary) {
-      statusBits.push("default");
+    // Only show "Uses default library" if there's actually a library resolved
+    if (row.usesDefaultLibrary && row.effectiveReceiveLibrary) {
+      statusBits.push("Uses default library");
     }
     if (!row.usesDefaultLibrary && row.libraryOverrideVersionId) {
-      statusBits.push("override");
+      statusBits.push("Custom override");
     }
 
     const lines = [address];
@@ -838,8 +896,17 @@ export class QueryCoordinator {
   }
 
   formatRequiredDvns(row, meta, highlight = false) {
+    // If no library configured, ULN config is unavailable
+    if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
+      return this.createFormattedCell(["—", "No ULN config"], "", { highlight });
+    }
+
     if (row.usesRequiredDVNSentinel) {
-      return this.createFormattedCell(["optional-only (sentinel)"], "", { highlight });
+      return this.createFormattedCell(
+        ["⚡ Sentinel: 0 required DVNs", "Optional-only quorum"],
+        "sentinel",
+        { highlight },
+      );
     }
     return this.formatDvnSet(
       row.effectiveRequiredDVNs,
@@ -852,6 +919,11 @@ export class QueryCoordinator {
   }
 
   formatOptionalDvns(row, meta, highlight = false) {
+    // If no library configured, ULN config is unavailable
+    if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
+      return this.createFormattedCell(["—", "No ULN config"], "", { highlight });
+    }
+
     const count = row.effectiveOptionalDVNCount ?? 0;
     const threshold = row.effectiveOptionalDVNThreshold ?? "—";
     return this.formatDvnSet(
@@ -897,19 +969,54 @@ export class QueryCoordinator {
     };
   }
 
-  formatPeer(row) {
+  formatPeer(row, peerMap) {
     const ctx = this.derivePeerContext(row);
-    if (!ctx) {
-      return this.createFormattedCell(["—"], "");
+    const peerData = peerMap?.get(String(row.eid));
+
+    // Determine peer state
+    let peerState = "not-configured";
+    const isZeroPeer = isZeroAddress(row.peer);
+
+    if (peerData) {
+      if (isZeroPeer && !peerData.fromPacketDelivered) {
+        peerState = "explicitly-blocked";
+      } else if (peerData.fromPacketDelivered) {
+        peerState = "auto-discovered";
+      } else {
+        peerState = "explicitly-set";
+      }
+    } else if (isZeroPeer) {
+      // Zero peer but no OAppPeer record - check if it's in the config at all
+      // If peer is set to zero in the config, it's blocked
+      peerState = "explicitly-blocked";
     }
 
     const lines = [];
+
+    // Add peer state indicator
+    const stateLabels = {
+      "not-configured": "Not configured",
+      "auto-discovered": "Auto-discovered",
+      "explicitly-set": "Explicitly set",
+      "explicitly-blocked": "⚠️ Blocked (zero address)",
+    };
+    lines.push(stateLabels[peerState]);
+
+    // For blocked peers, don't show the synthetic zero address OApp ID
+    if (peerState === "explicitly-blocked") {
+      return this.createFormattedCell(lines, "0x0", { highlight: true });
+    }
+
+    if (!ctx) {
+      return this.createFormattedCell(lines, "");
+    }
+
     if (ctx.alias) {
       lines.push(ctx.alias);
     }
     if (ctx.oappId) {
       lines.push(`ID ${ctx.oappId}`);
-    } else {
+    } else if (ctx.peerHex) {
       lines.push(ctx.peerHex);
     }
 
@@ -933,26 +1040,41 @@ export class QueryCoordinator {
   }
 
   formatConfirmations(row) {
-    const confirmations = row.effectiveConfirmations ?? "—";
-    const lines = [String(confirmations)];
-    const status = [];
-    if (row.usesDefaultConfig) {
-      status.push("default config");
+    // If no library configured, ULN config is unavailable
+    if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
+      return this.createFormattedCell(["—", "No ULN config"], "");
     }
-    if (status.length) {
-      lines.push(status.join(" • "));
+
+    const confirmations = row.effectiveConfirmations ?? "—";
+    const lines = [];
+
+    // Check for sentinel value (2^64-1 = 18446744073709551615)
+    const CONFIRMATIONS_SENTINEL = "18446744073709551615";
+    if (String(confirmations) === CONFIRMATIONS_SENTINEL) {
+      lines.push("⚡ Sentinel: 0 confirmations");
+      lines.push("Instant finality mode");
+    } else {
+      lines.push(String(confirmations));
+      if (row.usesDefaultConfig) {
+        lines.push("Uses default config");
+      }
     }
 
     return this.createFormattedCell(lines, String(confirmations));
   }
 
-  formatFallbackFields(fields, usesDefaultConfig, highlight = false) {
+  formatFallbackFields(fields, usesDefaultConfig, libraryStatus, highlight = false) {
+    // If no library configured, show N/A
+    if (libraryStatus === "none" || libraryStatus === "unsupported") {
+      return this.createFormattedCell(["—", "No ULN config"], "", { highlight });
+    }
+
     const names = Array.isArray(fields) ? fields : [];
     if (!names.length) {
       if (usesDefaultConfig) {
-        return this.createFormattedCell(["default"], "default", { highlight });
+        return this.createFormattedCell(["All from default"], "default", { highlight });
       }
-      return this.createFormattedCell(["—"], "", { highlight });
+      return this.createFormattedCell(["None (fully custom)"], "", { highlight });
     }
 
     const map = {
@@ -1559,13 +1681,41 @@ export class ResultsView {
   renderSummaryPanel(meta) {
     if (!meta) return null;
 
+    const container = document.createElement("div");
+    container.className = "summary-panels";
+
+    // Group OApp-related panels in a row
+    const oappPanels = [];
     if (meta.oappInfo) {
-      return this.renderOAppSummary(meta);
+      oappPanels.push(this.renderOAppSummary(meta));
     }
+    if (meta.routeStats && meta.routeStats.length > 0) {
+      oappPanels.push(this.renderRouteStatsSummary(meta.routeStats));
+    }
+    if (meta.rateLimiter || (meta.rateLimits && meta.rateLimits.length > 0)) {
+      oappPanels.push(this.renderRateLimitingSummary(meta));
+    }
+
+    // If we have OApp panels, put them in a row
+    if (oappPanels.length > 0) {
+      const oappRow = document.createElement("div");
+      oappRow.className = "summary-panel-row";
+      oappPanels.filter(Boolean).forEach((panel) => oappRow.appendChild(panel));
+      container.appendChild(oappRow);
+    }
+
+    // Popular OApps summary goes on its own row
     if (meta.popularOappsSummary) {
-      return this.renderPopularOappsSummary(meta.popularOappsSummary);
+      const popularPanel = this.renderPopularOappsSummary(meta.popularOappsSummary);
+      if (popularPanel) {
+        const popularRow = document.createElement("div");
+        popularRow.className = "summary-panel-row";
+        popularRow.appendChild(popularPanel);
+        container.appendChild(popularRow);
+      }
     }
-    return null;
+
+    return container.children.length > 0 ? container : null;
   }
 
   renderOAppSummary(meta) {
@@ -1603,6 +1753,82 @@ export class ResultsView {
       const ts = formatTimestampValue(info.lastPacketTimestamp);
       if (ts) {
         this.appendSummaryRow(list, "Last Packet Time", ts.primary);
+      }
+    }
+
+    return panel;
+  }
+
+  renderRouteStatsSummary(routeStats) {
+    if (!routeStats || routeStats.length === 0) return null;
+
+    const panel = document.createElement("div");
+    panel.className = "summary-panel";
+
+    const heading = document.createElement("h3");
+    heading.textContent = "Per-Route Activity";
+    panel.appendChild(heading);
+
+    const list = document.createElement("dl");
+    panel.appendChild(list);
+
+    this.appendSummaryRow(list, "Total Routes", routeStats.length);
+
+    // Show top 5 routes by packet count
+    const topRoutes = routeStats.slice(0, 5);
+    topRoutes.forEach((route, idx) => {
+      const chainLabel = this.getChainDisplayLabel(route.srcEid) || `EID ${route.srcEid}`;
+      this.appendSummaryRow(
+        list,
+        idx === 0 ? "Top Routes" : " ",
+        `${chainLabel}: ${route.packetCount} packets`,
+      );
+    });
+
+    if (routeStats.length > 5) {
+      this.appendSummaryRow(list, " ", `... and ${routeStats.length - 5} more routes`);
+    }
+
+    return panel;
+  }
+
+  renderRateLimitingSummary(meta) {
+    const rateLimiter = meta.rateLimiter;
+    const rateLimits = meta.rateLimits || [];
+
+    const panel = document.createElement("div");
+    panel.className = "summary-panel";
+
+    const heading = document.createElement("h3");
+    heading.textContent = "Rate Limiting (OFT)";
+    panel.appendChild(heading);
+
+    const list = document.createElement("dl");
+    panel.appendChild(list);
+
+    if (rateLimiter && rateLimiter.rateLimiter) {
+      this.appendSummaryRow(list, "Rate Limiter", rateLimiter.rateLimiter);
+    } else {
+      this.appendSummaryRow(list, "Rate Limiter", "Not configured");
+    }
+
+    this.appendSummaryRow(list, "Rate Limits", rateLimits.length);
+
+    if (rateLimits.length > 0) {
+      // Show up to 5 rate limits
+      const displayLimits = rateLimits.slice(0, 5);
+      displayLimits.forEach((limit, idx) => {
+        const chainLabel = this.getChainDisplayLabel(limit.dstEid) || `EID ${limit.dstEid}`;
+        const windowHours = Number(limit.window) / 3600;
+        this.appendSummaryRow(
+          list,
+          idx === 0 ? "Limits" : " ",
+          `${chainLabel}: ${limit.limit} per ${windowHours}h`,
+        );
+      });
+
+      if (rateLimits.length > 5) {
+        this.appendSummaryRow(list, " ", `... and ${rateLimits.length - 5} more limits`);
       }
     }
 
