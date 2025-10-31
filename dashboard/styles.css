@@ -384,10 +384,27 @@ td {
   text-transform: none;
 }
 
+.summary-panels {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.summary-panel-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0;
+}
+
 .summary-panel {
   border-bottom: 4px solid var(--ink);
   padding: 1.1rem 1.25rem;
   background: var(--accent);
+  min-width: 0; /* Allow flex/grid children to shrink */
+}
+
+.summary-panel-row .summary-panel:not(:last-child) {
+  border-right: 4px solid var(--ink);
 }
 
 .summary-panel h3 {
