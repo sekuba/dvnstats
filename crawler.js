@@ -135,7 +135,7 @@ export class SecurityGraphCrawler {
             optionalDVNLabels,
             optionalDVNThreshold: cfg.effectiveOptionalDVNThreshold || 0,
             usesRequiredDVNSentinel: cfg.usesRequiredDVNSentinel || false,
-            isConfigTracked: cfg.isConfigTracked || false,
+            libraryStatus: cfg.libraryStatus || "unknown",
             peer: cfg.peer ?? null,
             peerOAppId,
             peerLocalEid: peer?.localEid || null,
@@ -264,7 +264,7 @@ export class SecurityGraphCrawler {
           effectiveOptionalDVNCount
           effectiveOptionalDVNs
           effectiveOptionalDVNThreshold
-          isConfigTracked
+          libraryStatus
           usesRequiredDVNSentinel
           peer
           peerOappId
@@ -284,7 +284,7 @@ export class SecurityGraphCrawler {
           effectiveOptionalDVNCount
           effectiveOptionalDVNs
           effectiveOptionalDVNThreshold
-          isConfigTracked
+          libraryStatus
           usesRequiredDVNSentinel
           peer
           peerOappId
