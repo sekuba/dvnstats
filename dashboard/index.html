@@ -15,7 +15,7 @@
       <div>
         <h1>LayerZero Security Config Explorer</h1>
         <p>
-           fragility at scale
+           crosschain fragility at scale
         </p>
       </div>
       <button id="download-aliases" type="button">Download aliases</button>
@@ -71,7 +71,7 @@
               <h2>Web of Security</h2>
               <p>Visualize the security graph for a cluster of OApps.</p>
             </div>
-            <button class="run-query" type="button">Crawl / Load</button>
+            <button class="run-query" type="button">Crawl</button>
           </header>
           <form class="card-body">
             <fieldset>
@@ -191,7 +191,7 @@
               <h2>Hot OApps</h2>
               <p>Rank OApps by packets delivered within a recent time window (expensive query).</p>
             </div>
-            <button class="run-query" type="button">Run</button>
+            <button class="run-query" type="button">Walk</button>
           </header>
           <form class="card-body">
             <label>
@@ -248,7 +248,11 @@
           </footer>
         </article>
 
-        
+
+      </section>
+
+      <section id="quick-crawl-section" aria-label="Quick crawl buttons">
+        <div id="quick-crawl-buttons" class="quick-crawl-buttons"></div>
       </section>
 
       <section id="results" aria-live="polite">
@@ -294,7 +298,7 @@
             />
           </label>
           <p class="modal-hint">
-            Aliases are stored locally and can be exported to update <code>oapp-aliases.json</code>.
+            Aliases are stored locally and can be exported. To add quick-crawl buttons, manually set <code>addButton: true</code> in the JSON.
           </p>
           <div class="modal-actions">
             <button type="submit">Save</button>

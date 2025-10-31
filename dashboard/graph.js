@@ -557,11 +557,7 @@ export class SecurityGraphView {
 
     const optionalLine =
       hasSecurityConfig && optionalDVNCount > 0
-        ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${
-            optionalDVNLabels && optionalDVNLabels.length
-              ? ` → ${optionalDVNLabels.join(", ")}`
-              : ""
-          }`
+        ? `Optional DVNs quorum ${optionalDVNThreshold}/${optionalDVNCount}${optionalDVNLabels && optionalDVNLabels.length ? ` → ${optionalDVNLabels.join(", ")}` : ""}`
         : null;
 
     const sentinelLine =
@@ -1302,9 +1298,7 @@ export class SecurityGraphView {
           .map((detail) => {
             const eidText =
               detail.srcEid !== undefined && detail.srcEid !== null ? `EID ${detail.srcEid}: ` : "";
-            return `${eidText}${
-              detail.optionalSummary ? `quorum ${detail.optionalSummary}` : "sentinel"
-            }`;
+            return `${eidText}${detail.optionalSummary ? `quorum ${detail.optionalSummary}` : "sentinel"}`;
           });
         return {
           metric,

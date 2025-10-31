@@ -53,9 +53,59 @@ class DashboardApp {
     console.log("[DashboardApp] Metadata ready");
 
     this.setupQueryCards();
+    this.setupQuickCrawlButtons();
     this.registerGlobalHandlers();
 
     console.log("[DashboardApp] Ready");
+  }
+
+  setupQuickCrawlButtons() {
+    const container = document.getElementById("quick-crawl-buttons");
+    const section = document.getElementById("quick-crawl-section");
+    if (!container || !section) return;
+
+    const buttons = this.aliasStore.getQuickCrawlButtons();
+    if (!buttons.length) {
+      section.style.display = "none";
+      return;
+    }
+
+    section.style.display = "block";
+    container.innerHTML = "";
+
+    buttons.forEach(({ oappId, name }) => {
+      const button = document.createElement("button");
+      button.className = "quick-crawl-button";
+      button.textContent = name;
+      button.dataset.oappId = oappId;
+      button.type = "button";
+      button.addEventListener("click", () => this.handleQuickCrawl(oappId, name));
+      container.appendChild(button);
+    });
+  }
+
+  async handleQuickCrawl(oappId, name) {
+    const webCard = document.querySelector('[data-query-key="web-of-security"]');
+    if (!webCard) return;
+
+    const seedInput = webCard.querySelector('input[name="seedOAppId"]');
+    const fileInput = webCard.querySelector('input[name="webFile"]');
+    const statusEl = webCard.querySelector("[data-status]");
+
+    if (seedInput) {
+      seedInput.value = oappId;
+    }
+    if (fileInput) {
+      fileInput.value = "";
+    }
+
+    try {
+      await this.queryCoordinator.runQuery("web-of-security", webCard, statusEl);
+      this.toastQueue.show(`Crawling ${name}`, "success");
+    } catch (error) {
+      console.error("[DashboardApp] Quick crawl failed", error);
+      this.toastQueue.show(error.message, "error");
+    }
   }
 
   setupQueryCards() {

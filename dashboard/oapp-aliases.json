@@ -1,48 +1,105 @@
 {
-  "30184_0x5634c4a5fed09819e3c46d86a965dd9447d86e47": "Stargate: TokenMessaging",
-  "30110_0x19cfce47ed54a88614648dc3f19a5980097007dd": "Stargate: TokenMessaging",
-  "30111_0xf1fcb4cbd57b67d683972a59b6a7b1e2e8bf27e6": "Stargate: TokenMessaging",
-  "30183_0x5f688f563dc16590e570f97b542fa87931af2fed": "Stargate: TokenMessaging",
-  "30110_0x2a14460fee6f73b408c6acf627190614dac97df0": "Superform-LZ",
-  "30184_0x2a14460fee6f73b408c6acf627190614dac97df0": "Superform-LZ",
-  "30184_0xa749de6c28262b7ffbc5de27dc845dd7ecd2b358": "VFY token",
-  "30101_0x6d6620efa72948c5f68a3c8646d58c00d3f4a980": "Stargate: TokenMessaging",
-  "30110_0xd6b6a6701303b5ea36fa0edf7389b562d8f894db": "ZRO token claim",
-  "30102_0x6e3d884c96d640526f273c61dfcf08915ebd7e2b": "Stargate: TokenMessaging",
-  "30340_0xaf54be5b6eec24d6bfacf1cce4eaf680a8239398": "Stargate: TokenMessaging",
-  "30183_0x539ae81a166e5e80aed211731563e549c411b140": "TA token",
-  "30101_0x6b8ad17795d89b283e6d0362a87a403f3544bb9d": "Stargate: CreditMessaging",
-  "30184_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": "RIVER token",
-  "30184_0x12dc9256acc9895b076f6638d628382881e62cee": "Stargate: CreditMessaging",
-  "30184_0xc6868edf1d2a7a8b759856cb8afa333210dfeda6": "Aori Settlement",
-  "30102_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": "RIVER token",
-  "30110_0x14e4a1b13bf7f943c8ff7c51fb60fa964a298d92": "USDT0 token adapter",
-  "30101_0xfab99fcf605fd8f4593edb70a43ba56542777777": "ZBT token",
-  "30101_0x6c96de32cea08842dcc4058c14d3aaad7fa41dee": "USDT0 token adapter",
-  "30367_0x904861a24f30ec96ea7cfc3be9ea4b476d237e98": "USDT0 token adapter",
-  "30109_0x6ce9bf8cdab780416ad1fd87b318a077d2f50eac": "Stargate: TokenMessaging",
-  "30320_0xb1eead6959cb5bb9b20417d6689922523b2b86c3": "Stargate: TokenMessaging",
-  "30367_0xfdd22ce6d1f66bc0ec89b20bf16ccb6670f55a5a": "thBILL token",
-  "30184_0xc08cd26474722ce93f4d0c34d16201461c10aa8c": "CARV token",
-  "30184_0x461c12fba639303da045255dd32eea7e38ac69b0": "Orderly CrosschainRelay",
-  "30184_0xb9e1fd5a02d3a33b25a14d661414e6ed6954a721": "SOON token",
-  "30101_0x17435cc940e03aa52c349738c72c7aa44ffa6525": "ORDER token adapter",
-  "30111_0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff": "weETH token",
-  "30260_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": "weETH token",
-  "30183_0x1bf74c010e6320bab11e2e5a532b5ac15e0b8aa6": "weETH token",
-  "30320_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": "weETH token",
-  "30335_0xa6cb988942610f6731e664379d15ffcfbf282b44": "weETH token",
-  "30165_0xc1fa6e2e8667d9be0ca938a54c7e0285e9df924a": "weETH token",
-  "30322_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": "weETH token",
-  "30102_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": "weETH token",
-  "30243_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": "weETH token",
-  "30362_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": "weETH token",
-  "30101_0xcd2eb13d6831d4602d80e5db9230a57596cdca63": "weETH token",
-  "30214_0x01f0a31698c4d065659b9bdc21b3610292a1c506": "weETH token",
-  "30184_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": "weETH token",
-  "30303_0x88a19f30e1254b37b66899893ab1f73ad82bd2c3": "weETH token",
-  "30367_0xa3d68b74bf0528fdd07263c60d6488749044914b": "weETH token",
-  "30332_0xa3d68b74bf0528fdd07263c60d6488749044914b": "weETH token",
-  "30106_0xa3d68b74bf0528fdd07263c60d6488749044914b": "weETH token",
-  "30383_0xa3d68b74bf0528fdd07263c60d6488749044914b": "weETH token"
+  "30111_0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff": { "name": "weETH token", "addButton": true },
+  "30260_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
+  "30183_0x1bf74c010e6320bab11e2e5a532b5ac15e0b8aa6": { "name": "weETH token", "addButton": false },
+  "30320_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": { "name": "weETH token", "addButton": false },
+  "30335_0xa6cb988942610f6731e664379d15ffcfbf282b44": { "name": "weETH token", "addButton": false },
+  "30165_0xc1fa6e2e8667d9be0ca938a54c7e0285e9df924a": { "name": "weETH token", "addButton": false },
+  "30322_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": { "name": "weETH token", "addButton": false },
+  "30102_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
+  "30243_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
+  "30362_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": { "name": "weETH token", "addButton": false },
+  "30101_0xcd2eb13d6831d4602d80e5db9230a57596cdca63": { "name": "weETH token", "addButton": false },
+  "30214_0x01f0a31698c4d065659b9bdc21b3610292a1c506": { "name": "weETH token", "addButton": false },
+  "30184_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
+  "30303_0x88a19f30e1254b37b66899893ab1f73ad82bd2c3": { "name": "weETH token", "addButton": false },
+  "30367_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
+  "30332_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
+  "30106_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
+  "30383_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
+  "30184_0x5634c4a5fed09819e3c46d86a965dd9447d86e47": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": true
+  },
+  "30110_0x19cfce47ed54a88614648dc3f19a5980097007dd": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30111_0xf1fcb4cbd57b67d683972a59b6a7b1e2e8bf27e6": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30183_0x5f688f563dc16590e570f97b542fa87931af2fed": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30110_0x2a14460fee6f73b408c6acf627190614dac97df0": { "name": "Superform-LZ", "addButton": true },
+  "30184_0x2a14460fee6f73b408c6acf627190614dac97df0": {
+    "name": "Superform-LZ",
+    "addButton": false
+  },
+  "30184_0xa749de6c28262b7ffbc5de27dc845dd7ecd2b358": { "name": "VFY token", "addButton": false },
+  "30101_0x6d6620efa72948c5f68a3c8646d58c00d3f4a980": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30110_0xd6b6a6701303b5ea36fa0edf7389b562d8f894db": {
+    "name": "ZRO token claim",
+    "addButton": false
+  },
+  "30102_0x6e3d884c96d640526f273c61dfcf08915ebd7e2b": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30340_0xaf54be5b6eec24d6bfacf1cce4eaf680a8239398": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30183_0x539ae81a166e5e80aed211731563e549c411b140": { "name": "TA token", "addButton": false },
+  "30101_0x6b8ad17795d89b283e6d0362a87a403f3544bb9d": {
+    "name": "Stargate: CreditMessaging",
+    "addButton": false
+  },
+  "30184_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": { "name": "RIVER token", "addButton": false },
+  "30184_0x12dc9256acc9895b076f6638d628382881e62cee": {
+    "name": "Stargate: CreditMessaging",
+    "addButton": false
+  },
+  "30184_0xc6868edf1d2a7a8b759856cb8afa333210dfeda6": {
+    "name": "Aori Settlement",
+    "addButton": false
+  },
+  "30102_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": { "name": "RIVER token", "addButton": false },
+  "30110_0x14e4a1b13bf7f943c8ff7c51fb60fa964a298d92": {
+    "name": "USDT0 token adapter",
+    "addButton": false
+  },
+  "30101_0xfab99fcf605fd8f4593edb70a43ba56542777777": { "name": "ZBT token", "addButton": false },
+  "30101_0x6c96de32cea08842dcc4058c14d3aaad7fa41dee": {
+    "name": "USDT0 token adapter",
+    "addButton": false
+  },
+  "30367_0x904861a24f30ec96ea7cfc3be9ea4b476d237e98": {
+    "name": "USDT0 token adapter",
+    "addButton": true
+  },
+  "30109_0x6ce9bf8cdab780416ad1fd87b318a077d2f50eac": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30320_0xb1eead6959cb5bb9b20417d6689922523b2b86c3": {
+    "name": "Stargate: TokenMessaging",
+    "addButton": false
+  },
+  "30367_0xfdd22ce6d1f66bc0ec89b20bf16ccb6670f55a5a": { "name": "thBILL token", "addButton": true },
+  "30184_0xc08cd26474722ce93f4d0c34d16201461c10aa8c": { "name": "CARV token", "addButton": false },
+  "30184_0x461c12fba639303da045255dd32eea7e38ac69b0": {
+    "name": "Orderly CrosschainRelay",
+    "addButton": true
+  },
+  "30184_0xb9e1fd5a02d3a33b25a14d661414e6ed6954a721": { "name": "SOON token", "addButton": false },
+  "30101_0x17435cc940e03aa52c349738c72c7aa44ffa6525": {
+    "name": "ORDER token adapter",
+    "addButton": false
+  }
 }

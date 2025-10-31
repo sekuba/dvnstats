@@ -23,6 +23,7 @@ import {
 export class AliasStore {
   constructor(storageKey = APP_CONFIG.STORAGE_KEYS.OAPP_ALIASES) {
     this.map = new Map();
+    this.buttonMap = new Map();
     this.storageKey = storageKey;
     this.loaded = false;
   }
@@ -30,13 +31,21 @@ export class AliasStore {
   async load() {
     if (this.loaded) return;
     this.map.clear();
+    this.buttonMap.clear();
 
     try {
       const response = await fetch(APP_CONFIG.DATA_SOURCES.OAPP_ALIASES, { cache: "no-store" });
       if (response.ok) {
         const data = await response.json();
         if (data && typeof data === "object") {
-          Object.entries(data).forEach(([k, v]) => v && this.map.set(String(k), String(v)));
+          Object.entries(data).forEach(([k, v]) => {
+            if (v && typeof v === "object" && v.name) {
+              this.map.set(String(k), String(v.name));
+              if (v.addButton === true) {
+                this.buttonMap.set(String(k), String(v.name));
+              }
+            }
+          });
         }
       }
     } catch (error) {
@@ -49,7 +58,11 @@ export class AliasStore {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object") {
           Object.entries(parsed).forEach(([k, v]) => {
-            v ? this.map.set(String(k), String(v)) : this.map.delete(String(k));
+            if (!v) {
+              this.map.delete(String(k));
+            } else if (typeof v === "object" && v.name) {
+              this.map.set(String(k), String(v.name));
+            }
           });
         }
       }
@@ -58,12 +71,21 @@ export class AliasStore {
     }
 
     this.loaded = true;
-    console.log(`[AliasStore] Loaded ${this.map.size} aliases`);
+    console.log(
+      `[AliasStore] Loaded ${this.map.size} aliases, ${this.buttonMap.size} quick-crawl buttons`,
+    );
   }
 
   get(oappId) {
     if (!oappId) return null;
     return this.map.get(String(oappId)) || null;
+  }
+
+  getQuickCrawlButtons() {
+    return Array.from(this.buttonMap.entries()).map(([oappId, name]) => ({
+      oappId,
+      name,
+    }));
   }
 
   set(oappId, alias) {
@@ -76,7 +98,10 @@ export class AliasStore {
 
   persist() {
     try {
-      const obj = Object.fromEntries(this.map.entries());
+      const obj = {};
+      this.map.forEach((name, oappId) => {
+        obj[oappId] = { name, addButton: false };
+      });
       localStorage.setItem(this.storageKey, JSON.stringify(obj));
     } catch (error) {
       console.warn("[AliasStore] Failed to persist", error);
@@ -84,7 +109,11 @@ export class AliasStore {
   }
 
   export() {
-    const content = JSON.stringify(Object.fromEntries(this.map), null, 2);
+    const obj = {};
+    this.map.forEach((name, oappId) => {
+      obj[oappId] = { name, addButton: false };
+    });
+    const content = JSON.stringify(obj, null, 2);
     const blob = new Blob([content], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -149,6 +178,7 @@ export class QueryCoordinator {
       ),
       copyValue,
       meta,
+      highlight: meta.highlight || false,
     };
   }
 
@@ -229,10 +259,14 @@ export class QueryCoordinator {
           };
         },
         extractRows: (data) =>
-          (data?.OAppStats ?? []).map((row) => ({
-            ...row,
-            id: this.formatOAppIdCell(row.id),
-          })),
+          (data?.OAppStats ?? []).map((row) => {
+            const chainDisplay = this.getChainDisplayLabel(row.localEid) || row.localEid || "—";
+            return {
+              ...row,
+              id: this.formatOAppIdCell(row.id),
+              localEid: this.createFormattedCell([chainDisplay], row.localEid),
+            };
+          }),
       },
 
       "oapp-security-config": {
@@ -401,7 +435,7 @@ export class QueryCoordinator {
       },
 
       "popular-oapps-window": {
-        label: "Popular OApps (Window)",
+        label: "Hot OApps",
         description: "Rank OApps by packets in a configurable time window",
         query: `
           query PopularOAppsWindow($fromTimestamp: numeric!, $fetchLimit: Int) {
@@ -631,10 +665,7 @@ export class QueryCoordinator {
       const address = group.address || (group.oappId.split("_")[1] ?? "—");
       const eids = Array.from(group.eids).sort();
 
-      const chainCell = this.createFormattedCell(
-        [chainDisplay, `Local EID ${group.localEid || "—"}`],
-        group.localEid,
-      );
+      const chainCell = this.createFormattedCell([chainDisplay], group.localEid);
 
       const oappCell = this.formatOAppIdCell(group.oappId);
       const addressCell = this.createFormattedCell([address], address);
@@ -667,7 +698,7 @@ export class QueryCoordinator {
         Endpoint: chainCell,
         Address: addressCell,
         Packets: String(group.count),
-        "Unique EIDs": eidCell,
+        "Unique incoming EIDs": eidCell,
         "Last Packet": lastCell,
       };
     });
@@ -690,19 +721,94 @@ export class QueryCoordinator {
   }
 
   formatSecurityConfigRows(rows, meta) {
-    return rows.map((row) => this.formatSecurityConfigRow(row, meta));
+    // First pass: find most common values for Required DVNs, Optional DVNs, and Fallbacks
+    const requiredDvnValues = new Map();
+    const optionalDvnValues = new Map();
+    const fallbackValues = new Map();
+
+    rows.forEach((row) => {
+      // Required DVNs
+      const reqKey = row.usesRequiredDVNSentinel
+        ? "sentinel"
+        : JSON.stringify(row.effectiveRequiredDVNs || []);
+      requiredDvnValues.set(reqKey, (requiredDvnValues.get(reqKey) || 0) + 1);
+
+      // Optional DVNs
+      const optKey = JSON.stringify({
+        dvns: row.effectiveOptionalDVNs || [],
+        threshold: row.effectiveOptionalDVNThreshold,
+      });
+      optionalDvnValues.set(optKey, (optionalDvnValues.get(optKey) || 0) + 1);
+
+      // Fallbacks
+      const fallbackKey = JSON.stringify(row.fallbackFields || []);
+      fallbackValues.set(fallbackKey, (fallbackValues.get(fallbackKey) || 0) + 1);
+    });
+
+    // Find most common values
+    const mostCommonRequired = this.findMostCommon(requiredDvnValues);
+    const mostCommonOptional = this.findMostCommon(optionalDvnValues);
+    const mostCommonFallback = this.findMostCommon(fallbackValues);
+
+    // Second pass: format rows with highlight flags
+    return rows.map((row) =>
+      this.formatSecurityConfigRow(row, meta, {
+        mostCommonRequired,
+        mostCommonOptional,
+        mostCommonFallback,
+      }),
+    );
   }
 
-  formatSecurityConfigRow(row, meta) {
+  findMostCommon(valueMap) {
+    let maxCount = 0;
+    let mostCommon = null;
+    valueMap.forEach((count, key) => {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = key;
+      }
+    });
+    return mostCommon;
+  }
+
+  formatSecurityConfigRow(row, meta, commonValues = {}) {
     const formatted = {};
-    formatted["Source EID"] = String(row.eid ?? "—");
+    const chainDisplay = this.getChainDisplayLabel(row.eid) || row.eid || "—";
+    formatted["Source EID"] = this.createFormattedCell([chainDisplay], row.eid);
     formatted.Library = this.formatLibraryDescriptor(row);
-    formatted["Required DVNs"] = this.formatRequiredDvns(row, meta);
-    formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta);
+
+    // Required DVNs with highlighting
+    const reqKey = row.usesRequiredDVNSentinel
+      ? "sentinel"
+      : JSON.stringify(row.effectiveRequiredDVNs || []);
+    const highlightRequired =
+      commonValues.mostCommonRequired && reqKey !== commonValues.mostCommonRequired;
+    formatted["Required DVNs"] = this.formatRequiredDvns(row, meta, highlightRequired);
+
+    // Optional DVNs with highlighting
+    const optKey = JSON.stringify({
+      dvns: row.effectiveOptionalDVNs || [],
+      threshold: row.effectiveOptionalDVNThreshold,
+    });
+    const highlightOptional =
+      commonValues.mostCommonOptional && optKey !== commonValues.mostCommonOptional;
+    formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta, highlightOptional);
+
     formatted.Peer = this.formatPeer(row);
     formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
-    formatted.Fallbacks = this.formatFallbackFields(row.fallbackFields, row.usesDefaultConfig);
+
+    // Fallbacks with highlighting
+    const fallbackKey = JSON.stringify(row.fallbackFields || []);
+    const highlightFallback =
+      commonValues.mostCommonFallback && fallbackKey !== commonValues.mostCommonFallback;
+    formatted.Fallbacks = this.formatFallbackFields(
+      row.fallbackFields,
+      row.usesDefaultConfig,
+      highlightFallback,
+    );
+
     formatted["Last Update"] = this.formatLastComputed(row);
 
     return formatted;
@@ -727,33 +833,40 @@ export class QueryCoordinator {
     return this.createFormattedCell(lines, address);
   }
 
-  formatRequiredDvns(row, meta) {
+  formatRequiredDvns(row, meta, highlight = false) {
     if (row.usesRequiredDVNSentinel) {
-      return this.createFormattedCell(["optional-only (sentinel)"]);
+      return this.createFormattedCell(["optional-only (sentinel)"], "", { highlight });
     }
     return this.formatDvnSet(
       row.effectiveRequiredDVNs,
       row.effectiveRequiredDVNCount,
       meta,
       row.localEid,
+      [],
+      highlight,
     );
   }
 
-  formatOptionalDvns(row, meta) {
+  formatOptionalDvns(row, meta, highlight = false) {
     const count = row.effectiveOptionalDVNCount ?? 0;
     const threshold = row.effectiveOptionalDVNThreshold ?? "—";
-    return this.formatDvnSet(row.effectiveOptionalDVNs, count, meta, row.localEid, [
-      `Threshold ${threshold}`,
-    ]);
+    return this.formatDvnSet(
+      row.effectiveOptionalDVNs,
+      count,
+      meta,
+      row.localEid,
+      [`Threshold ${threshold}`],
+      highlight,
+    );
   }
 
-  formatDvnSet(addresses, count, meta, localEid, extraLines = []) {
+  formatDvnSet(addresses, count, meta, localEid, extraLines = [], highlight = false) {
     const addrs = Array.isArray(addresses) ? addresses.filter(Boolean) : [];
     const lines = [`Count ${count ?? addrs.length ?? 0}`, ...extraLines];
     if (addrs.length) {
       lines.push(...this.resolveDvnLabels(addrs, meta, localEid ?? meta?.localEid ?? meta?.eid));
     }
-    return this.createFormattedCell(lines, addrs.join(", ") || String(count));
+    return this.createFormattedCell(lines, addrs.join(", ") || String(count), { highlight });
   }
 
   derivePeerContext(row) {
@@ -792,15 +905,8 @@ export class QueryCoordinator {
     }
     if (ctx.oappId) {
       lines.push(`ID ${ctx.oappId}`);
-      if (ctx.address) {
-        lines.push(`Addr ${ctx.address}`);
-      }
     } else {
       lines.push(ctx.peerHex);
-    }
-
-    if (ctx.endpointLabel) {
-      lines.push(ctx.endpointLabel);
     }
 
     const meta =
@@ -836,13 +942,13 @@ export class QueryCoordinator {
     return this.createFormattedCell(lines, String(confirmations));
   }
 
-  formatFallbackFields(fields, usesDefaultConfig) {
+  formatFallbackFields(fields, usesDefaultConfig, highlight = false) {
     const names = Array.isArray(fields) ? fields : [];
     if (!names.length) {
       if (usesDefaultConfig) {
-        return this.createFormattedCell(["default"], "default");
+        return this.createFormattedCell(["default"], "default", { highlight });
       }
-      return this.createFormattedCell(["—"], "");
+      return this.createFormattedCell(["—"], "", { highlight });
     }
 
     const map = {
@@ -856,7 +962,7 @@ export class QueryCoordinator {
     };
 
     const lines = names.map((name) => map[name] || name);
-    return this.createFormattedCell(lines, names.join(", "));
+    return this.createFormattedCell(lines, names.join(", "), { highlight });
   }
 
   formatLastComputed(row) {
@@ -1301,7 +1407,7 @@ export class ResultsView {
   }
 
   renderCell(column, value) {
-    const { nodes, copyValue, isCopyable, meta } = this.interpretValue(column, value);
+    const { nodes, copyValue, isCopyable, meta, highlight } = this.interpretValue(column, value);
 
     if (!isCopyable) {
       const fragment = document.createDocumentFragment();
@@ -1311,6 +1417,9 @@ export class ResultsView {
 
     const container = document.createElement("div");
     container.className = "copyable";
+    if (highlight) {
+      container.classList.add("cell-variant");
+    }
 
     const content =
       copyValue ??
@@ -1352,6 +1461,7 @@ export class ResultsView {
         copyValue,
         isCopyable: true,
         meta: value.meta || null,
+        highlight: value.highlight || false,
       };
     }
 

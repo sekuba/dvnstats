@@ -9,6 +9,7 @@
   --muted: #c7c7c7;
   --danger: #ff4f4f;
   --success: #1b9c85;
+  --magenta: #ff1df5;
 }
 
 *,
@@ -891,4 +892,38 @@ td {
 
 .field-separator {
   margin-top: 1rem;
+}
+
+.quick-crawl-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.quick-crawl-button {
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.55rem 1rem;
+  border: 3px solid var(--magenta);
+  background: var(--paper);
+  color: var(--magenta);
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background-color 0.1s ease;
+  box-shadow: 5px 5px 0 var(--magenta);
+  font-size: 0.85rem;
+}
+
+.quick-crawl-button:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--magenta);
+  background: rgba(255, 29, 245, 0.1);
+}
+
+.quick-crawl-button:active {
+  transform: translate(2px, 2px);
+  box-shadow: 3px 3px 0 var(--magenta);
 }
