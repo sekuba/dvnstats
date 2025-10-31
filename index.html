@@ -15,7 +15,7 @@
       <div>
         <h1>LayerZero Security Config Explorer</h1>
         <p>
-          utility surface for slicing the Hasura indexer
+           fragility at scale
         </p>
       </div>
       <button id="download-aliases" type="button">Download aliases</button>
@@ -26,7 +26,7 @@
         <article class="query-card" data-query-key="top-oapps">
           <header class="card-header">
             <div>
-              <h2>Top OApps</h2>
+              <h2>All-time Top OApps</h2>
               <p>Ordered by total packets received.</p>
             </div>
             <button class="run-query" type="button">Run</button>
@@ -40,6 +40,7 @@
                 min="1"
                 step="1"
                 placeholder="∞"
+                value="100"
                 inputmode="numeric"
               />
             </label>
@@ -58,6 +59,66 @@
           <details class="card-query">
             <summary>GraphQL query</summary>
             <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
+        <article class="query-card" data-query-key="web-of-security">
+          <header class="card-header">
+            <div>
+              <h2>Web of Security</h2>
+              <p>Visualize the security graph for a cluster of OApps.</p>
+            </div>
+            <button class="run-query" type="button">Crawl / Load</button>
+          </header>
+          <form class="card-body">
+            <fieldset>
+              <legend>Crawl New Web</legend>
+              <label>
+                Seed OApp ID
+                <input
+                  name="seedOAppId"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="localEid_address"
+                />
+              </label>
+              <div class="param-grid">
+                <label>
+                  Depth
+                  <input
+                    name="depth"
+                    type="number"
+                    min="1"
+                    max="20"
+                    value="10"
+                  />
+                </label>
+              </div>
+            </fieldset>
+            <fieldset class="field-separator">
+              <legend>Or Load From File</legend>
+              <label>
+                Web data file
+                <input
+                  name="webFile"
+                  type="file"
+                  accept=".json"
+                />
+              </label>
+            </fieldset>
+          </form>
+          <details class="card-query">
+            <summary>About</summary>
+            <p>
+              Visualize the web of security of an OApp cluster.
+              Each node represents an OApp, edges show the configured routes between them.
+              Color/size indicates required DVNs and other security configs.
+            </p>
           </details>
           <footer class="card-footer">
             <span class="status-tag" data-status>Idle</span>
@@ -127,8 +188,8 @@
         <article class="query-card" data-query-key="popular-oapps-window">
           <header class="card-header">
             <div>
-              <h2>Popular OApps (Window)</h2>
-              <p>Rank OApps by packets delivered within a recent time window.</p>
+              <h2>Hot OApps</h2>
+              <p>Rank OApps by packets delivered within a recent time window (expensive query).</p>
             </div>
             <button class="run-query" type="button">Run</button>
           </header>
@@ -187,65 +248,7 @@
           </footer>
         </article>
 
-        <article class="query-card" data-query-key="web-of-security">
-          <header class="card-header">
-            <div>
-              <h2>Web of Security</h2>
-              <p>Visualize the security graph for an OApp and its connections.</p>
-            </div>
-            <button class="run-query" type="button">Crawl / Load</button>
-          </header>
-          <form class="card-body">
-            <fieldset>
-              <legend>Crawl New Web</legend>
-              <label>
-                Seed OApp ID
-                <input
-                  name="seedOAppId"
-                  type="text"
-                  inputmode="text"
-                  autocomplete="off"
-                  spellcheck="false"
-                  placeholder="localEid_address"
-                />
-              </label>
-              <div class="param-grid">
-                <label>
-                  Depth
-                  <input
-                    name="depth"
-                    type="number"
-                    min="1"
-                    max="20"
-                    value="10"
-                  />
-                </label>
-              </div>
-            </fieldset>
-            <fieldset class="field-separator">
-              <legend>Or Load From File</legend>
-              <label>
-                Web data file
-                <input
-                  name="webFile"
-                  type="file"
-                  accept=".json"
-                />
-              </label>
-            </fieldset>
-          </form>
-          <details class="card-query">
-            <summary>About</summary>
-            <p>
-              This visualization shows the web of security connections between OApps.
-              Each node represents an OApp, and edges show packet delivery paths.
-              Node color/size indicates the number of required DVNs in the security config.
-            </p>
-          </details>
-          <footer class="card-footer">
-            <span class="status-tag" data-status>Idle</span>
-          </footer>
-        </article>
+        
       </section>
 
       <section id="results" aria-live="polite">
