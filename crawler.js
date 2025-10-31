@@ -150,6 +150,7 @@ export class SecurityGraphCrawler {
             peerRaw: peer?.rawPeer ?? cfg.peer ?? null,
             peerLocalEid: peer?.localEid || null,
             queueNext: peerOAppId,
+            isOutbound: true,
           };
         });
 
@@ -190,6 +191,7 @@ export class SecurityGraphCrawler {
               peerLocalEid: remoteLocalEid ?? null,
               queueNext: remoteId,
               isStalePeer,
+              isOutbound: false,
             };
           });
 
@@ -392,10 +394,16 @@ export class SecurityGraphCrawler {
 
       const key = `${edgeFrom}->${edgeTo}`;
       if (!edges.has(key)) {
+        // For outbound contexts: cfg.eid is the destination (peer's chain, which is the source for this edge)
+        // For inbound contexts: cfg.localEid is the source (where the remote config lives)
+        const srcEid = context.isOutbound
+          ? context.config?.eid
+          : (context.config?.localEid ?? context.config?.eid);
+
         edges.set(key, {
           from: edgeFrom,
           to: edgeTo,
-          srcEid: context.config?.eid,
+          srcEid: srcEid,
           peerRaw:
             context.peerRaw ?? (context.peerInfo ? context.peerInfo.rawPeer : undefined) ?? null,
           peerLocalEid:
