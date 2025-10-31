@@ -114,6 +114,7 @@ type ConfigComparable = {
 
 type MergeResult = {
   effectiveReceiveLibrary?: string;
+  libraryStatus: "tracked" | "unsupported" | "none";
   effectiveConfirmations?: bigint;
   effectiveRequiredDVNCount?: number;
   effectiveOptionalDVNCount: number;
@@ -392,6 +393,21 @@ const configsAreEqual = (a: ConfigComparable, b: ConfigComparable): boolean =>
       b.confirmations !== undefined &&
       a.confirmations === b.confirmations));
 
+/**
+ * Merges default and OApp-specific library/config settings to compute effective values.
+ *
+ * Library resolution:
+ * - If OApp has non-zero override: use override
+ * - Else if default exists: use default (marks fallback)
+ * - Else: undefined (no library configured)
+ *
+ * Config resolution (per field):
+ * - If OApp field is non-zero/non-sentinel: use OApp value
+ * - Else: fall back to default value (marks fallback)
+ *
+ * This ensures that defaults set BEFORE an OApp is first seen are correctly
+ * applied when the OApp's security config is later computed.
+ */
 const mergeSecurityConfig = (
   context: handlerContext | undefined,
   localEid: bigint,
@@ -411,25 +427,40 @@ const mergeSecurityConfig = (
   const defaultLibrary = defaults.library ? normalizeAddress(defaults.library) : undefined;
   const overrideLibrary = overrides?.library ? normalizeAddress(overrides.library) : undefined;
 
+  // Library resolution (LayerZero V2 semantics):
+  // - Zero address override means "unset override, use default"
+  // - Zero address default means "no default configured" → blocked
+  // - Result: zero addresses are never valid libraries (unlike peers where zero = explicit block)
   let effectiveReceiveLibrary: string | undefined;
   if (overrideLibrary && !isZeroAddress(overrideLibrary)) {
+    // OApp has non-zero override: use it
     effectiveReceiveLibrary = overrideLibrary;
   } else if (defaultLibrary && !isZeroAddress(defaultLibrary)) {
+    // OApp has zero/no override AND default is non-zero: use default
     effectiveReceiveLibrary = defaultLibrary;
     if (!overrideLibrary || isZeroAddress(overrideLibrary)) {
       fallbackFields.add("receiveLibrary");
     }
-  } else if (overrideLibrary) {
-    effectiveReceiveLibrary = overrideLibrary;
   } else {
+    // Both override and default are zero/missing: route unconfigured
     effectiveReceiveLibrary = undefined;
   }
 
   const isConfigTracked = isTrackedReceiveLibrary(localEid, effectiveReceiveLibrary);
 
+  let libraryStatus: "tracked" | "unsupported" | "none";
+  if (!effectiveReceiveLibrary) {
+    libraryStatus = "none";
+  } else if (isConfigTracked) {
+    libraryStatus = "tracked";
+  } else {
+    libraryStatus = "unsupported";
+  }
+
   if (!isConfigTracked) {
     return {
       effectiveReceiveLibrary,
+      libraryStatus,
       effectiveConfirmations: undefined,
       effectiveRequiredDVNCount: undefined,
       effectiveOptionalDVNCount: 0,
@@ -603,6 +634,7 @@ const mergeSecurityConfig = (
 
   return {
     effectiveReceiveLibrary,
+    libraryStatus,
     effectiveConfirmations,
     effectiveRequiredDVNCount,
     effectiveOptionalDVNCount,
@@ -616,6 +648,15 @@ const mergeSecurityConfig = (
   };
 };
 
+/**
+ * Computes and persists the effective security config for an OApp route.
+ *
+ * Always fetches fresh state from the database:
+ * - DefaultReceiveLibrary and DefaultUlnConfig for (localEid, eid)
+ * - OApp-specific overrides for (oappId, eid)
+ * - Peer configuration
+ *
+ */
 const computeAndPersistEffectiveConfig = async ({
   context,
   localEid,
@@ -698,6 +739,7 @@ const computeAndPersistEffectiveConfig = async ({
     oapp: oappAddress,
     eid,
     effectiveReceiveLibrary: resolved.effectiveReceiveLibrary,
+    libraryStatus: resolved.libraryStatus,
     effectiveConfirmations: resolved.effectiveConfirmations,
     effectiveRequiredDVNCount: resolved.effectiveRequiredDVNCount,
     effectiveOptionalDVNCount: resolved.effectiveOptionalDVNCount,
@@ -738,66 +780,49 @@ const recomputeSecurityConfigsForScope = async (
   eventId: string,
   transactionHash: string,
 ) => {
-  try {
-    const configsForChain = await context.OAppSecurityConfig.getWhere.localEid.eq(localEid);
-    if (!configsForChain || configsForChain.length === 0) {
-      context.log.debug("No configs found for chain during recomputation", {
+  // NOTE: compound queries not supported
+  const configsForChain = await context.OAppSecurityConfig.getWhere.localEid.eq(localEid);
+  if (!configsForChain || configsForChain.length === 0) {
+    return;
+  }
+
+  const configsForEid = configsForChain.filter((config) => config.eid === eid);
+  if (configsForEid.length === 0) {
+    return;
+  }
+
+  context.log.debug("Recomputing security configs for scope", {
+    localEid: localEid.toString(),
+    eid: eid.toString(),
+    configCount: configsForEid.length,
+  });
+
+  for (const config of configsForEid) {
+    try {
+      await computeAndPersistEffectiveConfig({
+        context,
+        localEid,
+        oappId: config.oappId,
+        oappAddress: config.oapp,
+        eid,
+        blockNumber,
+        blockTimestamp,
+        eventId,
+        transactionHash,
+      });
+    } catch (error) {
+      context.log.error(
+        "Failed to recompute security config for OApp",
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      context.log.error("Config recomputation context", {
         localEid: localEid.toString(),
         eid: eid.toString(),
+        oappId: config.oappId,
+        oappAddress: config.oapp,
       });
-      return;
+      // Continue processing other configs
     }
-
-    // Filter by eid in memory (performance note: could be optimized with compound query)
-    const configsForEid = configsForChain.filter((config) => config.eid === eid);
-
-    if (configsForEid.length > 0) {
-      context.log.debug("Recomputing security configs for scope", {
-        localEid: localEid.toString(),
-        eid: eid.toString(),
-        configCount: configsForEid.length,
-      });
-    }
-
-    for (const config of configsForEid) {
-      try {
-        await computeAndPersistEffectiveConfig({
-          context,
-          localEid,
-          oappId: config.oappId,
-          oappAddress: config.oapp,
-          eid,
-          blockNumber,
-          blockTimestamp,
-          eventId,
-          transactionHash,
-        });
-      } catch (error) {
-        context.log.error(
-          "Failed to recompute security config for OApp",
-          error instanceof Error ? error : new Error(String(error)),
-        );
-        context.log.error("Config recomputation context", {
-          localEid: localEid.toString(),
-          eid: eid.toString(),
-          oappId: config.oappId,
-          oappAddress: config.oapp,
-        });
-        // Continue processing other configs
-      }
-    }
-  } catch (error) {
-    context.log.error(
-      "Failed to recompute security configs for scope",
-      error instanceof Error ? error : new Error(String(error)),
-    );
-    context.log.error("Recomputation scope context", {
-      localEid: localEid.toString(),
-      eid: eid.toString(),
-      eventId,
-    });
-    // Re-throw to propagate critical errors
-    throw error;
   }
 };
 
@@ -1292,7 +1317,21 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
           eventId,
           transactionHash,
         });
+      } else if (isZeroAddress(configuredPeerNormalized)) {
+        // Route was explicitly blocked by setting peer to zero address
+        context.log.warn("PacketDelivered: route explicitly blocked but packet delivered", {
+          localEid: localEid.toString(),
+          srcEid: srcEid.toString(),
+          receiver,
+          sender: normalizedSender,
+          configuredPeer: configuredPeerNormalized,
+          blockNumber: event.block.number,
+          logIndex: event.logIndex,
+          eventId,
+          transactionHash,
+        });
       } else if (configuredPeerNormalized !== normalizedSender) {
+        // Configured non-zero peer doesn't match actual sender
         context.log.warn("PacketDelivered: sender does not match configured peer", {
           localEid: localEid.toString(),
           srcEid: srcEid.toString(),
@@ -1344,6 +1383,7 @@ EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
       securityConfigId: securityConfig.id,
       transactionHash,
       effectiveReceiveLibrary: securityConfig.effectiveReceiveLibrary,
+      libraryStatus: securityConfig.libraryStatus,
       effectiveConfirmations: securityConfig.effectiveConfirmations,
       effectiveRequiredDVNCount: securityConfig.effectiveRequiredDVNCount,
       effectiveOptionalDVNCount: securityConfig.effectiveOptionalDVNCount,

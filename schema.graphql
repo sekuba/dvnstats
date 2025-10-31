@@ -136,6 +136,7 @@ type OAppSecurityConfig {
   effectiveOptionalDVNThreshold: Int
   effectiveRequiredDVNs: [String!]!
   effectiveOptionalDVNs: [String!]!
+  libraryStatus: String!
   isConfigTracked: Boolean!
   usesDefaultLibrary: Boolean!
   usesDefaultConfig: Boolean!
@@ -189,6 +190,7 @@ type PacketDelivered {
   effectiveOptionalDVNThreshold: Int
   effectiveRequiredDVNs: [String!]!
   effectiveOptionalDVNs: [String!]!
+  libraryStatus: String
   isConfigTracked: Boolean
   usesDefaultLibrary: Boolean
   usesDefaultConfig: Boolean
