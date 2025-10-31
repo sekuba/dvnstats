@@ -297,7 +297,7 @@ export class QueryCoordinator {
               effectiveOptionalDVNThreshold
               effectiveRequiredDVNs
               effectiveOptionalDVNs
-              isConfigTracked
+              libraryStatus
               usesDefaultLibrary
               usesDefaultConfig
               usesRequiredDVNSentinel
@@ -817,7 +817,11 @@ export class QueryCoordinator {
   formatLibraryDescriptor(row) {
     const address = row.effectiveReceiveLibrary || "—";
     const statusBits = [];
-    statusBits.push(row.isConfigTracked ? "tracked" : "untracked");
+
+    // Handle three library states: "tracked", "unsupported", "none"
+    const libraryStatus = row.libraryStatus || "unknown";
+    statusBits.push(libraryStatus);
+
     if (row.usesDefaultLibrary) {
       statusBits.push("default");
     }
