@@ -102,5 +102,6 @@
     "name": "ORDER token adapter",
     "addButton": false
   },
-  "30101_0x58538e6a46e07434d7e7375bc268d3cb839c0133": { "name": "ENA token", "addButton": true }
+  "30101_0x58538e6a46e07434d7e7375bc268d3cb839c0133": { "name": "ENA token", "addButton": true },
+  "30184_0x26da582889f59eaae9da1f063be0140cd93e6a4f": { "name": "gas.zip lz", "addButton": true }
 }

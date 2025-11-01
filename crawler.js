@@ -171,9 +171,7 @@ export class SecurityGraphCrawler {
         for (const cfg of resolvedConfigs) {
           const cfgSrcEid = normalizeKey(cfg?.eid);
           const cfgLocalEid =
-            cfg?.localEid !== undefined && cfg?.localEid !== null
-              ? String(cfg.localEid)
-              : localEid;
+            cfg?.localEid !== undefined && cfg?.localEid !== null ? String(cfg.localEid) : localEid;
           const requiredDVNs = Array.isArray(cfg?.effectiveRequiredDVNs)
             ? cfg.effectiveRequiredDVNs
             : [];
@@ -185,11 +183,11 @@ export class SecurityGraphCrawler {
           const optionalDVNLabels = resolveDvnNamesCached(optionalDVNs, cfgLocalEid);
 
           const peerDetails = this.derivePeer(cfg);
-        const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;
+          const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;
 
-        const securityEntry = {
-          id: cfg.id ?? null,
-          srcEid: cfg?.eid ?? null,
+          const securityEntry = {
+            id: cfg.id ?? null,
+            srcEid: cfg?.eid ?? null,
             localEid: cfgLocalEid,
             requiredDVNCount: cfg?.effectiveRequiredDVNCount ?? 0,
             requiredDVNs,
@@ -210,102 +208,118 @@ export class SecurityGraphCrawler {
             fallbackFields: Array.isArray(cfg?.fallbackFields) ? cfg.fallbackFields : [],
             routePacketCount: routeMetric?.packetCount ?? 0,
             routePacketShare: routeMetric?.share ?? 0,
-          routePacketPercent: routeMetric?.percent ?? 0,
-          routeLastPacketBlock: routeMetric?.lastPacketBlock ?? null,
-          routeLastPacketTimestamp: routeMetric?.lastPacketTimestamp ?? null,
-          attachedCandidate: false,
-        };
+            routePacketPercent: routeMetric?.percent ?? 0,
+            routeLastPacketBlock: routeMetric?.lastPacketBlock ?? null,
+            routeLastPacketTimestamp: routeMetric?.lastPacketTimestamp ?? null,
+            attachedCandidate: false,
+            unresolvedPeer:
+              !peerDetails?.oappId && !(peerDetails && peerDetails.isZeroPeer) && !cfg.peerOappId,
+          };
 
-        if (!this.shouldIncludeSecurityEntry(securityEntry)) {
-          continue;
-        }
-
-        const isBlockingFallback =
-          securityEntry.synthetic &&
-          securityEntry.peerStateHint === "implicit-blocked" &&
-          !securityEntry.peerOAppId;
-
-        securityEntry.isBlockingFallback = isBlockingFallback;
-
-        node.securityConfigs.push(securityEntry);
-
-        if (!isBlockingFallback || securityEntry.peerOAppId) {
-          let edgeFromId = securityEntry.peerOAppId;
-          if (!edgeFromId && securityEntry.peerLocalEid) {
-            edgeFromId = `${securityEntry.peerLocalEid}_${ZERO_ADDRESS_HEX}`;
+          if (!this.shouldIncludeSecurityEntry(securityEntry)) {
+            continue;
           }
 
-          const context = {
-            config: securityEntry,
-            edgeFrom: edgeFromId,
-            edgeTo: oappId,
-            peerInfo: peerDetails,
-            peerRaw: peerDetails?.rawPeer ?? null,
-            peerLocalEid: securityEntry.peerLocalEid,
-            queueNext: securityEntry.peerOAppId,
-            isOutbound: true,
-            peerStateHint: securityEntry.peerStateHint ?? peerDetails?.peerStateHint ?? null,
-            routeMetric,
-            sourceType: securityEntry.sourceType,
-            libraryStatus: securityEntry.libraryStatus,
-            synthetic: securityEntry.synthetic,
-            entryRef: securityEntry,
-            attached: false,
-          };
-          securityEntry.attachedCandidate = true;
-          outboundContexts.push(context);
+          const isBlockingFallback =
+            securityEntry.synthetic &&
+            securityEntry.peerStateHint === "implicit-blocked" &&
+            !securityEntry.peerOAppId;
+
+          securityEntry.isBlockingFallback = isBlockingFallback;
+
+          node.securityConfigs.push(securityEntry);
+
+          if (!isBlockingFallback || securityEntry.peerOAppId) {
+            let edgeFromId = securityEntry.peerOAppId;
+            if (!edgeFromId && securityEntry.peerLocalEid) {
+              edgeFromId = `${securityEntry.peerLocalEid}_${ZERO_ADDRESS_HEX}`;
+            }
+
+            const context = {
+              config: securityEntry,
+              edgeFrom: edgeFromId,
+              edgeTo: oappId,
+              peerInfo: peerDetails,
+              peerRaw: peerDetails?.rawPeer ?? null,
+              peerLocalEid: securityEntry.peerLocalEid,
+              queueNext: securityEntry.peerOAppId,
+              isOutbound: true,
+              peerStateHint: securityEntry.peerStateHint ?? peerDetails?.peerStateHint ?? null,
+              routeMetric,
+              sourceType: securityEntry.sourceType,
+              libraryStatus: securityEntry.libraryStatus,
+              synthetic: securityEntry.synthetic,
+              entryRef: securityEntry,
+              attached: false,
+            };
+            securityEntry.attachedCandidate = true;
+            outboundContexts.push(context);
+          }
         }
-      }
 
-      const inboundContexts = inboundConfigs
-        .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
-        .map((cfg) => {
-          const remoteId = cfg.oappId;
-          const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
+        const inboundContexts = inboundConfigs
+          .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
+          .map((cfg) => {
+            const remoteId = cfg.oappId;
+            const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
 
-          let isStalePeer = false;
-          let blockReasonHint = null;
+            let isStalePeer = false;
+            let blockReasonHint = null;
 
-          if (remoteLocalEid) {
-            const ourConfigForThisSrc = node.securityConfigs.find(
-              (c) => normalizeKey(c.srcEid) === normalizeKey(remoteLocalEid),
-            );
-            if (ourConfigForThisSrc) {
-              const ourPeerAddress = ourConfigForThisSrc.peerAddress
-                ? String(ourConfigForThisSrc.peerAddress).toLowerCase()
-                : null;
-              const remoteAddr = remoteAddress ? String(remoteAddress).toLowerCase() : null;
-              const ourPeerState = ourConfigForThisSrc.peerStateHint ?? null;
+            if (remoteLocalEid) {
+              const ourConfigForThisSrc = node.securityConfigs.find(
+                (c) => normalizeKey(c.srcEid) === normalizeKey(remoteLocalEid),
+              );
+              if (ourConfigForThisSrc) {
+                const ourPeerAddress = ourConfigForThisSrc.peerAddress
+                  ? String(ourConfigForThisSrc.peerAddress).toLowerCase()
+                  : null;
+                const remoteAddr = remoteAddress ? String(remoteAddress).toLowerCase() : null;
+                const ourPeerState = ourConfigForThisSrc.peerStateHint ?? null;
 
-              if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
-                isStalePeer = true;
-                blockReasonHint = "stale-peer";
-              } else if (ourPeerState === "explicit-blocked") {
-                blockReasonHint = "explicit-block";
-              } else if (ourPeerState === "implicit-blocked") {
-                blockReasonHint = "implicit-block";
+                if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
+                  isStalePeer = true;
+                  blockReasonHint = "stale-peer";
+                } else if (ourPeerState === "explicit-blocked") {
+                  blockReasonHint = "explicit-block";
+                } else if (ourPeerState === "implicit-blocked") {
+                  blockReasonHint = "implicit-block";
+                }
               }
             }
-          }
 
-          const peerDetails = this.derivePeer(cfg);
+            const peerDetails = this.derivePeer(cfg);
 
-          return {
-            config: cfg,
-            edgeFrom: remoteId,
-            edgeTo: oappId,
-            peerInfo: peerDetails,
-            peerRaw: peerDetails?.rawPeer ?? cfg?.peer ?? null,
-            peerLocalEid: remoteLocalEid ?? null,
-            queueNext: remoteId,
-            isStalePeer,
-            blockReasonHint,
-            isOutbound: false,
-            peerStateHint: cfg?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
-            libraryStatus: cfg?.libraryStatus ?? null,
-            synthetic: Boolean(cfg?.synthetic),
-          };
-        });
+            if (!blockReasonHint) {
+              const peerState =
+                cfg?.peerStateHint ?? (peerDetails ? peerDetails.peerStateHint : null) ?? null;
+              const hasResolvedPeer = Boolean(peerDetails?.oappId || cfg?.peerOappId);
+              const isZeroPeer = peerDetails?.isZeroPeer === true;
+              if (peerState === "explicit-blocked" || isZeroPeer) {
+                blockReasonHint = "explicit-block";
+              } else if (!hasResolvedPeer) {
+                if (peerState === "implicit-blocked" || Boolean(cfg?.synthetic)) {
+                  blockReasonHint = "implicit-block";
+                }
+              }
+            }
+
+            return {
+              config: cfg,
+              edgeFrom: remoteId,
+              edgeTo: oappId,
+              peerInfo: peerDetails,
+              peerRaw: peerDetails?.rawPeer ?? cfg?.peer ?? null,
+              peerLocalEid: remoteLocalEid ?? null,
+              queueNext: remoteId,
+              isStalePeer,
+              blockReasonHint,
+              isOutbound: false,
+              peerStateHint: cfg?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
+              libraryStatus: cfg?.libraryStatus ?? null,
+              synthetic: Boolean(cfg?.synthetic),
+            };
+          });
 
         nodes.set(oappId, node);
 
@@ -584,8 +598,7 @@ export class SecurityGraphCrawler {
     const peerRecordsByOapp = new Map();
     (data.OAppPeer || []).forEach((peer) => {
       const oappKey = String(peer.oappId);
-      const eidKey =
-        peer.eid !== undefined && peer.eid !== null ? String(peer.eid) : "__unknown__";
+      const eidKey = peer.eid !== undefined && peer.eid !== null ? String(peer.eid) : "__unknown__";
       if (!peerRecordsByOapp.has(oappKey)) {
         peerRecordsByOapp.set(oappKey, new Map());
       }
@@ -649,8 +662,7 @@ export class SecurityGraphCrawler {
     const peerStateHint = config.peerStateHint ?? null;
     const normalizedRaw = rawPeer ? String(rawPeer).toLowerCase() : null;
 
-    const explicitZero =
-      normalizedRaw === ZERO_PEER_HEX || normalizedRaw === ZERO_ADDRESS_HEX;
+    const explicitZero = normalizedRaw === ZERO_PEER_HEX || normalizedRaw === ZERO_ADDRESS_HEX;
     const isImplicitBlock =
       peerStateHint === "implicit-blocked" || peerStateHint === "not-configured";
     const isExplicitBlock = peerStateHint === "explicit-blocked";
@@ -829,7 +841,8 @@ export class SecurityGraphCrawler {
       if (!context || !context.config) {
         return;
       }
-      const metric = metricBySrc.get(normalize(context.config.srcEid));
+      const metricKey = normalize(context.config.srcEid);
+      const metric = metricBySrc.get(metricKey);
       context.routeMetric = metric ?? null;
       if (context.attached && edgesMap) {
         const edgeFrom = context.edgeFrom;
@@ -843,7 +856,13 @@ export class SecurityGraphCrawler {
             edgeRecord.routeLastPacketBlock =
               metric && metric.lastPacketBlock !== undefined ? metric.lastPacketBlock : null;
             edgeRecord.routeLastPacketTimestamp =
-              metric && metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
+              metric && metric.lastPacketTimestamp !== undefined
+                ? metric.lastPacketTimestamp
+                : null;
+            if (context.config && context.config.unresolvedPeer && !edgeRecord.peerStateHint) {
+              edgeRecord.peerStateHint = "implicit-blocked";
+              edgeRecord.blockReasonHint = edgeRecord.blockReasonHint || "implicit-block";
+            }
           }
         }
       }
@@ -885,8 +904,8 @@ export class SecurityGraphCrawler {
       const key = `${edgeFrom}->${edgeTo}`;
       const contextConfig = context.config || {};
       const srcEid = context.isOutbound
-        ? contextConfig.srcEid ?? contextConfig.eid ?? contextConfig.localEid ?? null
-        : contextConfig.localEid ?? contextConfig.eid ?? contextConfig.srcEid ?? null;
+        ? (contextConfig.srcEid ?? contextConfig.eid ?? contextConfig.localEid ?? null)
+        : (contextConfig.localEid ?? contextConfig.eid ?? contextConfig.srcEid ?? null);
 
       const existing = edges.get(key);
       const peerInfo = context.peerInfo || null;
@@ -907,6 +926,17 @@ export class SecurityGraphCrawler {
         (peerInfo ? peerInfo.blockReasonHint : undefined) ??
         contextConfig.blockReasonHint ??
         null;
+      let resolvedBlockReason = blockReasonHint;
+      const unresolvedPeer =
+        Boolean(contextConfig.unresolvedPeer) ||
+        Boolean(peerInfo?.unresolvedPeer) ||
+        (!peerRaw && !contextConfig.peerOAppId && peerStateHint === "implicit-blocked");
+      if (!resolvedBlockReason && unresolvedPeer) {
+        resolvedBlockReason = "implicit-block";
+      }
+      if (resolvedBlockReason && !context.blockReasonHint) {
+        context.blockReasonHint = resolvedBlockReason;
+      }
 
       const routeMetric = context.routeMetric ?? null;
       const configRouteMetric =
@@ -921,23 +951,18 @@ export class SecurityGraphCrawler {
           peerLocalEid,
           peerOAppId: edgeFrom,
           peerStateHint,
-          blockReasonHint,
+          blockReasonHint: resolvedBlockReason,
           isStalePeer: Boolean(context.isStalePeer),
           libraryStatus: context.libraryStatus ?? contextConfig.libraryStatus ?? null,
           synthetic: Boolean(context.synthetic ?? contextConfig.synthetic),
           sourceType: context.sourceType ?? contextConfig.sourceType ?? null,
-          routePacketCount:
-            routeMetric?.packetCount ?? configRouteMetric?.routePacketCount ?? 0,
-          routePacketShare:
-            routeMetric?.share ?? configRouteMetric?.routePacketShare ?? 0,
-          routePacketPercent:
-            routeMetric?.percent ?? configRouteMetric?.routePacketPercent ?? 0,
+          routePacketCount: routeMetric?.packetCount ?? configRouteMetric?.routePacketCount ?? 0,
+          routePacketShare: routeMetric?.share ?? configRouteMetric?.routePacketShare ?? 0,
+          routePacketPercent: routeMetric?.percent ?? configRouteMetric?.routePacketPercent ?? 0,
           routeLastPacketBlock:
             routeMetric?.lastPacketBlock ?? configRouteMetric?.routeLastPacketBlock ?? null,
           routeLastPacketTimestamp:
-            routeMetric?.lastPacketTimestamp ??
-            configRouteMetric?.routeLastPacketTimestamp ??
-            null,
+            routeMetric?.lastPacketTimestamp ?? configRouteMetric?.routeLastPacketTimestamp ?? null,
         });
         context.attached = true;
       } else {
@@ -955,6 +980,8 @@ export class SecurityGraphCrawler {
         }
         if (!existing.blockReasonHint && blockReasonHint) {
           existing.blockReasonHint = blockReasonHint;
+        } else if (!existing.blockReasonHint && resolvedBlockReason) {
+          existing.blockReasonHint = resolvedBlockReason;
         }
         if (!existing.libraryStatus && (context.libraryStatus || contextConfig.libraryStatus)) {
           existing.libraryStatus = context.libraryStatus ?? contextConfig.libraryStatus ?? null;
