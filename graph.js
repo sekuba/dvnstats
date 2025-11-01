@@ -1115,6 +1115,18 @@ export class SecurityGraphView {
       };
     });
 
+    nodeMetrics.sort((a, b) => {
+      if (a.isTracked !== b.isTracked) {
+        return a.isTracked ? -1 : 1;
+      }
+      const packetsA = Number.isFinite(a.totalPackets) ? a.totalPackets : 0;
+      const packetsB = Number.isFinite(b.totalPackets) ? b.totalPackets : 0;
+      if (packetsB !== packetsA) {
+        return packetsB - packetsA;
+      }
+      return String(a.id).localeCompare(String(b.id));
+    });
+
     nodeMetrics.forEach((metric) => metricsById.set(metric.id, metric));
 
     if (this.requestUniformAlias && nodeMetrics.length) {
