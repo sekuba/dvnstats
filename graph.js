@@ -1505,11 +1505,11 @@ export class SecurityGraphView {
           }
           const header = document.createElement("div");
           header.className = "config-line-header";
-          const eidText =
+          const chainLabel =
             detail.srcEid !== undefined && detail.srcEid !== null
-              ? `EID ${detail.srcEid}`
+              ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
               : "EID —";
-          header.textContent = `${eidText} • ${detail.requiredDVNCount} required`;
+          header.textContent = `${chainLabel} • ${detail.requiredDVNCount} required`;
           line.appendChild(header);
           renderDvns(detail.requiredPairs, line);
           stack.appendChild(line);
@@ -1523,17 +1523,18 @@ export class SecurityGraphView {
           line.className = "config-line config-line--standard";
           const header = document.createElement("div");
           header.className = "config-line-header";
-          header.textContent = `Dominant set • ${group.count} EID${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
+          header.textContent = `Dominant set • ${group.count} chain${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
           line.appendChild(header);
 
           const uniqueEids = Array.from(
             new Set(group.eids.filter((eid) => eid !== undefined && eid !== null)),
           ).map((eid) => String(eid));
           if (uniqueEids.length) {
-            const preview = uniqueEids.slice(0, 4).join(", ");
+            const chainLabels = uniqueEids.map((eid) => this.formatChainLabel(eid) || `EID ${eid}`);
+            const preview = chainLabels.slice(0, 4).join(", ");
             const note = document.createElement("div");
             note.className = "config-line-note";
-            note.textContent = uniqueEids.length > 4 ? `EIDs ${preview}, …` : `EIDs ${preview}`;
+            note.textContent = chainLabels.length > 4 ? `${preview}, …` : preview;
             line.appendChild(note);
           }
 
@@ -1567,12 +1568,12 @@ export class SecurityGraphView {
           block.className = "optional-line";
           const header = document.createElement("div");
           header.className = "optional-line-header";
-          const eidText =
+          const chainLabel =
             detail.srcEid !== undefined && detail.srcEid !== null
-              ? `EID ${detail.srcEid}`
+              ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
               : "EID —";
           const labelParts = [
-            eidText,
+            chainLabel,
             detail.optionalSummary
               ? `quorum ${detail.optionalSummary}`
               : detail.usesSentinel
@@ -1608,12 +1609,59 @@ export class SecurityGraphView {
       tr.appendChild(optionalCell);
 
       const edgesCell = document.createElement("td");
-      edgesCell.className = "metric-cell";
+      edgesCell.className = "edges-cell";
+
+      // Main count display
+      const edgeCount = document.createElement("div");
+      edgeCount.className = "edge-count";
       const edgeParts = [`${metric.activeIncomingCount} active`];
       if (metric.blockedIncomingCount > 0) {
         edgeParts.push(`${metric.blockedIncomingCount} blocked`);
       }
-      edgesCell.textContent = edgeParts.join(" / ");
+      edgeCount.textContent = edgeParts.join(" / ");
+      edgesCell.appendChild(edgeCount);
+
+      // Show active edge sources
+      if (metric.activeIncoming && metric.activeIncoming.length > 0) {
+        const activeList = document.createElement("div");
+        activeList.className = "active-edges-list";
+        const activeSources = new Set();
+        metric.activeIncoming.forEach((edgeInfo) => {
+          const srcEid = edgeInfo?.edge?.srcEid;
+          if (srcEid !== undefined && srcEid !== null) {
+            activeSources.add(String(srcEid));
+          }
+        });
+        if (activeSources.size > 0) {
+          const activeChains = Array.from(activeSources)
+            .map((eid) => this.formatChainLabel(eid) || `EID ${eid}`)
+            .sort();
+          activeList.textContent = `Active: ${activeChains.join(", ")}`;
+          edgesCell.appendChild(activeList);
+        }
+      }
+
+      // Show blocked edge sources if any
+      if (metric.blockedIncoming && metric.blockedIncoming.length > 0) {
+        const blockedList = document.createElement("div");
+        blockedList.className = "blocked-edges-list";
+        const blockedSources = new Set();
+        metric.blockedIncoming.forEach((edgeInfo) => {
+          const srcEid = edgeInfo?.edge?.srcEid;
+          if (srcEid !== undefined && srcEid !== null) {
+            blockedSources.add(String(srcEid));
+          }
+        });
+        if (blockedSources.size > 0) {
+          const blockedChains = Array.from(blockedSources)
+            .map((eid) => this.formatChainLabel(eid) || `EID ${eid}`)
+            .sort();
+          blockedList.textContent = `Blocked: ${blockedChains.join(", ")}`;
+          edgesCell.appendChild(blockedList);
+        }
+      }
+
+      // Apply extreme highlighting to entire cell
       if (hasEdgeVariation && metric.isTracked && !metric.isBlocked) {
         if (edgeLows.includes(metric.id)) {
           edgesCell.classList.add("cell-extreme-low");
@@ -2107,14 +2155,15 @@ export class SecurityGraphView {
     }
     const display = this.getChainDisplayLabel(chainId);
     if (display) {
-      return display;
+      // Strip out the EID number in parentheses for cleaner display
+      return display.replace(/\s*\(\d+\)$/, "");
     }
     const str = String(chainId);
     if (str.startsWith("eid-")) {
       const suffix = str.slice(4);
-      return suffix ? `EID ${suffix} (unmapped)` : "EID (unmapped)";
+      return suffix ? `EID ${suffix}` : "EID";
     }
-    return str;
+    return `EID ${str}`;
   }
 
   resolveNodeChainLabel(node, nodeId, fallbackEid) {

@@ -825,6 +825,33 @@ td {
   font-weight: 600;
 }
 
+.edges-cell {
+  font-size: 0.85rem;
+}
+
+.edge-count {
+  font-weight: 600;
+}
+
+.active-edges-list {
+  font-size: 0.75rem;
+  color: var(--ink);
+  line-height: 1.3;
+  margin-top: 0.25rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+.blocked-edges-list {
+  font-size: 0.75rem;
+  color: var(--ink);
+  line-height: 1.3;
+  margin-top: 0.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .cell-variant {
   background: rgba(255, 29, 245, 0.18);
 }

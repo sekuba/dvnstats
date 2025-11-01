@@ -872,10 +872,10 @@ export class QueryCoordinator {
     // Handle three library states with explanations: "tracked", "unsupported", "none"
     const libraryStatus = row.libraryStatus || "unknown";
     const statusExplanations = {
-      tracked: "✓ Tracked (ULN config available)",
-      unsupported: "⚠ Unsupported library (no ULN config)",
-      none: "○ No library configured",
-      unknown: "? Unknown status",
+      tracked: "TRACKED (ULN config available)",
+      unsupported: "UNSUPPORTED (no ULN config)",
+      none: "NOT CONFIGURED",
+      unknown: "UNKNOWN STATUS",
     };
     statusBits.push(statusExplanations[libraryStatus] || libraryStatus);
 
@@ -903,7 +903,7 @@ export class QueryCoordinator {
 
     if (row.usesRequiredDVNSentinel) {
       return this.createFormattedCell(
-        ["⚡ Sentinel: 0 required DVNs", "Optional-only quorum"],
+        ["SENTINEL: 0 required DVNs", "Optional-only quorum"],
         "sentinel",
         { highlight },
       );
@@ -998,7 +998,7 @@ export class QueryCoordinator {
       "not-configured": "Not configured",
       "auto-discovered": "Auto-discovered",
       "explicitly-set": "Explicitly set",
-      "explicitly-blocked": "⚠️ Blocked (zero address)",
+      "explicitly-blocked": "BLOCKED (zero address)",
     };
     lines.push(stateLabels[peerState]);
 
@@ -1051,13 +1051,10 @@ export class QueryCoordinator {
     // Check for sentinel value (2^64-1 = 18446744073709551615)
     const CONFIRMATIONS_SENTINEL = "18446744073709551615";
     if (String(confirmations) === CONFIRMATIONS_SENTINEL) {
-      lines.push("⚡ Sentinel: 0 confirmations");
+      lines.push("SENTINEL: 0 confirmations");
       lines.push("Instant finality mode");
     } else {
       lines.push(String(confirmations));
-      if (row.usesDefaultConfig) {
-        lines.push("Uses default config");
-      }
     }
 
     return this.createFormattedCell(lines, String(confirmations));
