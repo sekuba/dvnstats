@@ -1,8 +1,10 @@
 import { APP_CONFIG } from "./config.js";
 import { splitOAppId } from "./core.js";
+import { resolveOAppSecurityConfigs } from "./resolver.js";
 
 const ZERO_PEER_HEX = APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase();
 const ZERO_ADDRESS_HEX = APP_CONFIG.ADDRESSES.ZERO.toLowerCase();
+const DEAD_ADDRESS_HEX = APP_CONFIG.ADDRESSES.DEAD.toLowerCase();
 
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
@@ -45,6 +47,11 @@ export class SecurityGraphCrawler {
       return names;
     };
 
+    const normalizeKey = (value) => {
+      if (value === undefined || value === null) return null;
+      return String(value);
+    };
+
     let count = 0;
 
     while (queue.length) {
@@ -74,128 +81,234 @@ export class SecurityGraphCrawler {
         const oapp = batchData.oapps.get(oappId) ?? null;
 
         const { localEid: fallbackLocalEid, address: fallbackAddress } = splitOAppId(oappId);
-        const localEid =
+        const resolvedLocalEid =
           oapp?.localEid !== undefined && oapp?.localEid !== null
             ? String(oapp.localEid)
             : fallbackLocalEid;
+        const localEid = resolvedLocalEid ? String(resolvedLocalEid) : null;
         const resolvedAddress = oapp?.address || fallbackAddress || "unknown";
 
-        // Check if this node was discovered via packet delivery
-        let fromPacketDelivered = false;
-        if (batchData.peers) {
-          // Check all possible source eids for this oappId
-          for (const [key, peer] of batchData.peers.entries()) {
-            if (key.startsWith(`${oappId}_`) && peer.fromPacketDelivered === true) {
-              fromPacketDelivered = true;
-              break;
-            }
-          }
-        }
+        const peerRecords = batchData.peerRecordsByOapp.get(oappId) ?? new Map();
+        const peersArray = Array.from(peerRecords.values());
+        const fromPacketDelivered = peersArray.some((peer) => peer.fromPacketDelivered === true);
+
+        const defaultLibraries =
+          localEid && batchData.defaultLibraries.has(localEid)
+            ? batchData.defaultLibraries.get(localEid)
+            : [];
+        const defaultConfigs =
+          localEid && batchData.defaultConfigs.has(localEid)
+            ? batchData.defaultConfigs.get(localEid)
+            : [];
+        const oappLibraries = batchData.oappLibraries.get(oappId) ?? [];
+        const oappConfigs = batchData.oappConfigs.get(oappId) ?? [];
+        const routeStatsRaw = batchData.routeStats.get(oappId) ?? [];
+
+        const totalRoutePackets = routeStatsRaw.reduce((acc, stat) => {
+          const value = Number(stat?.packetCount);
+          return acc + (Number.isFinite(value) && value > 0 ? value : 0);
+        }, 0);
+
+        const routeStatsMap = new Map();
+        routeStatsRaw.forEach((stat) => {
+          const key = normalizeKey(stat?.srcEid ?? stat?.eid);
+          if (!key) return;
+          const count = Number(stat?.packetCount);
+          const packetCount = Number.isFinite(count) && count > 0 ? count : 0;
+          const share = totalRoutePackets > 0 ? packetCount / totalRoutePackets : 0;
+          routeStatsMap.set(key, {
+            srcEid: key,
+            packetCount,
+            share,
+            percent: share > 0 ? share * 100 : 0,
+            lastPacketBlock:
+              stat?.lastPacketBlock !== undefined && stat?.lastPacketBlock !== null
+                ? Number(stat.lastPacketBlock)
+                : null,
+            lastPacketTimestamp:
+              stat?.lastPacketTimestamp !== undefined && stat?.lastPacketTimestamp !== null
+                ? Number(stat.lastPacketTimestamp)
+                : null,
+          });
+        });
+
+        const resolution = resolveOAppSecurityConfigs({
+          oappId,
+          localEid,
+          oappAddress: resolvedAddress,
+          securityConfigs: configs,
+          defaultReceiveLibraries: defaultLibraries,
+          defaultUlnConfigs: defaultConfigs,
+          oappPeers: peersArray,
+          oappReceiveLibraries: oappLibraries,
+          oappUlnConfigs: oappConfigs,
+          routeStats: routeStatsRaw,
+        });
+
+        const resolvedConfigs = Array.isArray(resolution?.rows) ? resolution.rows : [];
+        const securitySummary = resolution?.summary ?? null;
+
+        const totalPacketsValue = Number(oapp?.totalPacketsReceived);
+        const totalPacketsReceived =
+          Number.isFinite(totalPacketsValue) && totalPacketsValue > 0 ? totalPacketsValue : 0;
 
         const node = {
           id: oappId,
           localEid,
           address: resolvedAddress,
-          totalPacketsReceived: oapp?.totalPacketsReceived || 0,
+          totalPacketsReceived,
+          totalRoutePackets,
           isTracked: configs.length > 0,
           fromPacketDelivered,
           depth,
           securityConfigs: [],
+          securitySummary,
+          routeStats: Array.from(routeStatsMap.values()),
         };
 
-        const outboundContexts = configs.map((cfg) => {
-          const peer = this.derivePeer(cfg);
-          const requiredDVNs = Array.isArray(cfg.effectiveRequiredDVNs)
+        const outboundContexts = [];
+
+        for (const cfg of resolvedConfigs) {
+          const cfgSrcEid = normalizeKey(cfg?.eid);
+          const cfgLocalEid =
+            cfg?.localEid !== undefined && cfg?.localEid !== null
+              ? String(cfg.localEid)
+              : localEid;
+          const requiredDVNs = Array.isArray(cfg?.effectiveRequiredDVNs)
             ? cfg.effectiveRequiredDVNs
             : [];
-          const optionalDVNs = Array.isArray(cfg.effectiveOptionalDVNs)
+          const optionalDVNs = Array.isArray(cfg?.effectiveOptionalDVNs)
             ? cfg.effectiveOptionalDVNs
             : [];
-          const cfgEid =
-            cfg.localEid !== undefined && cfg.localEid !== null ? String(cfg.localEid) : localEid;
-          const requiredDVNLabels = resolveDvnNamesCached(requiredDVNs, cfgEid);
-          const optionalDVNLabels = resolveDvnNamesCached(optionalDVNs, cfgEid);
-          const peerOAppId = peer?.oappId ?? null;
 
-          // Create synthetic ID for blocked/unresolved peers so they appear in the graph
-          let edgeFromId = peerOAppId;
-          if (!peerOAppId && peer?.localEid) {
-            // Use zero address to create a synthetic OApp ID for the blocked peer
-            edgeFromId = `${peer.localEid}_${ZERO_ADDRESS_HEX}`;
-          }
+          const requiredDVNLabels = resolveDvnNamesCached(requiredDVNs, cfgLocalEid);
+          const optionalDVNLabels = resolveDvnNamesCached(optionalDVNs, cfgLocalEid);
 
-          node.securityConfigs.push({
-            srcEid: cfg.eid,
-            localEid: cfgEid,
-            requiredDVNCount: cfg.effectiveRequiredDVNCount || 0,
+          const peerDetails = this.derivePeer(cfg);
+        const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;
+
+        const securityEntry = {
+          id: cfg.id ?? null,
+          srcEid: cfg?.eid ?? null,
+            localEid: cfgLocalEid,
+            requiredDVNCount: cfg?.effectiveRequiredDVNCount ?? 0,
             requiredDVNs,
             requiredDVNLabels,
-            optionalDVNCount: cfg.effectiveOptionalDVNCount || 0,
+            optionalDVNCount: cfg?.effectiveOptionalDVNCount ?? 0,
             optionalDVNs,
             optionalDVNLabels,
-            optionalDVNThreshold: cfg.effectiveOptionalDVNThreshold || 0,
-            usesRequiredDVNSentinel: cfg.usesRequiredDVNSentinel || false,
-            libraryStatus: cfg.libraryStatus || "unknown",
-            peer: cfg.peer ?? null,
-            peerOAppId,
-            peerLocalEid: peer?.localEid || null,
-            peerAddress: peer?.address || null,
-          });
+            optionalDVNThreshold: cfg?.effectiveOptionalDVNThreshold ?? 0,
+            usesRequiredDVNSentinel: cfg?.usesRequiredDVNSentinel ?? false,
+            libraryStatus: cfg?.libraryStatus ?? "unknown",
+            peer: cfg?.peer ?? null,
+            peerStateHint: cfg?.peerStateHint ?? null,
+            peerOAppId: peerDetails?.oappId ?? null,
+            peerLocalEid: peerDetails?.localEid ?? null,
+            peerAddress: peerDetails?.address ?? null,
+            sourceType: cfg?.sourceType ?? "materialized",
+            synthetic: Boolean(cfg?.synthetic),
+            fallbackFields: Array.isArray(cfg?.fallbackFields) ? cfg.fallbackFields : [],
+            routePacketCount: routeMetric?.packetCount ?? 0,
+            routePacketShare: routeMetric?.share ?? 0,
+          routePacketPercent: routeMetric?.percent ?? 0,
+          routeLastPacketBlock: routeMetric?.lastPacketBlock ?? null,
+          routeLastPacketTimestamp: routeMetric?.lastPacketTimestamp ?? null,
+          attachedCandidate: false,
+        };
+
+        if (!this.shouldIncludeSecurityEntry(securityEntry)) {
+          continue;
+        }
+
+        const isBlockingFallback =
+          securityEntry.synthetic &&
+          securityEntry.peerStateHint === "implicit-blocked" &&
+          !securityEntry.peerOAppId;
+
+        securityEntry.isBlockingFallback = isBlockingFallback;
+
+        node.securityConfigs.push(securityEntry);
+
+        if (!isBlockingFallback || securityEntry.peerOAppId) {
+          let edgeFromId = securityEntry.peerOAppId;
+          if (!edgeFromId && securityEntry.peerLocalEid) {
+            edgeFromId = `${securityEntry.peerLocalEid}_${ZERO_ADDRESS_HEX}`;
+          }
+
+          const context = {
+            config: securityEntry,
+            edgeFrom: edgeFromId,
+            edgeTo: oappId,
+            peerInfo: peerDetails,
+            peerRaw: peerDetails?.rawPeer ?? null,
+            peerLocalEid: securityEntry.peerLocalEid,
+            queueNext: securityEntry.peerOAppId,
+            isOutbound: true,
+            peerStateHint: securityEntry.peerStateHint ?? peerDetails?.peerStateHint ?? null,
+            routeMetric,
+            sourceType: securityEntry.sourceType,
+            libraryStatus: securityEntry.libraryStatus,
+            synthetic: securityEntry.synthetic,
+            entryRef: securityEntry,
+            attached: false,
+          };
+          securityEntry.attachedCandidate = true;
+          outboundContexts.push(context);
+        }
+      }
+
+      const inboundContexts = inboundConfigs
+        .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
+        .map((cfg) => {
+          const remoteId = cfg.oappId;
+          const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
+
+          let isStalePeer = false;
+          let blockReasonHint = null;
+
+          if (remoteLocalEid) {
+            const ourConfigForThisSrc = node.securityConfigs.find(
+              (c) => normalizeKey(c.srcEid) === normalizeKey(remoteLocalEid),
+            );
+            if (ourConfigForThisSrc) {
+              const ourPeerAddress = ourConfigForThisSrc.peerAddress
+                ? String(ourConfigForThisSrc.peerAddress).toLowerCase()
+                : null;
+              const remoteAddr = remoteAddress ? String(remoteAddress).toLowerCase() : null;
+              const ourPeerState = ourConfigForThisSrc.peerStateHint ?? null;
+
+              if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
+                isStalePeer = true;
+                blockReasonHint = "stale-peer";
+              } else if (ourPeerState === "explicit-blocked") {
+                blockReasonHint = "explicit-block";
+              } else if (ourPeerState === "implicit-blocked") {
+                blockReasonHint = "implicit-block";
+              }
+            }
+          }
+
+          const peerDetails = this.derivePeer(cfg);
 
           return {
             config: cfg,
-            edgeFrom: edgeFromId,
+            edgeFrom: remoteId,
             edgeTo: oappId,
-            peerInfo: peer,
-            peerRaw: peer?.rawPeer ?? cfg.peer ?? null,
-            peerLocalEid: peer?.localEid || null,
-            queueNext: peerOAppId,
-            isOutbound: true,
+            peerInfo: peerDetails,
+            peerRaw: peerDetails?.rawPeer ?? cfg?.peer ?? null,
+            peerLocalEid: remoteLocalEid ?? null,
+            queueNext: remoteId,
+            isStalePeer,
+            blockReasonHint,
+            isOutbound: false,
+            peerStateHint: cfg?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
+            libraryStatus: cfg?.libraryStatus ?? null,
+            synthetic: Boolean(cfg?.synthetic),
           };
         });
 
-        const inboundContexts = inboundConfigs
-          .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
-          .map((cfg) => {
-            const remoteId = cfg.oappId;
-            const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
-
-            // Check if this is a stale peer: does our config for this srcEid point back to this remote node?
-            let isStalePeer = false;
-            if (remoteLocalEid) {
-              const ourConfigForThisSrc = configs.find(
-                (c) => String(c.eid) === String(remoteLocalEid),
-              );
-              if (ourConfigForThisSrc) {
-                // We have a config for this srcEid - check if the peer matches
-                const ourPeer = this.derivePeer(ourConfigForThisSrc);
-                const ourPeerAddress = ourPeer?.address?.toLowerCase();
-                const remoteAddr = remoteAddress?.toLowerCase();
-
-                // If we have a peer set for this srcEid and it doesn't match this remote node, it's stale
-                if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
-                  isStalePeer = true;
-                } else if (ourPeer?.isZeroPeer) {
-                  // If our peer is set to zero, all inbound from this srcEid are blocked
-                  isStalePeer = true;
-                }
-              }
-            }
-
-            return {
-              config: cfg,
-              edgeFrom: remoteId,
-              edgeTo: oappId,
-              peerInfo: null,
-              peerRaw: cfg.peer ?? null,
-              peerLocalEid: remoteLocalEid ?? null,
-              queueNext: remoteId,
-              isStalePeer,
-              isOutbound: false,
-            };
-          });
-
         nodes.set(oappId, node);
+
         this.addPeerEdges({
           oappId,
           depth,
@@ -205,6 +318,28 @@ export class SecurityGraphCrawler {
           visited,
           edges,
           contexts: [...outboundContexts, ...inboundContexts],
+        });
+
+        const attachedEntries = new Set();
+        for (const context of outboundContexts) {
+          if (context.entryRef && context.attached) {
+            attachedEntries.add(context.entryRef);
+          }
+        }
+
+        node.securityConfigs = node.securityConfigs.filter((entry) => {
+          if (!entry.attachedCandidate) {
+            return true;
+          }
+          return attachedEntries.has(entry);
+        });
+
+        this.finalizeNodeMetrics({
+          node,
+          routeStatsMap,
+          outboundContexts,
+          originalSecuritySummary: securitySummary,
+          edgesMap: edges,
         });
       }
     }
@@ -240,32 +375,74 @@ export class SecurityGraphCrawler {
         depth: -1,
         securityConfigs: [],
         totalPacketsReceived: 0,
+        totalRoutePackets: 0,
+        securitySummary: null,
+        routeStats: [],
+        syntheticRouteCount: 0,
+        implicitBlockCount: 0,
+        explicitBlockCount: 0,
+        totalResolvedRoutes: 0,
       });
     }
   }
 
   async fetchSecurityConfigBatch(oappIds) {
     if (!Array.isArray(oappIds) || oappIds.length === 0) {
-      return { origin: new Map(), referencing: new Map(), oapps: new Map(), peers: new Map() };
+      return {
+        origin: new Map(),
+        referencing: new Map(),
+        oapps: new Map(),
+        peerRecordsByOapp: new Map(),
+        defaultLibraries: new Map(),
+        defaultConfigs: new Map(),
+        oappLibraries: new Map(),
+        oappConfigs: new Map(),
+        routeStats: new Map(),
+      };
     }
 
     const uniqueIds = Array.from(new Set(oappIds));
+    const localEidSet = new Set();
+    uniqueIds.forEach((id) => {
+      const { localEid } = splitOAppId(id);
+      if (localEid === null || localEid === undefined) {
+        return;
+      }
+      const numeric = Number(localEid);
+      if (Number.isFinite(numeric)) {
+        localEidSet.add(numeric);
+      }
+    });
+    const localEids = Array.from(localEidSet);
 
     const query = `
-      query GetSecurityConfigBatch($oappIds: [String!]!) {
+      query GetSecurityConfigBatch($oappIds: [String!]!, $localEids: [numeric!]) {
         origin: OAppSecurityConfig(where: { oappId: { _in: $oappIds } }) {
           id
           oappId
           eid
           localEid
           oapp
+          effectiveReceiveLibrary
+          effectiveConfirmations
           effectiveRequiredDVNCount
-          effectiveRequiredDVNs
           effectiveOptionalDVNCount
-          effectiveOptionalDVNs
           effectiveOptionalDVNThreshold
+          effectiveRequiredDVNs
+          effectiveOptionalDVNs
           libraryStatus
+          usesDefaultLibrary
+          usesDefaultConfig
           usesRequiredDVNSentinel
+          fallbackFields
+          defaultLibraryVersionId
+          defaultConfigVersionId
+          libraryOverrideVersionId
+          configOverrideVersionId
+          lastComputedBlock
+          lastComputedTimestamp
+          lastComputedByEventId
+          lastComputedTransactionHash
           peer
           peerOappId
           peerTransactionHash
@@ -279,13 +456,26 @@ export class SecurityGraphCrawler {
           eid
           localEid
           oapp
+          effectiveReceiveLibrary
+          effectiveConfirmations
           effectiveRequiredDVNCount
-          effectiveRequiredDVNs
           effectiveOptionalDVNCount
-          effectiveOptionalDVNs
           effectiveOptionalDVNThreshold
+          effectiveRequiredDVNs
+          effectiveOptionalDVNs
           libraryStatus
+          usesDefaultLibrary
+          usesDefaultConfig
           usesRequiredDVNSentinel
+          fallbackFields
+          defaultLibraryVersionId
+          defaultConfigVersionId
+          libraryOverrideVersionId
+          configOverrideVersionId
+          lastComputedBlock
+          lastComputedTimestamp
+          lastComputedByEventId
+          lastComputedTransactionHash
           peer
           peerOappId
           peerTransactionHash
@@ -303,12 +493,73 @@ export class SecurityGraphCrawler {
           id
           oappId
           eid
+          peer
+          peerOappId
           fromPacketDelivered
+          lastUpdatedBlock
+          lastUpdatedTimestamp
+          lastUpdatedByEventId
+          transactionHash
+        }
+        OAppRouteStats(where: { oappId: { _in: $oappIds } }) {
+          id
+          oappId
+          srcEid
+          packetCount
+          lastPacketBlock
+          lastPacketTimestamp
+        }
+        OAppReceiveLibrary(where: { oappId: { _in: $oappIds } }) {
+          oappId
+          eid
+          library
+          lastUpdatedByEventId
+          lastUpdatedBlock
+          lastUpdatedTimestamp
+          transactionHash
+        }
+        OAppUlnConfig(where: { oappId: { _in: $oappIds } }) {
+          oappId
+          eid
+          confirmations
+          requiredDVNCount
+          optionalDVNCount
+          optionalDVNThreshold
+          requiredDVNs
+          optionalDVNs
+          lastUpdatedByEventId
+          lastUpdatedBlock
+          lastUpdatedTimestamp
+          transactionHash
+        }
+        DefaultReceiveLibrary(where: { localEid: { _in: $localEids } }) {
+          localEid
+          eid
+          library
+          lastUpdatedByEventId
+          lastUpdatedBlock
+          lastUpdatedTimestamp
+          transactionHash
+        }
+        DefaultUlnConfig(where: { localEid: { _in: $localEids } }) {
+          localEid
+          eid
+          confirmations
+          requiredDVNCount
+          optionalDVNCount
+          optionalDVNThreshold
+          requiredDVNs
+          optionalDVNs
+          lastUpdatedByEventId
+          lastUpdatedBlock
+          lastUpdatedTimestamp
+          transactionHash
         }
       }
     `;
 
-    const data = await this.client.query(query, { oappIds: uniqueIds });
+    const variables = { oappIds: uniqueIds, localEids };
+    const data = await this.client.query(query, variables);
 
     const originMap = new Map();
     (data.origin || []).forEach((cfg) => {
@@ -330,27 +581,89 @@ export class SecurityGraphCrawler {
       oappMap.set(String(oapp.id), oapp);
     });
 
-    const peerMap = new Map();
+    const peerRecordsByOapp = new Map();
     (data.OAppPeer || []).forEach((peer) => {
-      const key = `${peer.oappId}_${peer.eid}`;
-      peerMap.set(key, peer);
+      const oappKey = String(peer.oappId);
+      const eidKey =
+        peer.eid !== undefined && peer.eid !== null ? String(peer.eid) : "__unknown__";
+      if (!peerRecordsByOapp.has(oappKey)) {
+        peerRecordsByOapp.set(oappKey, new Map());
+      }
+      peerRecordsByOapp.get(oappKey).set(eidKey, peer);
+    });
+
+    const defaultLibraryMap = new Map();
+    (data.DefaultReceiveLibrary || []).forEach((row) => {
+      const key = String(row.localEid);
+      if (!defaultLibraryMap.has(key)) defaultLibraryMap.set(key, []);
+      defaultLibraryMap.get(key).push(row);
+    });
+
+    const defaultConfigMap = new Map();
+    (data.DefaultUlnConfig || []).forEach((row) => {
+      const key = String(row.localEid);
+      if (!defaultConfigMap.has(key)) defaultConfigMap.set(key, []);
+      defaultConfigMap.get(key).push(row);
+    });
+
+    const oappLibraryMap = new Map();
+    (data.OAppReceiveLibrary || []).forEach((row) => {
+      const key = String(row.oappId);
+      if (!oappLibraryMap.has(key)) oappLibraryMap.set(key, []);
+      oappLibraryMap.get(key).push(row);
+    });
+
+    const oappConfigMap = new Map();
+    (data.OAppUlnConfig || []).forEach((row) => {
+      const key = String(row.oappId);
+      if (!oappConfigMap.has(key)) oappConfigMap.set(key, []);
+      oappConfigMap.get(key).push(row);
+    });
+
+    const routeStatsMap = new Map();
+    (data.OAppRouteStats || []).forEach((row) => {
+      const key = String(row.oappId);
+      if (!routeStatsMap.has(key)) routeStatsMap.set(key, []);
+      routeStatsMap.get(key).push(row);
     });
 
     return {
       origin: originMap,
       referencing: referencingMap,
       oapps: oappMap,
-      peers: peerMap,
+      peerRecordsByOapp,
+      defaultLibraries: defaultLibraryMap,
+      defaultConfigs: defaultConfigMap,
+      oappLibraries: oappLibraryMap,
+      oappConfigs: oappConfigMap,
+      routeStats: routeStatsMap,
     };
   }
 
   derivePeer(config) {
-    const rawPeer = config.peer ?? null;
-    const normalizedRaw = rawPeer ? String(rawPeer).toLowerCase() : null;
-    const isZeroPeer = normalizedRaw === ZERO_PEER_HEX || normalizedRaw === ZERO_ADDRESS_HEX;
+    if (!config) {
+      return null;
+    }
 
-    if (isZeroPeer) {
-      const eid = config.eid !== undefined && config.eid !== null ? String(config.eid) : null;
+    const rawPeer = config.peer ?? null;
+    const peerStateHint = config.peerStateHint ?? null;
+    const normalizedRaw = rawPeer ? String(rawPeer).toLowerCase() : null;
+
+    const explicitZero =
+      normalizedRaw === ZERO_PEER_HEX || normalizedRaw === ZERO_ADDRESS_HEX;
+    const isImplicitBlock =
+      peerStateHint === "implicit-blocked" || peerStateHint === "not-configured";
+    const isExplicitBlock = peerStateHint === "explicit-blocked";
+    const isZeroPeer = explicitZero || isExplicitBlock || isImplicitBlock;
+
+    const eid =
+      config.eid !== undefined && config.eid !== null
+        ? String(config.eid)
+        : config.localEid !== undefined && config.localEid !== null
+          ? String(config.localEid)
+          : null;
+
+    if (isZeroPeer || (!rawPeer && isImplicitBlock)) {
       return {
         rawPeer,
         localEid: eid,
@@ -358,61 +671,317 @@ export class SecurityGraphCrawler {
         oappId: null,
         resolved: false,
         isZeroPeer: true,
+        peerStateHint: peerStateHint ?? (explicitZero ? "explicit-blocked" : "implicit-blocked"),
       };
     }
 
     const peerOappId = config.peerOappId || null;
-    if (!peerOappId) return null;
-
-    const { localEid, address } = splitOAppId(peerOappId);
-    if (address && address.toLowerCase() === ZERO_ADDRESS_HEX) {
-      const eid = config.eid !== undefined && config.eid !== null ? String(config.eid) : null;
+    if (!peerOappId) {
+      if (!rawPeer) {
+        return null;
+      }
       return {
         rawPeer,
         localEid: eid,
+        address: rawPeer ? String(rawPeer).toLowerCase() : null,
+        oappId: null,
+        resolved: false,
+        isZeroPeer: false,
+        peerStateHint: peerStateHint ?? null,
+      };
+    }
+
+    const { localEid: peerLocalEid, address } = splitOAppId(peerOappId);
+    if (address && address.toLowerCase() === ZERO_ADDRESS_HEX) {
+      return {
+        rawPeer,
+        localEid: peerLocalEid || eid,
         address: null,
         oappId: null,
         resolved: false,
         isZeroPeer: true,
+        peerStateHint: peerStateHint ?? "explicit-blocked",
       };
     }
 
     return {
       rawPeer,
-      localEid: localEid || null,
+      localEid: peerLocalEid || null,
       address: address || null,
       oappId: address ? peerOappId : null,
       resolved: Boolean(address),
+      isZeroPeer: false,
+      peerStateHint: peerStateHint ?? null,
     };
+  }
+
+  shouldIncludeSecurityEntry(entry) {
+    if (!entry) {
+      return false;
+    }
+
+    const synthetic = Boolean(entry.synthetic);
+    const sourceType = entry.sourceType || null;
+    const peerState = entry.peerStateHint || null;
+    const hasMaterializedConfig = !synthetic || sourceType === "materialized";
+
+    if (hasMaterializedConfig) {
+      return true;
+    }
+
+    if (peerState === "explicit-blocked") {
+      return true;
+    }
+
+    if (synthetic) {
+      const normalizeAddress = (addr) =>
+        addr === undefined || addr === null ? null : String(addr).toLowerCase();
+      const required = Array.isArray(entry.requiredDVNs) ? entry.requiredDVNs : [];
+      const optional = Array.isArray(entry.optionalDVNs) ? entry.optionalDVNs : [];
+      const hasBlockingDvn = [...required, ...optional].some(
+        (addr) => normalizeAddress(addr) === DEAD_ADDRESS_HEX,
+      );
+
+      if (!entry.peerOAppId) {
+        if (peerState === "explicit-blocked") {
+          return true;
+        }
+        if (peerState === "implicit-blocked") {
+          return hasBlockingDvn;
+        }
+        return hasBlockingDvn;
+      }
+
+      if (peerState === "explicit-blocked" || peerState === "implicit-blocked") {
+        return hasBlockingDvn;
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  finalizeNodeMetrics({
+    node,
+    routeStatsMap,
+    outboundContexts = [],
+    originalSecuritySummary = null,
+    edgesMap = null,
+  }) {
+    const normalize = (value) => (value === undefined || value === null ? null : String(value));
+
+    const allowedSrcEids = new Set(
+      node.securityConfigs
+        .map((entry) => normalize(entry.srcEid))
+        .filter((value) => value !== null),
+    );
+
+    const filteredRouteStats = [];
+    if (routeStatsMap) {
+      for (const stat of routeStatsMap.values()) {
+        const key = normalize(stat?.srcEid ?? stat?.eid);
+        if (!key || !allowedSrcEids.has(key)) {
+          continue;
+        }
+        filteredRouteStats.push({ ...stat });
+      }
+    }
+
+    const totalRoutePackets = filteredRouteStats.reduce((acc, stat) => {
+      const packetCount = Number(stat.packetCount);
+      return acc + (Number.isFinite(packetCount) && packetCount > 0 ? packetCount : 0);
+    }, 0);
+
+    filteredRouteStats.forEach((stat) => {
+      const packetCount = Number(stat.packetCount);
+      const safeCount = Number.isFinite(packetCount) && packetCount > 0 ? packetCount : 0;
+      const share = totalRoutePackets > 0 ? safeCount / totalRoutePackets : 0;
+      stat.packetCount = safeCount;
+      stat.share = share;
+      stat.percent = share > 0 ? share * 100 : 0;
+    });
+
+    const metricBySrc = new Map(
+      filteredRouteStats.map((stat) => [normalize(stat.srcEid ?? stat.eid), stat]),
+    );
+
+    for (const entry of node.securityConfigs) {
+      const metric = metricBySrc.get(normalize(entry.srcEid));
+      entry.routePacketCount = metric?.packetCount ?? 0;
+      entry.routePacketShare = metric?.share ?? 0;
+      entry.routePacketPercent = metric?.percent ?? 0;
+      entry.routeLastPacketBlock =
+        metric && metric.lastPacketBlock !== undefined ? metric.lastPacketBlock : null;
+      entry.routeLastPacketTimestamp =
+        metric && metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
+    }
+
+    outboundContexts.forEach((context) => {
+      if (!context || !context.config) {
+        return;
+      }
+      const metric = metricBySrc.get(normalize(context.config.srcEid));
+      context.routeMetric = metric ?? null;
+      if (context.attached && edgesMap) {
+        const edgeFrom = context.edgeFrom;
+        const edgeTo = context.edgeTo || node.id;
+        if (edgeFrom && edgeTo) {
+          const edgeRecord = edgesMap.get(`${edgeFrom}->${edgeTo}`);
+          if (edgeRecord) {
+            edgeRecord.routePacketCount = metric?.packetCount ?? 0;
+            edgeRecord.routePacketShare = metric?.share ?? 0;
+            edgeRecord.routePacketPercent = metric?.percent ?? 0;
+            edgeRecord.routeLastPacketBlock =
+              metric && metric.lastPacketBlock !== undefined ? metric.lastPacketBlock : null;
+            edgeRecord.routeLastPacketTimestamp =
+              metric && metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
+          }
+        }
+      }
+    });
+
+    node.routeStats = filteredRouteStats;
+    node.totalRoutePackets = totalRoutePackets;
+
+    const syntheticCount = node.securityConfigs.filter((entry) => entry.synthetic).length;
+    const implicitBlocks = node.securityConfigs.filter(
+      (entry) => entry.peerStateHint === "implicit-blocked",
+    ).length;
+    const explicitBlocks = node.securityConfigs.filter(
+      (entry) => entry.peerStateHint === "explicit-blocked",
+    ).length;
+
+    node.securitySummary = {
+      totalRoutes: node.securityConfigs.length,
+      syntheticCount,
+      implicitBlocks,
+      explicitBlocks,
+      original: originalSecuritySummary ?? null,
+    };
+    node.syntheticRouteCount = syntheticCount;
+    node.implicitBlockCount = implicitBlocks;
+    node.explicitBlockCount = explicitBlocks;
+    node.totalResolvedRoutes = node.securityConfigs.length;
+    node.isTracked = node.securityConfigs.some((entry) => !entry.synthetic);
   }
 
   addPeerEdges({ oappId, depth, maxDepth, queue, pending, visited, edges, contexts }) {
     for (const context of contexts) {
       const edgeFrom = context.edgeFrom;
       const edgeTo = context.edgeTo || oappId;
-      if (!edgeFrom || !edgeTo) continue;
+      if (!edgeFrom || !edgeTo) {
+        continue;
+      }
 
       const key = `${edgeFrom}->${edgeTo}`;
-      if (!edges.has(key)) {
-        // For outbound contexts: cfg.eid is the destination (peer's chain, which is the source for this edge)
-        // For inbound contexts: cfg.localEid is the source (where the remote config lives)
-        const srcEid = context.isOutbound
-          ? context.config?.eid
-          : (context.config?.localEid ?? context.config?.eid);
+      const contextConfig = context.config || {};
+      const srcEid = context.isOutbound
+        ? contextConfig.srcEid ?? contextConfig.eid ?? contextConfig.localEid ?? null
+        : contextConfig.localEid ?? contextConfig.eid ?? contextConfig.srcEid ?? null;
 
+      const existing = edges.get(key);
+      const peerInfo = context.peerInfo || null;
+      const peerRaw =
+        context.peerRaw ?? (peerInfo ? peerInfo.rawPeer : undefined) ?? contextConfig.peer ?? null;
+      const peerLocalEid =
+        context.peerLocalEid ??
+        (peerInfo ? peerInfo.localEid : undefined) ??
+        contextConfig.peerLocalEid ??
+        null;
+      const peerStateHint =
+        context.peerStateHint ??
+        (peerInfo ? peerInfo.peerStateHint : undefined) ??
+        contextConfig.peerStateHint ??
+        null;
+      const blockReasonHint =
+        context.blockReasonHint ??
+        (peerInfo ? peerInfo.blockReasonHint : undefined) ??
+        contextConfig.blockReasonHint ??
+        null;
+
+      const routeMetric = context.routeMetric ?? null;
+      const configRouteMetric =
+        contextConfig && typeof contextConfig.routePacketCount === "number" ? contextConfig : null;
+
+      if (!existing) {
         edges.set(key, {
           from: edgeFrom,
           to: edgeTo,
-          srcEid: srcEid,
-          peerRaw:
-            context.peerRaw ?? (context.peerInfo ? context.peerInfo.rawPeer : undefined) ?? null,
-          peerLocalEid:
-            context.peerLocalEid ??
-            (context.peerInfo ? context.peerInfo.localEid : undefined) ??
-            null,
+          srcEid,
+          peerRaw,
+          peerLocalEid,
           peerOAppId: edgeFrom,
-          isStalePeer: context.isStalePeer ?? false,
+          peerStateHint,
+          blockReasonHint,
+          isStalePeer: Boolean(context.isStalePeer),
+          libraryStatus: context.libraryStatus ?? contextConfig.libraryStatus ?? null,
+          synthetic: Boolean(context.synthetic ?? contextConfig.synthetic),
+          sourceType: context.sourceType ?? contextConfig.sourceType ?? null,
+          routePacketCount:
+            routeMetric?.packetCount ?? configRouteMetric?.routePacketCount ?? 0,
+          routePacketShare:
+            routeMetric?.share ?? configRouteMetric?.routePacketShare ?? 0,
+          routePacketPercent:
+            routeMetric?.percent ?? configRouteMetric?.routePacketPercent ?? 0,
+          routeLastPacketBlock:
+            routeMetric?.lastPacketBlock ?? configRouteMetric?.routeLastPacketBlock ?? null,
+          routeLastPacketTimestamp:
+            routeMetric?.lastPacketTimestamp ??
+            configRouteMetric?.routeLastPacketTimestamp ??
+            null,
         });
+        context.attached = true;
+      } else {
+        if (existing.srcEid === null || existing.srcEid === undefined) {
+          existing.srcEid = srcEid;
+        }
+        if (!existing.peerRaw && peerRaw) {
+          existing.peerRaw = peerRaw;
+        }
+        if (!existing.peerLocalEid && peerLocalEid) {
+          existing.peerLocalEid = peerLocalEid;
+        }
+        if (!existing.peerStateHint && peerStateHint) {
+          existing.peerStateHint = peerStateHint;
+        }
+        if (!existing.blockReasonHint && blockReasonHint) {
+          existing.blockReasonHint = blockReasonHint;
+        }
+        if (!existing.libraryStatus && (context.libraryStatus || contextConfig.libraryStatus)) {
+          existing.libraryStatus = context.libraryStatus ?? contextConfig.libraryStatus ?? null;
+        }
+        if (!existing.sourceType && (context.sourceType || contextConfig.sourceType)) {
+          existing.sourceType = context.sourceType ?? contextConfig.sourceType ?? null;
+        }
+        if (context.isStalePeer) {
+          existing.isStalePeer = true;
+        }
+        if (context.synthetic || contextConfig.synthetic) {
+          existing.synthetic = true;
+        }
+
+        const bestRouteCount = existing.routePacketCount ?? 0;
+        if (routeMetric && routeMetric.packetCount > bestRouteCount) {
+          existing.routePacketCount = routeMetric.packetCount;
+          existing.routePacketShare = routeMetric.share ?? existing.routePacketShare;
+          existing.routePacketPercent = routeMetric.percent ?? existing.routePacketPercent;
+          existing.routeLastPacketBlock =
+            routeMetric.lastPacketBlock ?? existing.routeLastPacketBlock;
+          existing.routeLastPacketTimestamp =
+            routeMetric.lastPacketTimestamp ?? existing.routeLastPacketTimestamp;
+        }
+        if (
+          configRouteMetric &&
+          configRouteMetric.routePacketCount > (existing.routePacketCount ?? 0)
+        ) {
+          existing.routePacketCount = configRouteMetric.routePacketCount;
+          existing.routePacketShare = configRouteMetric.routePacketShare;
+          existing.routePacketPercent = configRouteMetric.routePacketPercent;
+          existing.routeLastPacketBlock = configRouteMetric.routeLastPacketBlock;
+          existing.routeLastPacketTimestamp = configRouteMetric.routeLastPacketTimestamp;
+        }
+        context.attached = true;
       }
 
       const nextId = context.queueNext;
