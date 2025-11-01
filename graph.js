@@ -606,17 +606,18 @@ export class SecurityGraphView {
       Number.isFinite(packetPercent) && packetPercent > 0
         ? packetPercent.toFixed(packetPercent >= 10 ? 1 : 2)
         : null;
+    const hasPackets = packetCount > 0;
     const trafficLine =
-      packetCount && packetCount > 0
+      hasPackets
         ? `Traffic: ${packetCount.toLocaleString("en-US")} packets${
             trafficPercent ? ` (${trafficPercent}% inbound share)` : ""
           }`
         : packetShare && packetShare > 0
           ? `Traffic: ${(packetShare * 100).toFixed(2)}% inbound share`
-          : "Traffic: no observed packets";
+          : null;
 
     let lastPacketLine = null;
-    if (lastPacketTimestamp) {
+    if (hasPackets && lastPacketTimestamp) {
       const date = new Date(lastPacketTimestamp * 1000);
       const human =
         Number.isFinite(date.getTime()) && date.getTime() > 0
@@ -625,7 +626,7 @@ export class SecurityGraphView {
       lastPacketLine = lastPacketBlock
         ? `Last packet: ${human} (Block ${lastPacketBlock})`
         : `Last packet: ${human}`;
-    } else if (lastPacketBlock) {
+    } else if (hasPackets && lastPacketBlock) {
       lastPacketLine = `Last packet block: ${lastPacketBlock}`;
     }
 

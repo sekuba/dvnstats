@@ -790,12 +790,12 @@ export class SecurityGraphCrawler {
 
     const totalRoutePackets = filteredRouteStats.reduce((acc, stat) => {
       const packetCount = Number(stat.packetCount);
-      return acc + (Number.isFinite(packetCount) && packetCount > 0 ? packetCount : 0);
+      return acc + (Number.isFinite(packetCount) && packetCount >= 0 ? packetCount : 0);
     }, 0);
 
     filteredRouteStats.forEach((stat) => {
       const packetCount = Number(stat.packetCount);
-      const safeCount = Number.isFinite(packetCount) && packetCount > 0 ? packetCount : 0;
+      const safeCount = Number.isFinite(packetCount) && packetCount >= 0 ? packetCount : 0;
       const share = totalRoutePackets > 0 ? safeCount / totalRoutePackets : 0;
       stat.packetCount = safeCount;
       stat.share = share;
@@ -808,13 +808,21 @@ export class SecurityGraphCrawler {
 
     for (const entry of node.securityConfigs) {
       const metric = metricBySrc.get(normalize(entry.srcEid));
-      entry.routePacketCount = metric?.packetCount ?? 0;
-      entry.routePacketShare = metric?.share ?? 0;
-      entry.routePacketPercent = metric?.percent ?? 0;
-      entry.routeLastPacketBlock =
-        metric && metric.lastPacketBlock !== undefined ? metric.lastPacketBlock : null;
-      entry.routeLastPacketTimestamp =
-        metric && metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
+      if (metric) {
+        entry.routePacketCount = metric.packetCount ?? 0;
+        entry.routePacketShare = metric.share ?? 0;
+        entry.routePacketPercent = metric.percent ?? 0;
+        entry.routeLastPacketBlock =
+          metric.lastPacketBlock !== undefined ? metric.lastPacketBlock : null;
+        entry.routeLastPacketTimestamp =
+          metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
+      } else {
+        entry.routePacketCount = 0;
+        entry.routePacketShare = 0;
+        entry.routePacketPercent = 0;
+        entry.routeLastPacketBlock = null;
+        entry.routeLastPacketTimestamp = null;
+      }
     }
 
     outboundContexts.forEach((context) => {
