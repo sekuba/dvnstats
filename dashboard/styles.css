@@ -292,6 +292,9 @@ td {
 }
 
 .copyable {
+  --copy-pad-y: 0.2rem;
+  --copy-pad-x: 0.3rem;
+  --meter-fill: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -300,12 +303,29 @@ td {
   box-sizing: border-box;
   cursor: copy;
   user-select: text;
-  padding: 0.2rem 0.3rem;
+  padding: var(--copy-pad-y) var(--copy-pad-x);
   border: 2px solid transparent;
   position: relative;
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease;
+}
+
+td.meter-cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(27, 156, 133, 0.26);
+  transform-origin: left center;
+  transform: scaleX(var(--meter-fill, 0));
+  pointer-events: none;
+  z-index: 0;
+  transition: transform 0.2s ease;
+}
+
+td.meter-cell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .copyable:hover {
