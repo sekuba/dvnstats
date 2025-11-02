@@ -331,6 +331,11 @@ class DashboardApp {
     if (!(event.target instanceof HTMLButtonElement)) return;
 
     const action = event.target.dataset.action;
+    if (!action) {
+      // Allow submit buttons without data-action (e.g., Save) to trigger form submission
+      return;
+    }
+
     event.preventDefault();
 
     if (action === "cancel") {
