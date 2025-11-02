@@ -1,22 +1,76 @@
 {
-  "30111_0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff": { "name": "weETH token", "addButton": true },
-  "30260_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
-  "30183_0x1bf74c010e6320bab11e2e5a532b5ac15e0b8aa6": { "name": "weETH token", "addButton": false },
-  "30320_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": { "name": "weETH token", "addButton": false },
-  "30335_0xa6cb988942610f6731e664379d15ffcfbf282b44": { "name": "weETH token", "addButton": false },
-  "30165_0xc1fa6e2e8667d9be0ca938a54c7e0285e9df924a": { "name": "weETH token", "addButton": false },
-  "30322_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": { "name": "weETH token", "addButton": false },
-  "30102_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
-  "30243_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
-  "30362_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": { "name": "weETH token", "addButton": false },
-  "30101_0xcd2eb13d6831d4602d80e5db9230a57596cdca63": { "name": "weETH token", "addButton": false },
-  "30214_0x01f0a31698c4d065659b9bdc21b3610292a1c506": { "name": "weETH token", "addButton": false },
-  "30184_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": { "name": "weETH token", "addButton": false },
-  "30303_0x88a19f30e1254b37b66899893ab1f73ad82bd2c3": { "name": "weETH token", "addButton": false },
-  "30367_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
-  "30332_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
-  "30106_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
-  "30383_0xa3d68b74bf0528fdd07263c60d6488749044914b": { "name": "weETH token", "addButton": false },
+  "30111_0x5a7facb970d094b6c7ff1df0ea68d99e6e73cbff": {
+    "name": "weETH token",
+    "addButton": true
+  },
+  "30260_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30183_0x1bf74c010e6320bab11e2e5a532b5ac15e0b8aa6": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30320_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30335_0xa6cb988942610f6731e664379d15ffcfbf282b44": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30165_0xc1fa6e2e8667d9be0ca938a54c7e0285e9df924a": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30322_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30102_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30243_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30362_0x7dcc39b4d1c53cb31e1abc0e358b43987fef80f7": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30101_0xcd2eb13d6831d4602d80e5db9230a57596cdca63": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30214_0x01f0a31698c4d065659b9bdc21b3610292a1c506": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30184_0x04c0599ae5a44757c0af6f9ec3b93da8976c150a": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30303_0x88a19f30e1254b37b66899893ab1f73ad82bd2c3": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30367_0xa3d68b74bf0528fdd07263c60d6488749044914b": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30332_0xa3d68b74bf0528fdd07263c60d6488749044914b": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30106_0xa3d68b74bf0528fdd07263c60d6488749044914b": {
+    "name": "weETH token",
+    "addButton": false
+  },
+  "30383_0xa3d68b74bf0528fdd07263c60d6488749044914b": {
+    "name": "weETH token",
+    "addButton": false
+  },
   "30184_0x5634c4a5fed09819e3c46d86a965dd9447d86e47": {
     "name": "Stargate: TokenMessaging",
     "addButton": true
@@ -33,12 +87,18 @@
     "name": "Stargate: TokenMessaging",
     "addButton": false
   },
-  "30110_0x2a14460fee6f73b408c6acf627190614dac97df0": { "name": "Superform-LZ", "addButton": true },
+  "30110_0x2a14460fee6f73b408c6acf627190614dac97df0": {
+    "name": "Superform-LZ",
+    "addButton": true
+  },
   "30184_0x2a14460fee6f73b408c6acf627190614dac97df0": {
     "name": "Superform-LZ",
     "addButton": false
   },
-  "30184_0xa749de6c28262b7ffbc5de27dc845dd7ecd2b358": { "name": "VFY token", "addButton": false },
+  "30184_0xa749de6c28262b7ffbc5de27dc845dd7ecd2b358": {
+    "name": "VFY token",
+    "addButton": false
+  },
   "30101_0x6d6620efa72948c5f68a3c8646d58c00d3f4a980": {
     "name": "Stargate: TokenMessaging",
     "addButton": false
@@ -55,12 +115,18 @@
     "name": "Stargate: TokenMessaging",
     "addButton": false
   },
-  "30183_0x539ae81a166e5e80aed211731563e549c411b140": { "name": "TA token", "addButton": false },
+  "30183_0x539ae81a166e5e80aed211731563e549c411b140": {
+    "name": "TA token",
+    "addButton": false
+  },
   "30101_0x6b8ad17795d89b283e6d0362a87a403f3544bb9d": {
     "name": "Stargate: CreditMessaging",
     "addButton": false
   },
-  "30184_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": { "name": "RIVER token", "addButton": false },
+  "30184_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": {
+    "name": "RIVER token",
+    "addButton": false
+  },
   "30184_0x12dc9256acc9895b076f6638d628382881e62cee": {
     "name": "Stargate: CreditMessaging",
     "addButton": false
@@ -69,12 +135,18 @@
     "name": "Aori Settlement",
     "addButton": false
   },
-  "30102_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": { "name": "RIVER token", "addButton": false },
+  "30102_0xda7ad9dea9397cffddae2f8a052b82f1484252b3": {
+    "name": "RIVER token",
+    "addButton": false
+  },
   "30110_0x14e4a1b13bf7f943c8ff7c51fb60fa964a298d92": {
     "name": "USDT0 token adapter",
     "addButton": false
   },
-  "30101_0xfab99fcf605fd8f4593edb70a43ba56542777777": { "name": "ZBT token", "addButton": false },
+  "30101_0xfab99fcf605fd8f4593edb70a43ba56542777777": {
+    "name": "ZBT token",
+    "addButton": false
+  },
   "30101_0x6c96de32cea08842dcc4058c14d3aaad7fa41dee": {
     "name": "USDT0 token adapter",
     "addButton": false
@@ -91,17 +163,320 @@
     "name": "Stargate: TokenMessaging",
     "addButton": false
   },
-  "30367_0xfdd22ce6d1f66bc0ec89b20bf16ccb6670f55a5a": { "name": "thBILL token", "addButton": true },
-  "30184_0xc08cd26474722ce93f4d0c34d16201461c10aa8c": { "name": "CARV token", "addButton": false },
+  "30367_0xfdd22ce6d1f66bc0ec89b20bf16ccb6670f55a5a": {
+    "name": "thBILL token",
+    "addButton": true
+  },
+  "30184_0xc08cd26474722ce93f4d0c34d16201461c10aa8c": {
+    "name": "CARV token",
+    "addButton": false
+  },
   "30184_0x461c12fba639303da045255dd32eea7e38ac69b0": {
     "name": "Orderly CrosschainRelay",
     "addButton": true
   },
-  "30184_0xb9e1fd5a02d3a33b25a14d661414e6ed6954a721": { "name": "SOON token", "addButton": false },
+  "30184_0xb9e1fd5a02d3a33b25a14d661414e6ed6954a721": {
+    "name": "SOON token",
+    "addButton": false
+  },
   "30101_0x17435cc940e03aa52c349738c72c7aa44ffa6525": {
     "name": "ORDER token adapter",
     "addButton": false
   },
-  "30101_0x58538e6a46e07434d7e7375bc268d3cb839c0133": { "name": "ENA token", "addButton": true },
-  "30184_0x26da582889f59eaae9da1f063be0140cd93e6a4f": { "name": "gas.zip lz", "addButton": true }
+  "30101_0x58538e6a46e07434d7e7375bc268d3cb839c0133": {
+    "name": "ENA token",
+    "addButton": true
+  },
+  "30184_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": true
+  },
+  "30110_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30195_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30102_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30214_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30183_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30111_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30109_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30243_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30260_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30101_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30106_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30112_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30116_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30125_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30126_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30138_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30145_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30150_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30151_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30153_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30155_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30158_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30167_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30173_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30175_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30177_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30181_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30196_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30197_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30199_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30202_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30210_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30211_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30212_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30213_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30215_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30216_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30217_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30234_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30235_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30236_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30255_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30257_0x26da582889f59eaae9da1f063be0140cd93e6a4f": {
+    "name": "gas.zip lz",
+    "addButton": false
+  },
+  "30110_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": true
+  },
+  "30101_0x85d456b2dff1fd8245387c0bfb64dfb700e98ef3": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30183_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30214_0x65421ba909200b81640d98b979d07487c9781b66": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30184_0x1bc71130a0e39942a7658878169764bbd8a45993": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30243_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30260_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30111_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30320_0xc3eacf0612346366db554c991d7858716db09f58": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30165_0x6be2425c381eb034045b527780d2bf4e21ab7236": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30339_0xc3eacf0612346366db554c991d7858716db09f58": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30367_0xa321d2a72db265c04d5c1318ed69a719681bbade": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30214_0xe43fd6f70e55c0192a0b9cfe2959093d61606975": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30106_0xc430c78da6e4af49bd115f0329d154bb135f1363": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30217_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30274_0x1b3a9a689ba7555f9d7984d7ad4025574ed5a0f9": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30303_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30325_0xe34b5a63d8aed5c167e0629e430ec444a47ae5822a61a512c1473817460dfe81": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30329_0xc3eacf0612346366db554c991d7858716db09f58": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30332_0x9ecaf80c1303cca8791afbc0ad405c8a35e8d9f1": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30332_0xd75787ba9aba324420d522bda84c08c87e5099b1": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30335_0xc3eacf0612346366db554c991d7858716db09f58": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30362_0x4186bfc76e2e237523cbc30fd220fe055156b41f": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30377_0x9ecaf80c1303cca8791afbc0ad405c8a35e8d9f1": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30383_0x9ecaf80c1303cca8791afbc0ad405c8a35e8d9f1": {
+    "name": "rsETH token",
+    "addButton": false
+  },
+  "30110_0x0be393dc46248e4285dc5caca3084bc7e9bfbb41": {
+    "name": "USDY token",
+    "addButton": true
+  },
+  "30101_0xa6275720b3fb1efe3e6ef2b5bf2293148852307d": {
+    "name": "USDY token",
+    "addButton": false
+  },
+  "30168_0x612f5a1940cb8711900ef4cdab2065ffa2fb060d0afca4a99c43371dd3b1e6a8": {
+    "name": "USDY token",
+    "addButton": false
+  },
+  "30181_0x0be393dc46248e4285dc5caca3084bc7e9bfbb41": {
+    "name": "USDY token",
+    "addButton": false
+  }
 }
