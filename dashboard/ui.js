@@ -7,16 +7,17 @@ import { APP_CONFIG } from "./config.js";
 import {
   clampInteger,
   formatTimestampValue,
+  isZeroAddress,
   looksLikeEidColumn,
   looksLikeHash,
   looksLikeTimestampColumn,
   normalizeAddress,
   normalizeOAppId,
-  splitOAppId,
   parseOptionalPositiveInt,
+  splitOAppId,
   stringifyScalar,
-  isZeroAddress,
 } from "./core.js";
+import { resolveOAppSecurityConfigs } from "./resolver.js";
 
 /**
  * Manages OApp aliases (friendly names for OApp IDs)
@@ -59,10 +60,20 @@ export class AliasStore {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object") {
           Object.entries(parsed).forEach(([k, v]) => {
+            const key = String(k);
             if (!v) {
-              this.map.delete(String(k));
-            } else if (typeof v === "object" && v.name) {
-              this.map.set(String(k), String(v.name));
+              this.map.delete(key);
+              this.buttonMap.delete(key);
+              return;
+            }
+            if (typeof v === "object" && v.name) {
+              const name = String(v.name);
+              this.map.set(key, name);
+              if (v.addButton === true) {
+                this.buttonMap.set(key, name);
+              } else {
+                this.buttonMap.delete(key);
+              }
             }
           });
         }
@@ -92,8 +103,18 @@ export class AliasStore {
   set(oappId, alias) {
     if (!oappId) return;
     const id = String(oappId);
-    const trimmed = alias?.trim();
-    trimmed ? this.map.set(id, trimmed) : this.map.delete(id);
+    const trimmed = alias === null || alias === undefined ? "" : String(alias).trim();
+
+    if (trimmed) {
+      this.map.set(id, trimmed);
+      if (this.buttonMap.has(id)) {
+        this.buttonMap.set(id, trimmed);
+      }
+    } else {
+      this.map.delete(id);
+      this.buttonMap.delete(id);
+    }
+
     this.persist();
   }
 
@@ -101,7 +122,7 @@ export class AliasStore {
     try {
       const obj = {};
       this.map.forEach((name, oappId) => {
-        obj[oappId] = { name, addButton: false };
+        obj[oappId] = { name, addButton: this.buttonMap.has(oappId) };
       });
       localStorage.setItem(this.storageKey, JSON.stringify(obj));
     } catch (error) {
@@ -112,7 +133,7 @@ export class AliasStore {
   export() {
     const obj = {};
     this.map.forEach((name, oappId) => {
-      obj[oappId] = { name, addButton: false };
+      obj[oappId] = { name, addButton: this.buttonMap.has(oappId) };
     });
     const content = JSON.stringify(obj, null, 2);
     const blob = new Blob([content], { type: "application/json" });
@@ -274,7 +295,7 @@ export class QueryCoordinator {
         label: "OApp Security Config",
         description: "Resolve the current security posture for a single OApp",
         query: `
-          query CurrentSecurityConfig($oappId: String!) {
+          query CurrentSecurityConfig($oappId: String!, $localEid: numeric!) {
             OAppStats(where: { id: { _eq: $oappId } }) {
               id
               localEid
@@ -349,6 +370,52 @@ export class QueryCoordinator {
               peerLastUpdatedBlock
               peerLastUpdatedTimestamp
               peerLastUpdatedEventId
+            }
+            DefaultReceiveLibrary(where: { localEid: { _eq: $localEid } }) {
+              localEid
+              eid
+              library
+              lastUpdatedByEventId
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+              transactionHash
+            }
+            DefaultUlnConfig(where: { localEid: { _eq: $localEid } }) {
+              localEid
+              eid
+              confirmations
+              requiredDVNCount
+              optionalDVNCount
+              optionalDVNThreshold
+              requiredDVNs
+              optionalDVNs
+              lastUpdatedByEventId
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+              transactionHash
+            }
+            OAppReceiveLibrary(where: { oappId: { _eq: $oappId } }) {
+              oappId
+              eid
+              library
+              lastUpdatedByEventId
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+              transactionHash
+            }
+            OAppUlnConfig(where: { oappId: { _eq: $oappId } }) {
+              oappId
+              eid
+              confirmations
+              requiredDVNCount
+              optionalDVNCount
+              optionalDVNThreshold
+              requiredDVNs
+              optionalDVNs
+              lastUpdatedByEventId
+              lastUpdatedBlock
+              lastUpdatedTimestamp
+              transactionHash
             }
           }
         `,
@@ -434,7 +501,7 @@ export class QueryCoordinator {
           const localLabel = this.getChainDisplayLabel(localEid) || `EID ${localEid}`;
           const summary = `${localLabel} • ${address}`;
           return {
-            variables: { oappId },
+            variables: { oappId, localEid },
             meta: {
               limitLabel: `oappId=${oappId}`,
               summary,
@@ -452,6 +519,10 @@ export class QueryCoordinator {
           const routeStats = payload?.data?.OAppRouteStats ?? [];
           const rateLimiter = payload?.data?.OAppRateLimiter?.[0] ?? null;
           const rateLimits = payload?.data?.OAppRateLimit ?? [];
+          const defaultReceiveLibraries = payload?.data?.DefaultReceiveLibrary ?? [];
+          const defaultUlnConfigs = payload?.data?.DefaultUlnConfig ?? [];
+          const oappReceiveLibraries = payload?.data?.OAppReceiveLibrary ?? [];
+          const oappUlnConfigs = payload?.data?.OAppUlnConfig ?? [];
           const enrichedMeta = { ...meta };
 
           if (oapp) {
@@ -459,6 +530,7 @@ export class QueryCoordinator {
             const chainDisplay =
               this.getChainDisplayLabel(localEid) || enrichedMeta.chainLabel || `EID ${localEid}`;
             enrichedMeta.oappInfo = oapp;
+            enrichedMeta.oappAddress = oapp.address;
             enrichedMeta.chainLabel = chainDisplay;
             enrichedMeta.localEid = localEid;
             enrichedMeta.summary = enrichedMeta.summary || `${chainDisplay} • ${oapp.address}`;
@@ -477,8 +549,36 @@ export class QueryCoordinator {
           enrichedMeta.routeStats = routeStats;
           enrichedMeta.rateLimiter = rateLimiter;
           enrichedMeta.rateLimits = rateLimits;
+          const queryVars = meta?.variables ?? {};
+          const derivedLocalEid =
+            enrichedMeta.localEid ||
+            (queryVars.localEid !== undefined ? String(queryVars.localEid) : null) ||
+            (oapp && oapp.localEid !== undefined && oapp.localEid !== null
+              ? String(oapp.localEid)
+              : null);
+          const resolvedOappId = queryVars.oappId || oapp?.id || enrichedMeta.oappInfo?.id || null;
+          const resolvedAddress =
+            oapp?.address || enrichedMeta.oappAddress || meta?.oappAddress || "";
 
-          const formattedRows = this.formatSecurityConfigRows(configs, enrichedMeta);
+          let resolvedRows = configs;
+          if (resolvedOappId && derivedLocalEid) {
+            const resolution = resolveOAppSecurityConfigs({
+              oappId: resolvedOappId,
+              localEid: derivedLocalEid,
+              oappAddress: resolvedAddress,
+              securityConfigs: configs,
+              defaultReceiveLibraries,
+              defaultUlnConfigs,
+              oappPeers: peers,
+              oappReceiveLibraries,
+              oappUlnConfigs,
+              routeStats,
+            });
+            resolvedRows = resolution.rows;
+            enrichedMeta.securitySummary = resolution.summary;
+          }
+
+          const formattedRows = this.formatSecurityConfigRows(resolvedRows, enrichedMeta);
 
           return { rows: formattedRows, meta: enrichedMeta };
         },
@@ -771,43 +871,144 @@ export class QueryCoordinator {
   }
 
   formatSecurityConfigRows(rows, meta) {
-    // First pass: find most common values for Required DVNs, Optional DVNs, and Fallbacks
+    const activityData = this.prepareRouteActivity(meta);
+
+    const decorated = rows.map((row) => {
+      const blockingReasons = this.identifyBlockingReasons(row, meta);
+      const routeActivity = this.getRouteActivityForRow(row, activityData);
+      return { row, blockingReasons, activity: routeActivity };
+    });
+
+    const nonBlocked = [];
+    const blocked = [];
+
+    decorated.forEach((entry) => {
+      if (entry.blockingReasons.length === 0) {
+        nonBlocked.push(entry);
+      } else {
+        blocked.push(entry);
+      }
+    });
+
     const requiredDvnValues = new Map();
     const optionalDvnValues = new Map();
     const fallbackValues = new Map();
 
-    rows.forEach((row) => {
-      // Required DVNs
-      const reqKey = row.usesRequiredDVNSentinel
-        ? "sentinel"
-        : JSON.stringify(row.effectiveRequiredDVNs || []);
-      requiredDvnValues.set(reqKey, (requiredDvnValues.get(reqKey) || 0) + 1);
-
-      // Optional DVNs
-      const optKey = JSON.stringify({
-        dvns: row.effectiveOptionalDVNs || [],
-        threshold: row.effectiveOptionalDVNThreshold,
-      });
-      optionalDvnValues.set(optKey, (optionalDvnValues.get(optKey) || 0) + 1);
-
-      // Fallbacks
-      const fallbackKey = JSON.stringify(row.fallbackFields || []);
-      fallbackValues.set(fallbackKey, (fallbackValues.get(fallbackKey) || 0) + 1);
+    const nonBlockedWithKeys = nonBlocked.map((entry) => {
+      const keys = this.buildHighlightKeys(entry.row);
+      requiredDvnValues.set(keys.reqKey, (requiredDvnValues.get(keys.reqKey) || 0) + 1);
+      optionalDvnValues.set(keys.optKey, (optionalDvnValues.get(keys.optKey) || 0) + 1);
+      fallbackValues.set(keys.fallbackKey, (fallbackValues.get(keys.fallbackKey) || 0) + 1);
+      return { ...entry, keys };
     });
 
-    // Find most common values
     const mostCommonRequired = this.findMostCommon(requiredDvnValues);
     const mostCommonOptional = this.findMostCommon(optionalDvnValues);
     const mostCommonFallback = this.findMostCommon(fallbackValues);
 
-    // Second pass: format rows with highlight flags
-    return rows.map((row) =>
-      this.formatSecurityConfigRow(row, meta, {
-        mostCommonRequired,
-        mostCommonOptional,
-        mostCommonFallback,
+    const formatted = [];
+
+    nonBlockedWithKeys
+      .sort((a, b) => {
+        const aCount = a.activity.count;
+        const bCount = b.activity.count;
+        if (aCount !== bCount) {
+          return bCount - aCount;
+        }
+        const aEid = this.bigIntSafe(a.row.eid);
+        const bEid = this.bigIntSafe(b.row.eid);
+        if (aEid !== null && bEid !== null) {
+          return aEid < bEid ? -1 : aEid > bEid ? 1 : 0;
+        }
+        return String(a.row.eid).localeCompare(String(b.row.eid));
+      })
+      .forEach(({ row, keys, activity }) => {
+        const highlightRequired =
+          mostCommonRequired && keys.reqKey !== mostCommonRequired && mostCommonRequired !== null;
+        const highlightOptional =
+          mostCommonOptional && keys.optKey !== mostCommonOptional && mostCommonOptional !== null;
+        const highlightFallback =
+          mostCommonFallback &&
+          keys.fallbackKey !== mostCommonFallback &&
+          mostCommonFallback !== null;
+
+        formatted.push(
+          this.formatSecurityConfigRow(row, meta, {
+            highlightRequired,
+            highlightOptional,
+            highlightFallback,
+            routeActivity: activity,
+            highlightColumns: new Set(),
+          }),
+        );
+      });
+
+    const BLOCK_PRIORITY = [
+      "peer-zero-explicit",
+      "peer-zero-implicit",
+      "required-dead-address",
+      "required-dead-lz",
+      "default-library-zero",
+    ];
+
+    blocked
+      .map((entry) => {
+        const priorityIndex = entry.blockingReasons.length
+          ? BLOCK_PRIORITY.findIndex((type) =>
+              entry.blockingReasons.some((reason) => reason.type === type),
+            )
+          : BLOCK_PRIORITY.length;
+        return {
+          ...entry,
+          priorityIndex: priorityIndex === -1 ? BLOCK_PRIORITY.length : priorityIndex,
+        };
+      })
+      .sort((a, b) => {
+        if (a.priorityIndex !== b.priorityIndex) {
+          return a.priorityIndex - b.priorityIndex;
+        }
+        if (a.activity.count !== b.activity.count) {
+          return b.activity.count - a.activity.count;
+        }
+        if (a.blockingReasons.length !== b.blockingReasons.length) {
+          return a.blockingReasons.length - b.blockingReasons.length;
+        }
+        const aEid = this.bigIntSafe(a.row.eid);
+        const bEid = this.bigIntSafe(b.row.eid);
+        if (aEid !== null && bEid !== null) {
+          return aEid < bEid ? -1 : aEid > bEid ? 1 : 0;
+        }
+        return String(a.row.eid).localeCompare(String(b.row.eid));
+      })
+      .forEach(({ row, blockingReasons, activity }) => {
+        const highlightColumns = new Set(
+          blockingReasons.map((reason) => reason.column).filter(Boolean),
+        );
+        formatted.push(
+          this.formatSecurityConfigRow(row, meta, {
+            highlightRequired: false,
+            highlightOptional: false,
+            highlightFallback: false,
+            routeActivity: activity,
+            highlightColumns,
+          }),
+        );
+      });
+
+    return formatted;
+  }
+
+  buildHighlightKeys(row) {
+    return {
+      reqKey: row.usesRequiredDVNSentinel
+        ? "sentinel"
+        : JSON.stringify(row.effectiveRequiredDVNs || []),
+      optKey: JSON.stringify({
+        dvns: row.effectiveOptionalDVNs || [],
+        threshold: row.effectiveOptionalDVNThreshold,
       }),
-    );
+      fallbackKey: JSON.stringify(row.fallbackFields || []),
+    };
   }
 
   findMostCommon(valueMap) {
@@ -822,42 +1023,233 @@ export class QueryCoordinator {
     return mostCommon;
   }
 
-  formatSecurityConfigRow(row, meta, commonValues = {}) {
+  bigIntSafe(value) {
+    try {
+      return value !== undefined && value !== null ? BigInt(value) : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  coerceToNumber(value) {
+    if (value === null || value === undefined) {
+      return 0;
+    }
+    if (typeof value === "number") {
+      return Number.isFinite(value) ? value : 0;
+    }
+    if (typeof value === "bigint") {
+      return Number(value);
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  prepareRouteActivity(meta) {
+    const stats = Array.isArray(meta?.routeStats) ? meta.routeStats : [];
+    const map = new Map();
+    let summed = 0;
+
+    stats.forEach((stat) => {
+      const key = stat?.srcEid ?? stat?.eid;
+      if (key === undefined || key === null) {
+        return;
+      }
+      const normalizedKey = String(key);
+      const count = this.coerceToNumber(stat?.packetCount);
+      map.set(normalizedKey, {
+        count,
+        raw: stat,
+      });
+      summed += count;
+    });
+
+    let totalPackets = this.coerceToNumber(meta?.oappInfo?.totalPacketsReceived);
+    if (!(totalPackets > 0)) {
+      totalPackets = summed;
+    }
+
+    return {
+      map,
+      totalPackets,
+    };
+  }
+
+  getRouteActivityForRow(row, activityData) {
+    const key = row?.eid ?? null;
+    const normalizedKey = key === null || key === undefined ? null : String(key);
+    const entry = normalizedKey ? activityData.map.get(normalizedKey) : undefined;
+    const count = entry?.count ?? 0;
+    const totalPackets = activityData.totalPackets > 0 ? activityData.totalPackets : 0;
+    const percentOfTotal = totalPackets > 0 ? count / totalPackets : 0;
+
+    return {
+      count,
+      percentOfTotal,
+      raw: entry?.raw ?? null,
+      totalPackets,
+    };
+  }
+
+  formatRouteActivityLine(activity) {
+    const count = activity?.count ?? 0;
+    const percent = activity?.percentOfTotal ?? 0;
+    const countLabel = this.formatInteger(count);
+    if (percent > 0) {
+      return `${countLabel} packets (${this.formatPercent(percent)})`;
+    }
+    return `${countLabel} packets`;
+  }
+
+  formatInteger(value) {
+    if (!Number.isFinite(value)) {
+      return String(value ?? 0);
+    }
+    return Math.round(value).toLocaleString();
+  }
+
+  formatPercent(value) {
+    const percent = Math.max(0, Math.min(1, Number(value) || 0));
+    return `${(percent * 100).toFixed(percent * 100 >= 10 ? 0 : 1)}%`;
+  }
+
+  identifyBlockingReasons(row, meta) {
+    const reasons = [];
+    const seenTypes = new Set();
+
+    const peerMap = meta?.peerMap instanceof Map ? meta.peerMap : null;
+    let peerState = row.peerStateHint || null;
+    if (!peerState) {
+      const peerRecord = peerMap?.get(String(row.eid));
+      const isZeroPeer = isZeroAddress(row.peer);
+      if (peerRecord) {
+        if (isZeroPeer && !peerRecord.fromPacketDelivered) {
+          peerState = "explicitly-blocked";
+        } else if (peerRecord.fromPacketDelivered) {
+          peerState = "auto-discovered";
+        } else {
+          peerState = "explicitly-set";
+        }
+      } else if (isZeroPeer) {
+        peerState = "explicitly-blocked";
+      }
+    }
+
+    if (peerState === "explicit-blocked" || peerState === "explicitly-blocked") {
+      reasons.push({
+        type: "peer-zero-explicit",
+        label: "Peer blocked (explicit zero address)",
+        column: "Peer",
+      });
+      seenTypes.add("peer-zero-explicit");
+    } else if (peerState === "implicit-blocked") {
+      reasons.push({
+        type: "peer-zero-implicit",
+        label: "Peer assumed blocked (no peer configured)",
+        column: "Peer",
+      });
+      seenTypes.add("peer-zero-implicit");
+    }
+
+    const requiredDvns = Array.isArray(row.effectiveRequiredDVNs) ? row.effectiveRequiredDVNs : [];
+    const normalizedRequired = requiredDvns
+      .map((addr) => String(addr || "").toLowerCase())
+      .filter(Boolean);
+    const deadAddress = APP_CONFIG.ADDRESSES.DEAD.toLowerCase();
+
+    if (normalizedRequired.includes(deadAddress) && !seenTypes.has("required-dead-address")) {
+      reasons.push({
+        type: "required-dead-address",
+        label: "Required DVN includes 0x…dead sentinel",
+        column: "Required DVNs",
+      });
+      seenTypes.add("required-dead-address");
+    }
+
+    if (requiredDvns.length > 0) {
+      const contextLocalEid =
+        row.localEid ??
+        meta?.localEid ??
+        (meta?.oappInfo && meta.oappInfo.localEid !== undefined ? meta.oappInfo.localEid : null);
+      const resolvedNames = this.chainMetadata.resolveDvnNames(requiredDvns, {
+        localEid: contextLocalEid ?? undefined,
+      });
+      const hasDeadDvnName = resolvedNames.some((name) =>
+        typeof name === "string" ? name.toLowerCase().includes("lzdead") : false,
+      );
+      if (hasDeadDvnName && !seenTypes.has("required-dead-lz")) {
+        reasons.push({
+          type: "required-dead-lz",
+          label: "Required DVN tagged as LZDeadDVN",
+          column: "Required DVNs",
+        });
+        seenTypes.add("required-dead-lz");
+      }
+    }
+
+    const libraryStatus = row.libraryStatus || "unknown";
+    const noLibraryConfigured = !row.effectiveReceiveLibrary;
+    const usesDefaultLibrary = row.usesDefaultLibrary !== false;
+    const fallbackFields = Array.isArray(row.fallbackFields) ? row.fallbackFields : [];
+    const defaultLibraryFallback = fallbackFields.includes("receiveLibrary");
+
+    if (
+      noLibraryConfigured &&
+      (libraryStatus === "none" || usesDefaultLibrary || defaultLibraryFallback) &&
+      !seenTypes.has("default-library-zero")
+    ) {
+      reasons.push({
+        type: "default-library-zero",
+        label: "Falling back to zero receive library (route disabled)",
+        column: "Library",
+      });
+      seenTypes.add("default-library-zero");
+    }
+
+    return reasons;
+  }
+
+  formatSecurityConfigRow(
+    row,
+    meta,
+    {
+      highlightRequired = false,
+      highlightOptional = false,
+      highlightFallback = false,
+      routeActivity = null,
+      highlightColumns = new Set(),
+    } = {},
+  ) {
     const formatted = {};
     const chainDisplay = this.getChainDisplayLabel(row.eid) || row.eid || "—";
     formatted["Source EID"] = this.createFormattedCell([chainDisplay], row.eid);
-    formatted.Library = this.formatLibraryDescriptor(row);
+    formatted.Library = this.formatLibraryDescriptor(row, highlightColumns.has("Library"));
 
     // Required DVNs with highlighting
-    const reqKey = row.usesRequiredDVNSentinel
-      ? "sentinel"
-      : JSON.stringify(row.effectiveRequiredDVNs || []);
-    const highlightRequired =
-      commonValues.mostCommonRequired && reqKey !== commonValues.mostCommonRequired;
-    formatted["Required DVNs"] = this.formatRequiredDvns(row, meta, highlightRequired);
+    formatted["Required DVNs"] = this.formatRequiredDvns(
+      row,
+      meta,
+      highlightRequired || highlightColumns.has("Required DVNs"),
+    );
 
     // Optional DVNs with highlighting
-    const optKey = JSON.stringify({
-      dvns: row.effectiveOptionalDVNs || [],
-      threshold: row.effectiveOptionalDVNThreshold,
-    });
-    const highlightOptional =
-      commonValues.mostCommonOptional && optKey !== commonValues.mostCommonOptional;
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta, highlightOptional);
 
-    formatted.Peer = this.formatPeer(row, meta.peerMap);
+    formatted.Peer = this.formatPeer(
+      row,
+      meta.peerMap,
+      highlightColumns.has("Peer"),
+      routeActivity,
+    );
     formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
 
     // Fallbacks with highlighting
-    const fallbackKey = JSON.stringify(row.fallbackFields || []);
-    const highlightFallback =
-      commonValues.mostCommonFallback && fallbackKey !== commonValues.mostCommonFallback;
     formatted.Fallbacks = this.formatFallbackFields(
       row.fallbackFields,
       row.usesDefaultConfig,
       row.libraryStatus,
-      highlightFallback,
+      highlightFallback || highlightColumns.has("Fallbacks"),
     );
 
     formatted["Last Update"] = this.formatLastComputed(row);
@@ -865,7 +1257,7 @@ export class QueryCoordinator {
     return formatted;
   }
 
-  formatLibraryDescriptor(row) {
+  formatLibraryDescriptor(row, highlight = false) {
     const address = row.effectiveReceiveLibrary || "—";
     const statusBits = [];
 
@@ -892,7 +1284,7 @@ export class QueryCoordinator {
       lines.push(statusBits.join(" • "));
     }
 
-    return this.createFormattedCell(lines, address);
+    return this.createFormattedCell(lines, address, { highlight });
   }
 
   formatRequiredDvns(row, meta, highlight = false) {
@@ -969,64 +1361,91 @@ export class QueryCoordinator {
     };
   }
 
-  formatPeer(row, peerMap) {
+  formatPeer(row, peerMap, highlight = false, routeActivity = null) {
     const ctx = this.derivePeerContext(row);
     const peerData = peerMap?.get(String(row.eid));
-
-    // Determine peer state
-    let peerState = "not-configured";
     const isZeroPeer = isZeroAddress(row.peer);
 
-    if (peerData) {
-      if (isZeroPeer && !peerData.fromPacketDelivered) {
+    let peerState = row.peerStateHint || null;
+    if (!peerState) {
+      if (peerData) {
+        if (isZeroPeer && !peerData.fromPacketDelivered) {
+          peerState = "explicitly-blocked";
+        } else if (peerData.fromPacketDelivered) {
+          peerState = "auto-discovered";
+        } else {
+          peerState = "explicitly-set";
+        }
+      } else if (isZeroPeer) {
         peerState = "explicitly-blocked";
-      } else if (peerData.fromPacketDelivered) {
-        peerState = "auto-discovered";
       } else {
-        peerState = "explicitly-set";
+        peerState = "not-configured";
       }
-    } else if (isZeroPeer) {
-      // Zero peer but no OAppPeer record - check if it's in the config at all
-      // If peer is set to zero in the config, it's blocked
-      peerState = "explicitly-blocked";
+    }
+
+    if (peerState === "explicit") {
+      peerState = "explicitly-set";
     }
 
     const lines = [];
-
-    // Add peer state indicator
     const stateLabels = {
       "not-configured": "Not configured",
       "auto-discovered": "Auto-discovered",
-      "explicitly-set": "Explicitly set",
+      "explicitly-set": "",
       "explicitly-blocked": "BLOCKED (zero address)",
+      "implicit-blocked": "Assumed blocked (no peer configured)",
     };
-    lines.push(stateLabels[peerState]);
+    const primaryLabel = stateLabels[peerState] ?? peerState;
+    if (primaryLabel) {
+      lines.push(primaryLabel);
+    }
 
-    // For blocked peers, don't show the synthetic zero address OApp ID
-    if (peerState === "explicitly-blocked") {
-      return this.createFormattedCell(lines, "0x0", { highlight: true });
+    const isBlocked = peerState === "explicitly-blocked" || peerState === "implicit-blocked";
+    if (peerState === "implicit-blocked") {
+      lines.push("LayerZero default; some OApps may still accept traffic.");
+    }
+
+    let meterPercent = null;
+    if (routeActivity) {
+      meterPercent = Math.max(0, Math.min(1, routeActivity.percentOfTotal || 0));
+      if (routeActivity.count > 0) {
+        lines.push(this.formatRouteActivityLine(routeActivity));
+      } else if (routeActivity.totalPackets > 0) {
+        lines.push("0 packets (0%)");
+      }
+    }
+
+    if (isBlocked) {
+      const meta =
+        meterPercent && meterPercent > 0 ? { highlight: true, meterPercent } : { highlight: true };
+      return this.createFormattedCell(lines, "0x0", meta);
     }
 
     if (!ctx) {
-      return this.createFormattedCell(lines, "");
+      const meta = meterPercent && meterPercent > 0 ? { highlight, meterPercent } : { highlight };
+      return this.createFormattedCell(lines, "", meta);
     }
 
     if (ctx.alias) {
       lines.push(ctx.alias);
     }
     if (ctx.oappId) {
-      lines.push(`ID ${ctx.oappId}`);
+      lines.push(ctx.oappId);
     } else if (ctx.peerHex) {
       lines.push(ctx.peerHex);
     }
 
-    const meta =
+    let meta =
       ctx.oappId || ctx.localEid
         ? {
             oappId: ctx.oappId ?? undefined,
             localEid: ctx.localEid ?? undefined,
+            highlight,
           }
-        : undefined;
+        : { highlight };
+    if (meterPercent && meterPercent > 0) {
+      meta = { ...meta, meterPercent };
+    }
     return this.createFormattedCell(lines, ctx.copyValue, meta);
   }
 
@@ -1519,7 +1938,7 @@ export class ResultsView {
       const tr = document.createElement("tr");
       columns.forEach((column) => {
         const td = document.createElement("td");
-        td.appendChild(this.renderCell(column, row[column]));
+        this.renderCell(td, column, row[column]);
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -1529,13 +1948,30 @@ export class ResultsView {
     return table;
   }
 
-  renderCell(column, value) {
+  renderCell(td, column, value) {
     const { nodes, copyValue, isCopyable, meta, highlight } = this.interpretValue(column, value);
+
+    td.classList.remove("meter-cell");
+    td.style.removeProperty("--meter-fill");
+
+    const metaObject = meta && typeof meta === "object" ? { ...meta } : null;
+
+    let meterPercent = null;
+    if (metaObject && typeof metaObject.meterPercent === "number") {
+      const clamped = Math.max(0, Math.min(1, metaObject.meterPercent));
+      if (clamped > 0) {
+        meterPercent = clamped;
+        td.classList.add("meter-cell");
+        td.style.setProperty("--meter-fill", clamped.toFixed(4));
+      }
+      delete metaObject.meterPercent;
+    }
 
     if (!isCopyable) {
       const fragment = document.createDocumentFragment();
       nodes.forEach((node) => fragment.append(node));
-      return fragment;
+      td.appendChild(fragment);
+      return;
     }
 
     const container = document.createElement("div");
@@ -1554,14 +1990,17 @@ export class ResultsView {
       container.dataset.copyValue = content;
     }
 
-    if (meta && typeof meta === "object") {
-      if (meta.oappId) {
-        container.dataset.oappId = meta.oappId;
+    if (metaObject) {
+      if (metaObject.oappId) {
+        container.dataset.oappId = metaObject.oappId;
+      }
+      if (metaObject.localEid) {
+        container.dataset.localEid = metaObject.localEid;
       }
     }
 
     nodes.forEach((node) => container.append(node));
-    return container;
+    td.appendChild(container);
   }
 
   interpretValue(column, value) {
@@ -1686,6 +2125,12 @@ export class ResultsView {
     if (meta.oappInfo) {
       oappPanels.push(this.renderOAppSummary(meta));
     }
+    if (meta.securitySummary) {
+      const securityPanel = this.renderSecuritySummary(meta.securitySummary);
+      if (securityPanel) {
+        oappPanels.push(securityPanel);
+      }
+    }
     if (meta.routeStats && meta.routeStats.length > 0) {
       oappPanels.push(this.renderRouteStatsSummary(meta.routeStats));
     }
@@ -1784,6 +2229,44 @@ export class ResultsView {
 
     if (routeStats.length > 5) {
       this.appendSummaryRow(list, " ", `... and ${routeStats.length - 5} more routes`);
+    }
+
+    return panel;
+  }
+
+  renderSecuritySummary(summary) {
+    if (!summary) return null;
+
+    const panel = document.createElement("div");
+    panel.className = "summary-panel";
+
+    const heading = document.createElement("h3");
+    heading.textContent = "Security Snapshot";
+    panel.appendChild(heading);
+
+    const list = document.createElement("dl");
+    panel.appendChild(list);
+
+    const totalRoutes = summary.totalRoutes ?? 0;
+    const syntheticCount = summary.syntheticCount ?? 0;
+    const implicitBlocks = summary.implicitBlocks ?? 0;
+    const explicitBlocks = summary.explicitBlocks ?? 0;
+    const blockedTotal = implicitBlocks + explicitBlocks;
+
+    this.appendSummaryRow(list, "Routes analyzed", totalRoutes);
+
+    if (syntheticCount > 0) {
+      this.appendSummaryRow(list, "Using defaults", syntheticCount);
+    }
+
+    if (blockedTotal > 0) {
+      const blockedLabel =
+        implicitBlocks > 0 && explicitBlocks > 0
+          ? `${blockedTotal} (implicit ${implicitBlocks} • explicit ${explicitBlocks})`
+          : implicitBlocks > 0
+            ? `${blockedTotal} (implicit)`
+            : `${blockedTotal} (explicit)`;
+      this.appendSummaryRow(list, "Blocked routes", blockedLabel);
     }
 
     return panel;

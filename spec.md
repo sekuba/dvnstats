@@ -35,6 +35,7 @@ effectiveLibrary = libraryOverride[oapp][eid] || defaultLibrary[eid] || undefine
 * **`OAppPeer`** - Configured peer address for each destination
   * `fromPacketDelivered: false` - Explicitly set via `PeerSet` event
   * `fromPacketDelivered: true` - Auto-discovered from packet delivery
+  * **Peer interpretation**: Usually a zero peer, aswell as an unset peer mean that the route is blocked. But analysts should treat this as an assumption because some OApps override peer handling in custom logic. In such cases the auto-discovery from PacketDelivered shows which peers are set in practice.
 
 #### Computed Security Configuration
 * **`OAppSecurityConfig`** - Merged effective config for each OApp route
@@ -89,6 +90,7 @@ Every state change creates a version entity:
    * If peer exists with `fromPacketDelivered: false`:
      * If peer is zero address → **WARN** "route explicitly blocked"
      * If peer doesn't match sender → **WARN** "sender mismatch"
+   * Missing peer records still imply a blocked route per protocol defaults, but dashboards should label them as **implicit blocks** to account for custom OApps that may bypass peer checks.
 4. **Compute** and snapshot `OAppSecurityConfig` at delivery time
 5. Store `PacketDelivered` record with config snapshot
 
@@ -234,12 +236,17 @@ This ensures OApps using defaults (`usesDefaultLibrary: true` or `usesDefaultCon
 
 | State | `OAppPeer` exists? | `peer` value | `fromPacketDelivered` | Meaning |
 |-------|-------------------|--------------|----------------------|---------|
-| Never set | No | - | - | No peer configured, auto-created on first packet |
+| Never set | No | - | - | treated as blocked by default, but auto-discovered thorugh PacketDelivered(see note) |
 | Auto-discovered | Yes | Non-zero | `true` | Discovered from `PacketDelivered` |
 | Explicitly set | Yes | Non-zero | `false` | Set via `PeerSet` event |
 | Explicitly blocked | Yes | Zero address | `false` | Route blocked via `PeerSet(eid, 0x0)` |
 
 **Security Validation**: Warns when packets are delivered on explicitly blocked routes or from mismatched peers.
+
+> **Protocol vs. OApp nuance**: LayerZero Endpoint + Receive Library treat the peer address as an application-level guard. The protocol default initializes peers to the zero address, effectively blocking traffic until the OApp sets an explicit peer or observes one via delivery. Some OApps ship bespoke code that accept traffic regardless of peer state or do not emit events on peer changes. The indexer therefore:
+> * assumes zero peer **and** missing peer records both indicate a blocked route;
+> * surfaces whether the block was explicit (`PeerSet` to zero) or implicit (never configured) so analysts can gauge certainty.
+> Consumers should interpret implicit blocks with caution because custom OApps might still accept packets despite the missing peer setup. Such cases are indexed with our PacketDelivered handler
 
 ---
 
@@ -288,7 +295,7 @@ packetDelivereds(where: {
 * **Zero Address Semantics** (context-dependent):
   * **Library override = `0x0`**: "Unset override, use default" (LayerZero V2 semantics)
   * **Library default = `0x0`**: "No default configured" → route unconfigured/blocked
-  * **Peer = `0x0`**: "No peer configured" → route explicitly blocked
+  * **Peer = `0x0`**: Protocol default = blocked route. Indexer treats both explicit zero peers and missing peer configs as blocked, but marks implicit cases separately because some OApps bypass peer enforcement.
   * **DVN = `0x0`**: **Invalid** (filtered out, warned) - Use sentinel count `255` for "no DVNs"
   * **Result**: Zero addresses are never valid libraries or DVNs; only peers use zero for explicit blocking
 * **Event Ordering**: Process events strictly in (blockNumber, logIndex) order.

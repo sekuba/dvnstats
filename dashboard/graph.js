@@ -53,6 +53,8 @@ export class SecurityGraphView {
       maxRequiredDVNsInWeb: edgeAnalysis.maxRequiredDVNsInWeb,
       dominantCombination: edgeAnalysis.dominantCombination,
       combinationStats: edgeAnalysis.combinationStats,
+      maxEdgePacketCount: edgeAnalysis.maxEdgePacketCount,
+      totalEdgePacketCount: edgeAnalysis.totalEdgePacketCount,
       maxMinRequiredDVNsForNodes,
       blockedNodes,
       centerNodeId,
@@ -187,6 +189,7 @@ export class SecurityGraphView {
       maxMinRequiredDVNsForNodes,
       blockedNodes,
       centerNodeId,
+      maxEdgePacketCount,
     } = context;
 
     // Render edges
@@ -197,6 +200,7 @@ export class SecurityGraphView {
       maxRequiredDVNsInWeb,
       dominantCombination,
       showPersistentTooltip,
+      maxEdgePacketCount,
     );
     contentGroup.appendChild(edgesGroup);
 
@@ -224,6 +228,7 @@ export class SecurityGraphView {
     maxRequiredDVNsInWeb,
     dominantCombination,
     showPersistentTooltip,
+    maxEdgePacketCount,
   ) {
     const edgesGroup = document.createElementNS(svgNS, "g");
     edgesGroup.setAttribute("class", "edges");
@@ -274,6 +279,7 @@ export class SecurityGraphView {
           maxRequiredDVNsInWeb,
           dominantCombination,
           showPersistentTooltip,
+          maxEdgePacketCount,
         );
       } else {
         this.renderUnidirectionalEdge(
@@ -285,6 +291,7 @@ export class SecurityGraphView {
           maxRequiredDVNsInWeb,
           dominantCombination,
           showPersistentTooltip,
+          maxEdgePacketCount,
         );
       }
     }
@@ -301,14 +308,9 @@ export class SecurityGraphView {
     maxRequiredDVNsInWeb,
     dominantCombination,
     showPersistentTooltip,
+    maxEdgePacketCount,
   ) {
-    const style = this.getEdgeStyle({
-      isBlocked: info.isBlocked,
-      isUnknown: info.isUnknownSecurity,
-      requiredDVNCount: info.requiredDVNCount,
-      maxRequiredDVNsInWeb,
-      differsFromPopular: info.differsFromPopular,
-    });
+    const style = this.getEdgeStyle(info, maxRequiredDVNsInWeb, maxEdgePacketCount);
 
     this.createEdgeLine(
       svgNS,
@@ -350,21 +352,10 @@ export class SecurityGraphView {
     maxRequiredDVNsInWeb,
     dominantCombination,
     showPersistentTooltip,
+    maxEdgePacketCount,
   ) {
-    const forwardStyle = this.getEdgeStyle({
-      isBlocked: forwardInfo.isBlocked,
-      isUnknown: forwardInfo.isUnknownSecurity,
-      requiredDVNCount: forwardInfo.requiredDVNCount,
-      maxRequiredDVNsInWeb,
-      differsFromPopular: forwardInfo.differsFromPopular,
-    });
-    const reverseStyle = this.getEdgeStyle({
-      isBlocked: reverseInfo.isBlocked,
-      isUnknown: reverseInfo.isUnknownSecurity,
-      requiredDVNCount: reverseInfo.requiredDVNCount,
-      maxRequiredDVNsInWeb,
-      differsFromPopular: reverseInfo.differsFromPopular,
-    });
+    const forwardStyle = this.getEdgeStyle(forwardInfo, maxRequiredDVNsInWeb, maxEdgePacketCount);
+    const reverseStyle = this.getEdgeStyle(reverseInfo, maxRequiredDVNsInWeb, maxEdgePacketCount);
     const midX = (fromPos.x + toPos.x) / 2;
     const midY = (fromPos.y + toPos.y) / 2;
     const dx = toPos.x - fromPos.x;
@@ -495,26 +486,39 @@ export class SecurityGraphView {
     edgesGroup.appendChild(line);
   }
 
-  getEdgeStyle({
-    isBlocked,
-    isUnknown,
-    requiredDVNCount,
-    maxRequiredDVNsInWeb,
-    differsFromPopular,
-  }) {
-    if (isBlocked) {
-      return { color: "#ff0000", width: "1", opacity: "0.6", dashArray: "8,4" };
+  getEdgeStyle(info, maxRequiredDVNsInWeb, maxEdgePacketCount) {
+    if (info.isBlocked) {
+      return { color: "#ff0000", width: "1.4", opacity: "0.65", dashArray: "8,4" };
     }
-    if (isUnknown) {
-      return { color: "#6b7280", width: "2", opacity: "0.55", dashArray: "6,4" };
+    if (info.isUnknownSecurity) {
+      return { color: "#6b7280", width: "1.2", opacity: "0.45", dashArray: "6,4" };
     }
-    if (differsFromPopular) {
-      return { color: "#ff1df5", width: "3", opacity: "0.75", dashArray: "none" };
+
+    const differsFromPopular = Boolean(info.differsFromPopular);
+    const baseColor = differsFromPopular
+      ? "#ff1df5"
+      : info.requiredDVNCount < maxRequiredDVNsInWeb
+        ? "#ff6666"
+        : "#000000ff";
+
+    let trafficStrength = 0;
+    if (typeof info.packetStrength === "number") {
+      trafficStrength = info.packetStrength;
+    } else if (maxEdgePacketCount > 0 && typeof info.packetCount === "number") {
+      trafficStrength = info.packetCount / maxEdgePacketCount;
     }
-    if (requiredDVNCount < maxRequiredDVNsInWeb) {
-      return { color: "#ff6666", width: "2", opacity: "0.55", dashArray: "none" };
-    }
-    return { color: "#000000ff", width: "3", opacity: "0.65", dashArray: "none" };
+    trafficStrength = Math.max(0, Math.min(trafficStrength, 1));
+
+    const widthBase = differsFromPopular ? 2.4 : 1.8;
+    const width = widthBase + trafficStrength * 2.6;
+    const opacity = 0.45 + trafficStrength * 0.35;
+
+    return {
+      color: baseColor,
+      width: width.toFixed(2),
+      opacity: opacity.toFixed(2),
+      dashArray: "none",
+    };
   }
 
   buildEdgeTooltip(info, maxRequiredDVNsInWeb, dominantCombination) {
@@ -522,6 +526,7 @@ export class SecurityGraphView {
       edge,
       isBlocked,
       blockReason,
+      peerStateHint,
       requiredDVNCount,
       requiredDVNLabels,
       optionalDVNLabels,
@@ -530,6 +535,13 @@ export class SecurityGraphView {
       usesSentinel,
       differsFromPopular,
       differenceReasons,
+      packetCount,
+      packetPercent,
+      packetShare,
+      lastPacketBlock,
+      lastPacketTimestamp,
+      libraryStatus,
+      synthetic,
     } = info;
 
     let blockMessage = null;
@@ -537,6 +549,8 @@ export class SecurityGraphView {
       blockMessage = "Status: BLOCKED (stale peer)";
     } else if (isBlocked && blockReason === "zero-peer") {
       blockMessage = "Status: BLOCKED (peer set to zero address)";
+    } else if (isBlocked && blockReason === "implicit-block") {
+      blockMessage = "Status: BLOCKED / unknown (peer not configured)";
     } else if (isBlocked && blockReason === "blocking-dvn") {
       blockMessage = "Status: BLOCKED (blocking DVN)";
     } else if (isBlocked && blockReason === "dead-dvn") {
@@ -580,6 +594,53 @@ export class SecurityGraphView {
       ? `Dominant set: ${this.describeCombination(dominantCombination)}`
       : null;
 
+    const trafficPercent =
+      Number.isFinite(packetPercent) && packetPercent > 0
+        ? packetPercent.toFixed(packetPercent >= 10 ? 1 : 2)
+        : null;
+    const hasPackets = packetCount > 0;
+    const trafficLine = hasPackets
+      ? `Traffic: ${packetCount.toLocaleString("en-US")} packets${
+          trafficPercent ? ` (${trafficPercent}% inbound share)` : ""
+        }`
+      : packetShare && packetShare > 0
+        ? `Traffic: ${(packetShare * 100).toFixed(2)}% inbound share`
+        : null;
+
+    let lastPacketLine = null;
+    if (hasPackets && lastPacketTimestamp) {
+      const date = new Date(lastPacketTimestamp * 1000);
+      const human =
+        Number.isFinite(date.getTime()) && date.getTime() > 0
+          ? date.toLocaleString()
+          : String(lastPacketTimestamp);
+      lastPacketLine = lastPacketBlock
+        ? `Last packet: ${human} (Block ${lastPacketBlock})`
+        : `Last packet: ${human}`;
+    } else if (hasPackets && lastPacketBlock) {
+      lastPacketLine = `Last packet block: ${lastPacketBlock}`;
+    }
+
+    let libraryLine = null;
+    if (libraryStatus === "none") {
+      libraryLine = "Receive library: none configured";
+    } else if (libraryStatus === "unsupported") {
+      libraryLine = "Receive library: unsupported (ULN unavailable)";
+    }
+
+    let peerHintLine = null;
+    if (peerStateHint === "auto-discovered") {
+      peerHintLine = "Peer source: auto-discovered from packets";
+    } else if (peerStateHint === "explicit") {
+      peerHintLine = "Peer source: explicit configuration";
+    } else if (peerStateHint === "implicit-blocked") {
+      peerHintLine = "Peer source: missing (implicit block)";
+    }
+
+    const resolutionLine = synthetic
+      ? "Config resolved from defaults (no materialized route)"
+      : null;
+
     const lines = [
       `${edge.from} → ${edge.to}`,
       routeLine,
@@ -592,6 +653,11 @@ export class SecurityGraphView {
       anomalyLine,
       lowerSecurityLine,
       dominantLine,
+      libraryLine,
+      peerHintLine,
+      resolutionLine,
+      trafficLine,
+      lastPacketLine,
     ].filter(Boolean);
 
     return lines.join("\n");
@@ -652,9 +718,16 @@ export class SecurityGraphView {
       const isBlocked = blockedNodes.has(node.id);
       const isCenterNode = node.id === centerNodeId;
 
-      const radius = node.isTracked
-        ? this.nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1))
-        : this.nodeRadius * 0.5;
+      let radius = this.nodeRadius * 0.5;
+      if (node.isTracked) {
+        radius = this.nodeRadius * (0.6 + 0.4 * Math.min(minRequiredDVNs / 5, 1));
+      } else if (
+        !node.isTracked &&
+        node.id &&
+        String(node.id).split("_").at(-1) === this.zeroAddress.toLowerCase()
+      ) {
+        radius = this.nodeRadius * 0.65;
+      }
 
       const nodeGroup = document.createElementNS(svgNS, "g");
       nodeGroup.setAttribute("class", "node");
@@ -846,6 +919,8 @@ export class SecurityGraphView {
           blockReasonSet.add("Stale peer");
         } else if (edge.blockReason === "zero-peer") {
           blockReasonSet.add("Zero peer");
+        } else if (edge.blockReason === "implicit-block") {
+          blockReasonSet.add("No peer configured");
         } else if (edge.blockReason === "dead-dvn") {
           blockReasonSet.add("Dead DVN");
         } else if (edge.blockReason === "blocking-dvn") {
@@ -855,67 +930,103 @@ export class SecurityGraphView {
         }
       }
 
-      const configDetails = (node.securityConfigs || []).map((cfg) => {
-        const requiredLabels = cfg.requiredDVNLabels || cfg.requiredDVNs || [];
-        const requiredAddresses = cfg.requiredDVNs || [];
-        const normalized = normalizeNames(requiredLabels);
-        const fingerprint = JSON.stringify({
-          required: cfg.requiredDVNCount || 0,
-          names: normalized,
-          sentinel: Boolean(cfg.usesRequiredDVNSentinel),
-        });
-        const matchesDominant =
-          Boolean(combinationFingerprint) &&
-          !cfg.usesRequiredDVNSentinel &&
-          fingerprint === combinationFingerprint;
-        const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
-        const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
-
-        if (usesSentinel) {
-          diffReasonSet.add(
-            `sentinel quorum ${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount || 0}`,
-          );
-        } else if (differsFromDominant && dominantCombination) {
-          if (cfg.requiredDVNCount !== dominantCombination.requiredDVNCount) {
-            diffReasonSet.add(
-              `required DVN count ${cfg.requiredDVNCount} vs dominant ${dominantCombination.requiredDVNCount ?? "?"}`,
-            );
-          }
-          if (!this.areStringArraysEqual(normalized, dominantCombination.normalizedNames)) {
-            diffReasonSet.add("validator set differs");
-          }
+      const allowedSrcEids = new Set();
+      const registerAllowed = (eid) => {
+        if (eid !== undefined && eid !== null) {
+          allowedSrcEids.add(String(eid));
         }
+      };
+      activeIncoming.forEach((edge) => registerAllowed(edge?.edge?.srcEid));
+      blockedIncoming.forEach((edge) => registerAllowed(edge?.edge?.srcEid));
 
-        const requiredPairs = requiredLabels.map((label, idx) => ({
-          label: label || "(unknown)",
-          address: requiredAddresses[idx] || null,
-        }));
+      const configDetails = (node.securityConfigs || [])
+        .map((cfg) => {
+          const normalizedSrcEid =
+            cfg.srcEid !== undefined && cfg.srcEid !== null ? String(cfg.srcEid) : null;
+          if (
+            allowedSrcEids.size > 0 &&
+            (!normalizedSrcEid || !allowedSrcEids.has(normalizedSrcEid))
+          ) {
+            return null;
+          }
+          const requiredLabels = cfg.requiredDVNLabels || cfg.requiredDVNs || [];
+          const requiredAddresses = cfg.requiredDVNs || [];
+          const normalized = normalizeNames(requiredLabels);
+          const fingerprint = JSON.stringify({
+            required: cfg.requiredDVNCount || 0,
+            names: normalized,
+            sentinel: Boolean(cfg.usesRequiredDVNSentinel),
+          });
+          const matchesDominant =
+            Boolean(combinationFingerprint) &&
+            !cfg.usesRequiredDVNSentinel &&
+            fingerprint === combinationFingerprint;
+          const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
+          const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
 
-        const optionalLabels = cfg.optionalDVNLabels || cfg.optionalDVNs || [];
-        const optionalAddresses = cfg.optionalDVNs || [];
-        const optionalPairs = optionalLabels.map((label, idx) => ({
-          label: label || "(unknown)",
-          address: optionalAddresses[idx] || null,
-        }));
-        const optionalSummary =
-          cfg.optionalDVNCount && cfg.optionalDVNCount > 0
-            ? `${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount}`
-            : cfg.optionalDVNThreshold
-              ? `${cfg.optionalDVNThreshold}`
-              : null;
+          if (usesSentinel) {
+            diffReasonSet.add(
+              `sentinel quorum ${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount || 0}`,
+            );
+          } else if (differsFromDominant && dominantCombination) {
+            if (cfg.requiredDVNCount !== dominantCombination.requiredDVNCount) {
+              diffReasonSet.add(
+                `required DVN count ${cfg.requiredDVNCount} vs dominant ${dominantCombination.requiredDVNCount ?? "?"}`,
+              );
+            }
+            if (!this.areStringArraysEqual(normalized, dominantCombination.normalizedNames)) {
+              diffReasonSet.add("validator set differs");
+            }
+          }
 
-        return {
-          srcEid: cfg.srcEid,
-          requiredDVNCount: cfg.requiredDVNCount || 0,
-          requiredPairs,
-          optionalPairs,
-          optionalSummary,
-          usesSentinel,
-          matchesDominant,
-          differsFromDominant,
-          fingerprint,
-        };
-      });
+          const requiredPairs = requiredLabels.map((label, idx) => ({
+            label: label || "(unknown)",
+            address: requiredAddresses[idx] || null,
+          }));
+
+          const optionalLabels = cfg.optionalDVNLabels || cfg.optionalDVNs || [];
+          const optionalAddresses = cfg.optionalDVNs || [];
+          const optionalPairs = optionalLabels.map((label, idx) => ({
+            label: label || "(unknown)",
+            address: optionalAddresses[idx] || null,
+          }));
+          const optionalSummary =
+            cfg.optionalDVNCount && cfg.optionalDVNCount > 0
+              ? `${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount}`
+              : cfg.optionalDVNThreshold
+                ? `${cfg.optionalDVNThreshold}`
+                : null;
+
+          return {
+            srcEid: cfg.srcEid,
+            requiredDVNCount: cfg.requiredDVNCount || 0,
+            requiredPairs,
+            optionalPairs,
+            optionalSummary,
+            usesSentinel,
+            matchesDominant,
+            differsFromDominant,
+            fingerprint,
+            packetCount:
+              cfg.routePacketCount !== undefined && cfg.routePacketCount !== null
+                ? Number(cfg.routePacketCount)
+                : 0,
+            packetShare:
+              cfg.routePacketShare !== undefined && cfg.routePacketShare !== null
+                ? Number(cfg.routePacketShare)
+                : 0,
+            packetPercent:
+              cfg.routePacketPercent !== undefined && cfg.routePacketPercent !== null
+                ? Number(cfg.routePacketPercent)
+                : 0,
+            lastPacketBlock: cfg.routeLastPacketBlock ?? null,
+            lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
+            libraryStatus: cfg.libraryStatus ?? "unknown",
+            peerStateHint: cfg.peerStateHint ?? null,
+            synthetic: Boolean(cfg.synthetic),
+          };
+        })
+        .filter(Boolean);
 
       const hasConfigDifference =
         differenceEdges.length > 0 || configDetails.some((detail) => detail.differsFromDominant);
@@ -953,6 +1064,23 @@ export class SecurityGraphView {
           : node.totalPacketsReceived,
       );
       const totalPackets = Number.isFinite(totalPacketsValue) ? totalPacketsValue : 0;
+      const totalRoutePacketsValue = Number(
+        node.totalRoutePackets === undefined || node.totalRoutePackets === null
+          ? 0
+          : node.totalRoutePackets,
+      );
+      const totalRoutePackets =
+        Number.isFinite(totalRoutePacketsValue) && totalRoutePacketsValue >= 0
+          ? totalRoutePacketsValue
+          : 0;
+      const securitySummary = node.securitySummary || null;
+      if (
+        securitySummary &&
+        Number(securitySummary.syntheticCount) === Number(securitySummary.totalRoutes) &&
+        Number(securitySummary.totalRoutes) > 0
+      ) {
+        notes.add("Defaults only");
+      }
 
       return {
         id: node.id,
@@ -965,6 +1093,7 @@ export class SecurityGraphView {
         fromPacketDelivered: Boolean(node.fromPacketDelivered),
         isBlocked: blockedNodes.has(node.id),
         totalPackets,
+        totalRoutePackets,
         incoming,
         outgoing,
         activeIncoming,
@@ -979,7 +1108,23 @@ export class SecurityGraphView {
         hasConfigDifference,
         hasSentinel,
         notes: Array.from(notes),
+        securitySummary,
+        syntheticRouteCount: securitySummary?.syntheticCount ?? 0,
+        implicitBlockCount: securitySummary?.implicitBlocks ?? 0,
+        explicitBlockCount: securitySummary?.explicitBlocks ?? 0,
       };
+    });
+
+    nodeMetrics.sort((a, b) => {
+      if (a.isTracked !== b.isTracked) {
+        return a.isTracked ? -1 : 1;
+      }
+      const packetsA = Number.isFinite(a.totalPackets) ? a.totalPackets : 0;
+      const packetsB = Number.isFinite(b.totalPackets) ? b.totalPackets : 0;
+      if (packetsB !== packetsA) {
+        return packetsB - packetsA;
+      }
+      return String(a.id).localeCompare(String(b.id));
     });
 
     nodeMetrics.forEach((metric) => metricsById.set(metric.id, metric));
@@ -990,25 +1135,38 @@ export class SecurityGraphView {
           .filter(Boolean)
           .map((value) => String(value).toLowerCase()),
       );
-      const renameTargets = Array.from(
-        new Set(
-          nodeMetrics
-            .filter((metric) => {
-              if (!metric || !metric.id || typeof metric.id !== "string") {
-                return false;
-              }
-              const idAddress = metric.id.toLowerCase().split("_").at(-1) || "";
-              const nodeAddress = String(metric.node?.address || "")
-                .toLowerCase()
-                .trim();
-              if (zeroAddresses.has(idAddress) || zeroAddresses.has(nodeAddress)) {
-                return false;
-              }
-              return true;
-            })
-            .map((metric) => metric.id),
-        ),
-      );
+      const renameTargets = [];
+      const seenRenameTargets = new Set();
+
+      for (const metric of nodeMetrics) {
+        if (!metric || typeof metric.id !== "string") {
+          continue;
+        }
+        const trimmedId = metric.id.trim();
+        if (!trimmedId || seenRenameTargets.has(trimmedId)) {
+          continue;
+        }
+        const parts = trimmedId.split("_");
+        if (parts.length < 2) {
+          continue;
+        }
+        const rawAddr = parts[parts.length - 1];
+        const addr = rawAddr ? String(rawAddr).toLowerCase() : "";
+        if (!addr.startsWith("0x")) {
+          continue;
+        }
+        if (zeroAddresses.has(addr)) {
+          continue;
+        }
+        const nodeAddr = String(metric.node?.address || "")
+          .toLowerCase()
+          .trim();
+        if (zeroAddresses.has(nodeAddr)) {
+          continue;
+        }
+        seenRenameTargets.add(trimmedId);
+        renameTargets.push(trimmedId);
+      }
 
       if (renameTargets.length) {
         renameActions = document.createElement("div");
@@ -1607,7 +1765,6 @@ export class SecurityGraphView {
         optionalCell.classList.add("cell-sentinel");
       }
       tr.appendChild(optionalCell);
-
       const edgesCell = document.createElement("td");
       edgesCell.className = "edges-cell";
 
@@ -1741,6 +1898,8 @@ export class SecurityGraphView {
   calculateEdgeSecurityInfo(edges, nodesById) {
     const edgeSecurityInfo = [];
     let maxRequiredDVNsInWeb = 0;
+    let maxEdgePacketCount = 0;
+    let totalEdgePacketCount = 0;
     const combinationStatsMap = new Map();
 
     for (const edge of edges) {
@@ -1756,25 +1915,32 @@ export class SecurityGraphView {
       let usesSentinel = false;
       let isBlocked = false;
       let blockReason = null;
+      const libraryStatusEdge = edge.libraryStatus ?? null;
+      const syntheticEdge = Boolean(edge.synthetic);
+      let peerStateHint = edge.peerStateHint ?? null;
 
-      // Check if this is a stale peer (target node's config points to a different peer for this srcEid)
-      if (edge.isStalePeer) {
+      if (edge.blockReasonHint === "implicit-block") {
+        isBlocked = true;
+        blockReason = "implicit-block";
+      } else if (edge.blockReasonHint === "explicit-block") {
+        isBlocked = true;
+        blockReason = "zero-peer";
+      } else if (edge.blockReasonHint === "stale-peer") {
         isBlocked = true;
         blockReason = "stale-peer";
       }
 
-      // Check if peer is zero address (blocks all traffic from that EID)
-      if (!isBlocked && edge.peerRaw && this.isZeroPeer(edge.peerRaw)) {
+      // Check if this is a stale peer (target node's config points to a different peer for this srcEid)
+      if (!blockReason && edge.isStalePeer) {
         isBlocked = true;
-        blockReason = "zero-peer";
+        blockReason = "stale-peer";
       }
 
       let hasSecurityConfig = false;
+      let config = null;
 
-      if (toNode?.securityConfigs && toNode.isTracked) {
-        const config = toNode.securityConfigs.find(
-          (cfg) => String(cfg.srcEid) === String(edge.srcEid),
-        );
+      if (toNode?.securityConfigs && toNode.securityConfigs.length > 0) {
+        config = toNode.securityConfigs.find((cfg) => String(cfg.srcEid) === String(edge.srcEid));
         if (config) {
           hasSecurityConfig = true;
           requiredDVNCount = config.requiredDVNCount || 0;
@@ -1786,6 +1952,9 @@ export class SecurityGraphView {
             (Array.isArray(optionalDVNLabels) ? optionalDVNLabels.length : 0);
           optionalDVNThreshold = config.optionalDVNThreshold || 0;
           usesSentinel = Boolean(config.usesRequiredDVNSentinel);
+          if (!peerStateHint && config.peerStateHint) {
+            peerStateHint = config.peerStateHint;
+          }
 
           // Check for dead address in DVNs
           if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
@@ -1799,8 +1968,39 @@ export class SecurityGraphView {
         }
       }
 
+      if (!isBlocked) {
+        if (peerStateHint === "explicit-blocked") {
+          isBlocked = true;
+          blockReason = "zero-peer";
+        } else if (peerStateHint === "implicit-blocked") {
+          isBlocked = true;
+          blockReason = "implicit-block";
+        }
+      }
+
+      // Check if peer is zero address (blocks all traffic from that EID)
+      if (
+        !isBlocked &&
+        ((edge.peerRaw && this.isZeroPeer(edge.peerRaw)) ||
+          (config && config.peer && this.isZeroPeer(config.peer)))
+      ) {
+        isBlocked = true;
+        blockReason = "zero-peer";
+      }
+
       if (!isBlocked && hasSecurityConfig && requiredDVNCount > maxRequiredDVNsInWeb) {
         maxRequiredDVNsInWeb = requiredDVNCount;
+      }
+
+      if (!isBlocked) {
+        const fromId = typeof edge.from === "string" ? edge.from : "";
+        const fromAddress = (fromId.split("_").at(-1) || "").toLowerCase();
+        if (fromAddress === this.zeroAddress.toLowerCase()) {
+          isBlocked = true;
+          if (!blockReason) {
+            blockReason = "implicit-block";
+          }
+        }
       }
 
       const normalizedRequiredNames = (requiredDVNLabels || [])
@@ -1823,6 +2023,49 @@ export class SecurityGraphView {
       const routeFromLabel = this.resolveNodeChainLabel(fromNode, edge.from, edge.srcEid);
       const routeToLabel = this.resolveNodeChainLabel(toNode, edge.to, toNode?.localEid);
 
+      const packetCountValue = edge.routePacketCount ?? (config ? config.routePacketCount : null);
+      const packetCountNumber = Number(packetCountValue);
+      const packetCount =
+        Number.isFinite(packetCountNumber) && packetCountNumber > 0 ? packetCountNumber : 0;
+
+      const packetShareValue = edge.routePacketShare ?? (config ? config.routePacketShare : null);
+      const packetShareNumber = Number(packetShareValue);
+      const packetShare =
+        Number.isFinite(packetShareNumber) && packetShareNumber > 0 ? packetShareNumber : 0;
+
+      const packetPercentValue =
+        edge.routePacketPercent ?? (config ? config.routePacketPercent : null);
+      const packetPercentNumber = Number(packetPercentValue);
+      const packetPercent =
+        Number.isFinite(packetPercentNumber) && packetPercentNumber > 0
+          ? packetPercentNumber
+          : packetShare > 0
+            ? packetShare * 100
+            : 0;
+
+      const lastPacketBlockRaw =
+        edge.routeLastPacketBlock ?? (config ? config.routeLastPacketBlock : null);
+      const lastPacketBlockNumber = Number(lastPacketBlockRaw);
+      const lastPacketBlock =
+        Number.isFinite(lastPacketBlockNumber) && lastPacketBlockNumber > 0
+          ? lastPacketBlockNumber
+          : null;
+
+      const lastPacketTimestampRaw =
+        edge.routeLastPacketTimestamp ?? (config ? config.routeLastPacketTimestamp : null);
+      const lastPacketTimestampNumber = Number(lastPacketTimestampRaw);
+      const lastPacketTimestamp =
+        Number.isFinite(lastPacketTimestampNumber) && lastPacketTimestampNumber > 0
+          ? lastPacketTimestampNumber
+          : null;
+
+      if (packetCount > 0) {
+        totalEdgePacketCount += packetCount;
+        if (packetCount > maxEdgePacketCount) {
+          maxEdgePacketCount = packetCount;
+        }
+      }
+
       const info = {
         edge,
         requiredDVNCount,
@@ -1838,11 +2081,20 @@ export class SecurityGraphView {
         isUnknownSecurity,
         isBlocked,
         blockReason,
+        peerStateHint,
+        libraryStatus: config?.libraryStatus ?? libraryStatusEdge,
+        synthetic: config?.synthetic ?? syntheticEdge,
         routeFromLabel,
         routeToLabel,
         differsFromPopular: false,
         matchesPopularCombination: false,
         differenceReasons: [],
+        packetCount,
+        packetShare,
+        packetPercent,
+        lastPacketBlock,
+        lastPacketTimestamp,
+        sourceType: config?.sourceType ?? edge.sourceType ?? null,
       };
 
       edgeSecurityInfo.push(info);
@@ -1979,11 +2231,20 @@ export class SecurityGraphView {
       sampleInfo: entry.sampleInfo,
     }));
 
+    const invMaxPacket = maxEdgePacketCount > 0 ? 1 / maxEdgePacketCount : 0;
+    const invTotalPacket = totalEdgePacketCount > 0 ? 1 / totalEdgePacketCount : 0;
+    for (const info of edgeSecurityInfo) {
+      info.packetStrength = invMaxPacket > 0 ? info.packetCount * invMaxPacket : 0;
+      info.packetWeight = invTotalPacket > 0 ? info.packetCount * invTotalPacket : 0;
+    }
+
     return {
       edgeSecurityInfo,
       maxRequiredDVNsInWeb,
       combinationStats,
       dominantCombination: dominantEntry,
+      maxEdgePacketCount,
+      totalEdgePacketCount,
     };
   }
 
@@ -2034,7 +2295,11 @@ export class SecurityGraphView {
   }
 
   isZeroPeer(peerAddress) {
-    return String(peerAddress).toLowerCase() === this.zeroPeer.toLowerCase();
+    if (peerAddress === null || peerAddress === undefined) {
+      return false;
+    }
+    const value = String(peerAddress).toLowerCase();
+    return value === this.zeroPeer.toLowerCase() || value === this.zeroAddress.toLowerCase();
   }
 
   findBlockedNodes(nodes, edgeSecurityInfo) {
@@ -2316,7 +2581,7 @@ export class SecurityGraphView {
         if (a.isTracked !== b.isTracked) {
           return a.isTracked ? -1 : 1;
         }
-        // Within tracked or untracked groups, sort by packet count (descending)
+        // Within each tracked group, then untracked, sort by packet count (descending)
         const packetsA = a.totalPacketsReceived || 0;
         const packetsB = b.totalPacketsReceived || 0;
         if (packetsA !== packetsB) {
