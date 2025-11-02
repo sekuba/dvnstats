@@ -60,10 +60,20 @@ export class AliasStore {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object") {
           Object.entries(parsed).forEach(([k, v]) => {
+            const key = String(k);
             if (!v) {
-              this.map.delete(String(k));
-            } else if (typeof v === "object" && v.name) {
-              this.map.set(String(k), String(v.name));
+              this.map.delete(key);
+              this.buttonMap.delete(key);
+              return;
+            }
+            if (typeof v === "object" && v.name) {
+              const name = String(v.name);
+              this.map.set(key, name);
+              if (v.addButton === true) {
+                this.buttonMap.set(key, name);
+              } else {
+                this.buttonMap.delete(key);
+              }
             }
           });
         }
@@ -93,8 +103,18 @@ export class AliasStore {
   set(oappId, alias) {
     if (!oappId) return;
     const id = String(oappId);
-    const trimmed = alias?.trim();
-    trimmed ? this.map.set(id, trimmed) : this.map.delete(id);
+    const trimmed = alias === null || alias === undefined ? "" : String(alias).trim();
+
+    if (trimmed) {
+      this.map.set(id, trimmed);
+      if (this.buttonMap.has(id)) {
+        this.buttonMap.set(id, trimmed);
+      }
+    } else {
+      this.map.delete(id);
+      this.buttonMap.delete(id);
+    }
+
     this.persist();
   }
 
@@ -102,7 +122,7 @@ export class AliasStore {
     try {
       const obj = {};
       this.map.forEach((name, oappId) => {
-        obj[oappId] = { name, addButton: false };
+        obj[oappId] = { name, addButton: this.buttonMap.has(oappId) };
       });
       localStorage.setItem(this.storageKey, JSON.stringify(obj));
     } catch (error) {
@@ -113,7 +133,7 @@ export class AliasStore {
   export() {
     const obj = {};
     this.map.forEach((name, oappId) => {
-      obj[oappId] = { name, addButton: false };
+      obj[oappId] = { name, addButton: this.buttonMap.has(oappId) };
     });
     const content = JSON.stringify(obj, null, 2);
     const blob = new Blob([content], { type: "application/json" });
