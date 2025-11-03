@@ -1462,7 +1462,7 @@ export class QueryCoordinator {
     const lines = [];
 
     // Check for sentinel value (2^64-1 = 18446744073709551615)
-    const CONFIRMATIONS_SENTINEL = "18446744073709551615";
+    const CONFIRMATIONS_SENTINEL = APP_CONFIG.SENTINEL_VALUES.CONFIRMATIONS_SENTINEL;
     if (String(confirmations) === CONFIRMATIONS_SENTINEL) {
       lines.push("SENTINEL: 0 confirmations");
       lines.push("Instant finality mode");

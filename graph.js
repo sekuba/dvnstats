@@ -5,7 +5,7 @@
 
 import { APP_CONFIG } from "./config.js";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
+const SVG_NS = APP_CONFIG.SVG.NAMESPACE;
 
 /**
  * Main graph renderer
@@ -488,18 +488,28 @@ export class SecurityGraphView {
 
   getEdgeStyle(info, maxRequiredDVNsInWeb, maxEdgePacketCount) {
     if (info.isBlocked) {
-      return { color: "#ff0000", width: "1.4", opacity: "0.65", dashArray: "8,4" };
+      return {
+        color: APP_CONFIG.GRAPH_COLORS.EDGE_BLOCKED,
+        width: APP_CONFIG.GRAPH_STYLES.EDGE_BLOCKED_WIDTH,
+        opacity: APP_CONFIG.GRAPH_STYLES.EDGE_BLOCKED_OPACITY,
+        dashArray: APP_CONFIG.GRAPH_STYLES.EDGE_BLOCKED_DASH,
+      };
     }
     if (info.isUnknownSecurity) {
-      return { color: "#6b7280", width: "1.2", opacity: "0.45", dashArray: "6,4" };
+      return {
+        color: APP_CONFIG.GRAPH_COLORS.EDGE_UNKNOWN,
+        width: APP_CONFIG.GRAPH_STYLES.EDGE_UNKNOWN_WIDTH,
+        opacity: APP_CONFIG.GRAPH_STYLES.EDGE_UNKNOWN_OPACITY,
+        dashArray: APP_CONFIG.GRAPH_STYLES.EDGE_UNKNOWN_DASH,
+      };
     }
 
     const differsFromPopular = Boolean(info.differsFromPopular);
     const baseColor = differsFromPopular
-      ? "#ff1df5"
+      ? APP_CONFIG.GRAPH_COLORS.EDGE_ANOMALY
       : info.requiredDVNCount < maxRequiredDVNsInWeb
-        ? "#ff6666"
-        : "#000000ff";
+        ? APP_CONFIG.GRAPH_COLORS.EDGE_WEAK
+        : APP_CONFIG.GRAPH_COLORS.EDGE_NORMAL;
 
     let trafficStrength = 0;
     if (typeof info.packetStrength === "number") {
@@ -509,9 +519,13 @@ export class SecurityGraphView {
     }
     trafficStrength = Math.max(0, Math.min(trafficStrength, 1));
 
-    const widthBase = differsFromPopular ? 2.4 : 1.8;
-    const width = widthBase + trafficStrength * 2.6;
-    const opacity = 0.45 + trafficStrength * 0.35;
+    const widthBase = differsFromPopular
+      ? APP_CONFIG.GRAPH_STYLES.EDGE_WIDTH_ANOMALY
+      : APP_CONFIG.GRAPH_STYLES.EDGE_WIDTH_BASE;
+    const width = widthBase + trafficStrength * APP_CONFIG.GRAPH_STYLES.EDGE_WIDTH_TRAFFIC;
+    const opacity =
+      APP_CONFIG.GRAPH_STYLES.EDGE_OPACITY_BASE +
+      trafficStrength * APP_CONFIG.GRAPH_STYLES.EDGE_OPACITY_TRAFFIC;
 
     return {
       color: baseColor,
@@ -736,13 +750,13 @@ export class SecurityGraphView {
       let fillColor;
       if (isBlocked) {
         // Grey color for nodes that cannot send packets to monitored nodes
-        fillColor = "#999999";
+        fillColor = APP_CONFIG.GRAPH_COLORS.NODE_BLOCKED;
       } else if (node.isDangling) {
         fillColor = "none";
       } else if (minRequiredDVNs >= maxMinRequiredDVNsForNodes) {
-        fillColor = "#ffff99";
+        fillColor = APP_CONFIG.GRAPH_COLORS.NODE_SECURE;
       } else {
-        fillColor = "#ff9999";
+        fillColor = APP_CONFIG.GRAPH_COLORS.NODE_WEAK;
       }
 
       const circle = document.createElementNS(svgNS, "circle");
