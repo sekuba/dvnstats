@@ -17,8 +17,18 @@ import {
   splitOAppId,
   stringifyScalar,
   resolveChainDisplayLabel,
+  formatInteger,
+  formatPercent,
 } from "./core.js";
 import { resolveOAppSecurityConfigs } from "./resolver.js";
+import { TOP_OAPPS_QUERY } from "./queries/topOApps.js";
+import { OAPP_SECURITY_CONFIG_QUERY } from "./queries/oappSecurityConfig.js";
+import { POPULAR_OAPPS_WINDOW_QUERY } from "./queries/popularOAppsWindow.js";
+import {
+  createFormattedCell,
+  formatUpdateInfo,
+  formatRouteActivityLine,
+} from "./formatters/cellFormatters.js";
 
 /**
  * Manages OApp aliases (friendly names for OApp IDs)
@@ -245,24 +255,11 @@ export class QueryCoordinator {
 
   formatOAppIdCell(oappId) {
     if (!oappId) {
-      return this.createFormattedCell(["—"], "");
+      return createFormattedCell(["—"], "");
     }
     const alias = this.aliasStore.get(oappId);
     const lines = alias ? [alias, `ID ${oappId}`] : [oappId];
-    return this.createFormattedCell(lines, oappId, { oappId });
-  }
-
-  createFormattedCell(lines, copyValue, meta = {}) {
-    const normalizedLines = Array.isArray(lines) ? lines : [lines];
-    return {
-      __formatted: true,
-      lines: normalizedLines.map((line) =>
-        line === null || line === undefined ? "" : String(line),
-      ),
-      copyValue,
-      meta,
-      highlight: meta.highlight || false,
-    };
+    return createFormattedCell(lines, oappId, { oappId });
   }
 
   resolveDvnLabels(addresses, meta, localEidOverride) {
@@ -299,22 +296,7 @@ export class QueryCoordinator {
       "top-oapps": {
         label: "Top OApps",
         description: "Ordered by total packets received",
-        query: `
-          query TopOApps($limit: Int, $minPackets: numeric!) {
-            OAppStats(
-              order_by: { totalPacketsReceived: desc }
-              limit: $limit
-              where: { totalPacketsReceived: { _gte: $minPackets } }
-            ) {
-              id
-              localEid
-              address
-              totalPacketsReceived
-              lastPacketBlock
-              lastPacketTimestamp
-            }
-          }
-        `,
+        query: TOP_OAPPS_QUERY,
         buildVariables: (card) => {
           const limitInput = card.querySelector('input[name="limit"]');
           const minPacketsInput = card.querySelector('input[name="minPackets"]');
@@ -343,7 +325,7 @@ export class QueryCoordinator {
             return {
               ...row,
               id: this.formatOAppIdCell(row.id),
-              localEid: this.createFormattedCell([chainDisplay], row.localEid),
+              localEid: createFormattedCell([chainDisplay], row.localEid),
             };
           }),
       },
@@ -351,131 +333,7 @@ export class QueryCoordinator {
       "oapp-security-config": {
         label: "OApp Security Config",
         description: "Resolve the current security posture for a single OApp",
-        query: `
-          query CurrentSecurityConfig($oappId: String!, $localEid: numeric!) {
-            OAppStats(where: { id: { _eq: $oappId } }) {
-              id
-              localEid
-              address
-              totalPacketsReceived
-              lastPacketBlock
-              lastPacketTimestamp
-            }
-            OAppPeer(where: { oappId: { _eq: $oappId } }) {
-              id
-              oappId
-              eid
-              peer
-              peerOappId
-              fromPacketDelivered
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-            }
-            OAppRouteStats(where: { oappId: { _eq: $oappId } }, order_by: { packetCount: desc }) {
-              id
-              oappId
-              srcEid
-              packetCount
-              lastPacketBlock
-              lastPacketTimestamp
-            }
-            OAppRateLimiter(where: { oappId: { _eq: $oappId } }) {
-              id
-              rateLimiter
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-            }
-            OAppRateLimit(where: { oappId: { _eq: $oappId } }) {
-              id
-              dstEid
-              limit
-              window
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-            }
-            OAppSecurityConfig(
-              where: { oappId: { _eq: $oappId } }
-              order_by: { eid: asc }
-            ) {
-              id
-              eid
-              localEid
-              oapp
-              effectiveReceiveLibrary
-              effectiveConfirmations
-              effectiveRequiredDVNCount
-              effectiveOptionalDVNCount
-              effectiveOptionalDVNThreshold
-              effectiveRequiredDVNs
-              effectiveOptionalDVNs
-              libraryStatus
-              usesDefaultLibrary
-              usesDefaultConfig
-              usesRequiredDVNSentinel
-              fallbackFields
-              defaultLibraryVersionId
-              defaultConfigVersionId
-              libraryOverrideVersionId
-              configOverrideVersionId
-              lastComputedBlock
-              lastComputedTimestamp
-              lastComputedByEventId
-              lastComputedTransactionHash
-              peer
-              peerOappId
-              peerTransactionHash
-              peerLastUpdatedBlock
-              peerLastUpdatedTimestamp
-              peerLastUpdatedEventId
-            }
-            DefaultReceiveLibrary(where: { localEid: { _eq: $localEid } }) {
-              localEid
-              eid
-              library
-              lastUpdatedByEventId
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-              transactionHash
-            }
-            DefaultUlnConfig(where: { localEid: { _eq: $localEid } }) {
-              localEid
-              eid
-              confirmations
-              requiredDVNCount
-              optionalDVNCount
-              optionalDVNThreshold
-              requiredDVNs
-              optionalDVNs
-              lastUpdatedByEventId
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-              transactionHash
-            }
-            OAppReceiveLibrary(where: { oappId: { _eq: $oappId } }) {
-              oappId
-              eid
-              library
-              lastUpdatedByEventId
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-              transactionHash
-            }
-            OAppUlnConfig(where: { oappId: { _eq: $oappId } }) {
-              oappId
-              eid
-              confirmations
-              requiredDVNCount
-              optionalDVNCount
-              optionalDVNThreshold
-              requiredDVNs
-              optionalDVNs
-              lastUpdatedByEventId
-              lastUpdatedBlock
-              lastUpdatedTimestamp
-              transactionHash
-            }
-          }
-        `,
+        query: OAPP_SECURITY_CONFIG_QUERY,
         initialize: ({ card }) => {
           const endpointInput = card.querySelector("[data-chain-input]");
           const chainLabel = card.querySelector("[data-chain-label]");
@@ -644,23 +502,7 @@ export class QueryCoordinator {
       "popular-oapps-window": {
         label: "Hot OApps",
         description: "Rank OApps by packets in a configurable time window",
-        query: `
-          query PopularOAppsWindow($fromTimestamp: numeric!, $fetchLimit: Int) {
-            PacketDelivered(
-              where: { blockTimestamp: { _gte: $fromTimestamp } }
-              order_by: { blockTimestamp: desc }
-              limit: $fetchLimit
-            ) {
-              id
-              oappId
-              localEid
-              receiver
-              blockTimestamp
-              blockNumber
-              srcEid
-            }
-          }
-        `,
+        query: POPULAR_OAPPS_WINDOW_QUERY,
         initialize: ({ card }) => {
           const unitSelect = card.querySelector('select[name="windowUnit"]');
           if (unitSelect && !unitSelect.value) {
@@ -872,14 +714,14 @@ export class QueryCoordinator {
       const address = group.address || (group.oappId.split("_")[1] ?? "—");
       const eids = Array.from(group.eids).sort();
 
-      const chainCell = this.createFormattedCell([chainDisplay], group.localEid);
+      const chainCell = createFormattedCell([chainDisplay], group.localEid);
 
       const oappCell = this.formatOAppIdCell(group.oappId);
-      const addressCell = this.createFormattedCell([address], address);
+      const addressCell = createFormattedCell([address], address);
 
       const eidLines = [`Count ${eids.length}`];
       const eidCopyValue = eids.join(", ");
-      const eidCell = this.createFormattedCell(eidLines, eidCopyValue || `Count ${eids.length}`);
+      const eidCell = createFormattedCell(eidLines, eidCopyValue || `Count ${eids.length}`);
 
       const lastLines = [];
       if (group.lastTimestamp) {
@@ -894,7 +736,7 @@ export class QueryCoordinator {
       if (group.lastBlock !== null && group.lastBlock !== undefined) {
         lastLines.push(`Block ${group.lastBlock}`);
       }
-      const lastCell = this.createFormattedCell(
+      const lastCell = createFormattedCell(
         lastLines.length ? lastLines : ["—"],
         String(group.lastTimestamp ?? ""),
       );
@@ -1148,27 +990,6 @@ export class QueryCoordinator {
     };
   }
 
-  formatRouteActivityLine(activity) {
-    const count = activity?.count ?? 0;
-    const percent = activity?.percentOfTotal ?? 0;
-    const countLabel = this.formatInteger(count);
-    if (percent > 0) {
-      return `${countLabel} packets (${this.formatPercent(percent)})`;
-    }
-    return `${countLabel} packets`;
-  }
-
-  formatInteger(value) {
-    if (!Number.isFinite(value)) {
-      return String(value ?? 0);
-    }
-    return Math.round(value).toLocaleString();
-  }
-
-  formatPercent(value) {
-    const percent = Math.max(0, Math.min(1, Number(value) || 0));
-    return `${(percent * 100).toFixed(percent * 100 >= 10 ? 0 : 1)}%`;
-  }
 
   identifyBlockingReasons(row, meta) {
     const reasons = [];
@@ -1279,7 +1100,7 @@ export class QueryCoordinator {
   ) {
     const formatted = {};
     const chainDisplay = this.getChainDisplayLabel(row.eid) || row.eid || "—";
-    formatted["Source EID"] = this.createFormattedCell([chainDisplay], row.eid);
+    formatted["Source EID"] = createFormattedCell([chainDisplay], row.eid);
     formatted.Library = this.formatLibraryDescriptor(row, highlightColumns.has("Library"));
 
     // Required DVNs with highlighting
@@ -1341,17 +1162,17 @@ export class QueryCoordinator {
       lines.push(statusBits.join(" • "));
     }
 
-    return this.createFormattedCell(lines, address, { highlight });
+    return createFormattedCell(lines, address, { highlight });
   }
 
   formatRequiredDvns(row, meta, highlight = false) {
     // If no library configured, ULN config is unavailable
     if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
-      return this.createFormattedCell(["—", "No ULN config"], "", { highlight });
+      return createFormattedCell(["—", "No ULN config"], "", { highlight });
     }
 
     if (row.usesRequiredDVNSentinel) {
-      return this.createFormattedCell(
+      return createFormattedCell(
         ["SENTINEL: 0 required DVNs", "Optional-only quorum"],
         "sentinel",
         { highlight },
@@ -1370,7 +1191,7 @@ export class QueryCoordinator {
   formatOptionalDvns(row, meta, highlight = false) {
     // If no library configured, ULN config is unavailable
     if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
-      return this.createFormattedCell(["—", "No ULN config"], "", { highlight });
+      return createFormattedCell(["—", "No ULN config"], "", { highlight });
     }
 
     const count = row.effectiveOptionalDVNCount ?? 0;
@@ -1391,7 +1212,7 @@ export class QueryCoordinator {
     if (addrs.length) {
       lines.push(...this.resolveDvnLabels(addrs, meta, localEid ?? meta?.localEid ?? meta?.eid));
     }
-    return this.createFormattedCell(lines, addrs.join(", ") || String(count), { highlight });
+    return createFormattedCell(lines, addrs.join(", ") || String(count), { highlight });
   }
 
   derivePeerContext(row) {
@@ -1466,7 +1287,7 @@ export class QueryCoordinator {
     if (routeActivity) {
       meterPercent = Math.max(0, Math.min(1, routeActivity.percentOfTotal || 0));
       if (routeActivity.count > 0) {
-        lines.push(this.formatRouteActivityLine(routeActivity));
+        lines.push(formatRouteActivityLine(routeActivity));
       } else if (routeActivity.totalPackets > 0) {
         lines.push("0 packets (0%)");
       }
@@ -1475,12 +1296,12 @@ export class QueryCoordinator {
     if (isBlocked) {
       const meta =
         meterPercent && meterPercent > 0 ? { highlight: true, meterPercent } : { highlight: true };
-      return this.createFormattedCell(lines, "0x0", meta);
+      return createFormattedCell(lines, "0x0", meta);
     }
 
     if (!ctx) {
       const meta = meterPercent && meterPercent > 0 ? { highlight, meterPercent } : { highlight };
-      return this.createFormattedCell(lines, "", meta);
+      return createFormattedCell(lines, "", meta);
     }
 
     if (ctx.alias) {
@@ -1503,11 +1324,11 @@ export class QueryCoordinator {
     if (meterPercent && meterPercent > 0) {
       meta = { ...meta, meterPercent };
     }
-    return this.createFormattedCell(lines, ctx.copyValue, meta);
+    return createFormattedCell(lines, ctx.copyValue, meta);
   }
 
   formatPeerUpdate(row) {
-    return this.formatUpdateInfo({
+    return formatUpdateInfo({
       block: row.peerLastUpdatedBlock,
       timestamp: row.peerLastUpdatedTimestamp,
       eventId: row.peerLastUpdatedEventId,
@@ -1518,7 +1339,7 @@ export class QueryCoordinator {
   formatConfirmations(row) {
     // If no library configured, ULN config is unavailable
     if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
-      return this.createFormattedCell(["—", "No ULN config"], "");
+      return createFormattedCell(["—", "No ULN config"], "");
     }
 
     const confirmations = row.effectiveConfirmations ?? "—";
@@ -1533,21 +1354,21 @@ export class QueryCoordinator {
       lines.push(String(confirmations));
     }
 
-    return this.createFormattedCell(lines, String(confirmations));
+    return createFormattedCell(lines, String(confirmations));
   }
 
   formatFallbackFields(fields, usesDefaultConfig, libraryStatus, highlight = false) {
     // If no library configured, show N/A
     if (libraryStatus === "none" || libraryStatus === "unsupported") {
-      return this.createFormattedCell(["—", "No ULN config"], "", { highlight });
+      return createFormattedCell(["—", "No ULN config"], "", { highlight });
     }
 
     const names = Array.isArray(fields) ? fields : [];
     if (!names.length) {
       if (usesDefaultConfig) {
-        return this.createFormattedCell(["All from default"], "default", { highlight });
+        return createFormattedCell(["All from default"], "default", { highlight });
       }
-      return this.createFormattedCell(["None (fully custom)"], "", { highlight });
+      return createFormattedCell(["None (fully custom)"], "", { highlight });
     }
 
     const map = {
@@ -1561,35 +1382,16 @@ export class QueryCoordinator {
     };
 
     const lines = names.map((name) => map[name] || name);
-    return this.createFormattedCell(lines, names.join(", "), { highlight });
+    return createFormattedCell(lines, names.join(", "), { highlight });
   }
 
   formatLastComputed(row) {
-    return this.formatUpdateInfo({
+    return formatUpdateInfo({
       block: row.lastComputedBlock,
       timestamp: row.lastComputedTimestamp,
       eventId: row.lastComputedByEventId,
       txHash: row.lastComputedTransactionHash,
     });
-  }
-
-  formatUpdateInfo({ block, timestamp, eventId, txHash }) {
-    const lines = [];
-    if (block !== undefined && block !== null) lines.push(`Block ${block}`);
-    if (timestamp !== undefined && timestamp !== null) {
-      const ts = formatTimestampValue(timestamp);
-      if (ts) lines.push(ts.primary);
-    }
-    if (eventId) lines.push(eventId);
-    if (txHash) {
-      const hashStr = String(txHash);
-      const truncated =
-        hashStr.length > 20 ? `${hashStr.slice(0, 10)}…${hashStr.slice(-6)}` : hashStr;
-      lines.push(`Tx ${truncated}`);
-    }
-
-    const copyValue = txHash || eventId || lines.join(" | ");
-    return this.createFormattedCell(lines.length ? lines : ["—"], copyValue);
   }
 
   async runQuery(key, card, statusEl) {
