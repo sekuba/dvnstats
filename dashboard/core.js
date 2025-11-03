@@ -4,7 +4,6 @@ const HEX_PREFIX = "0x";
 const BYTES32_HEX_LENGTH = 64;
 const EVM_ADDRESS_HEX_LENGTH = 40;
 const HEX_BODY_REGEX = /^[0-9a-f]+$/i;
-const HASH_PATTERN = /^0x[a-f0-9]{16,}$/i;
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -307,52 +306,16 @@ export function parseOptionalPositiveInt(rawValue) {
   return Number.NaN;
 }
 
-export function stringifyScalar(value) {
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return value ?? "";
-}
-
-export function formatTimestampValue(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return null;
-
-  const millis = numeric < 1e12 ? numeric * 1000 : numeric;
-  const date = new Date(millis);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return {
-    primary: date.toISOString().replace("T", " ").replace("Z", " UTC"),
-    secondary: `unix ${value}`,
-    copyValue: String(value),
-  };
-}
-
-export function looksLikeHash(column, value) {
-  const lower = column.toLowerCase();
-  return (
-    lower.includes("hash") ||
-    lower.includes("tx") ||
-    (typeof value === "string" && HASH_PATTERN.test(value))
-  );
-}
-
-export function looksLikeTimestampColumn(column) {
-  const lower = column.toLowerCase();
-  return lower.includes("timestamp") || lower.endsWith("time");
-}
-
-export function looksLikeEidColumn(column) {
-  const lower = column.toLowerCase();
-  if (lower === "eid") {
-    return true;
-  }
-  return lower.endsWith("_eid") || lower.includes("eid_");
-}
+// Re-export formatting functions from centralized formatters
+export {
+  stringifyScalar,
+  formatTimestampValue,
+  looksLikeHash,
+  looksLikeTimestampColumn,
+  looksLikeEidColumn,
+  formatInteger,
+  formatPercent,
+} from "./formatters/valueFormatters.js";
 
 export function isZeroAddress(address) {
   if (!address) return false;
