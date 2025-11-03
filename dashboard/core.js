@@ -1,8 +1,6 @@
 import { APP_CONFIG } from "./config.js";
 
 const HEX_PREFIX = "0x";
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
 const BYTES32_HEX_LENGTH = 64;
 const EVM_ADDRESS_HEX_LENGTH = 40;
 const HEX_BODY_REGEX = /^[0-9a-f]+$/i;
@@ -202,7 +200,7 @@ export function normalizeAddress(address) {
   if (hexBody.length === BYTES32_HEX_LENGTH) {
     const trimmedHex = hexBody.replace(/^0+/, "");
     if (trimmedHex.length === 0) {
-      return ZERO_ADDRESS;
+      return APP_CONFIG.ADDRESSES.ZERO;
     }
     if (trimmedHex.length <= EVM_ADDRESS_HEX_LENGTH) {
       return `${HEX_PREFIX}${trimmedHex.padStart(EVM_ADDRESS_HEX_LENGTH, "0")}`;
@@ -316,5 +314,5 @@ export function isZeroAddress(address) {
   if (!address) return false;
   const normalized = String(address).toLowerCase();
   // Check both EVM address (40 chars) and bytes32 (64 chars) formats
-  return normalized === ZERO_ADDRESS.toLowerCase() || normalized === ZERO_BYTES32.toLowerCase();
+  return normalized === APP_CONFIG.ADDRESSES.ZERO.toLowerCase() || normalized === APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase();
 }
