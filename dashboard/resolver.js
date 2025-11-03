@@ -1,4 +1,4 @@
-import { isZeroAddress } from "./core.js";
+import { isZeroAddress, normalizeKey } from "./core.js";
 import { getTrackedReceiveLibrary } from "./trackedLibraries.js";
 import { APP_CONFIG } from "./config.js";
 
@@ -375,11 +375,6 @@ function buildMap(list, keySelector) {
     map.set(key, item);
   }
   return map;
-}
-
-function normalizeKey(value) {
-  if (value === undefined || value === null) return null;
-  return String(value);
 }
 
 function normalizeAddressSafe(address) {

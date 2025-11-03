@@ -139,8 +139,8 @@ export class AliasStore {
     }));
   }
 
-  set(oappId, alias) {
-    if (!oappId) return;
+  set(oappId, alias, options = {}) {
+    if (!oappId) return false;
     const id = String(oappId);
     const trimmed = alias === null || alias === undefined ? "" : String(alias).trim();
 
@@ -173,9 +173,32 @@ export class AliasStore {
       }
     }
 
+    if (changed && options.persist !== false) {
+      this.persist();
+    }
+
+    return changed;
+  }
+
+  setMany(entries) {
+    if (!Array.isArray(entries) || !entries.length) return false;
+
+    let changed = false;
+    for (const entry of entries) {
+      if (!entry || entry.oappId === undefined || entry.oappId === null) {
+        continue;
+      }
+      const didChange = this.set(entry.oappId, entry.alias, { persist: false });
+      if (didChange) {
+        changed = true;
+      }
+    }
+
     if (changed) {
       this.persist();
     }
+
+    return changed;
   }
 
   persist() {

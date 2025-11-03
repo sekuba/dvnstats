@@ -1,5 +1,5 @@
 import { APP_CONFIG } from "./config.js";
-import { splitOAppId } from "./core.js";
+import { splitOAppId, normalizeKey } from "./core.js";
 import { resolveOAppSecurityConfigs } from "./resolver.js";
 
 const ZERO_PEER_HEX = APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase();
@@ -31,11 +31,6 @@ export class SecurityGraphCrawler {
     const visited = new Set();
     const pending = new Set([seedOAppId]);
     const queue = [{ oappId: seedOAppId, depth: 0 }];
-
-    const normalizeKey = (value) => {
-      if (value === undefined || value === null) return null;
-      return String(value);
-    };
 
     let count = 0;
 
