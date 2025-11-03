@@ -308,6 +308,7 @@ class DashboardApp {
 
     if (targets.length) {
       targets.forEach((id) => this.aliasStore.set(id, alias));
+      this.setupQuickCrawlButtons();
       await this.queryCoordinator.reprocessLastResults();
       this.closeAliasModal();
 
@@ -322,6 +323,7 @@ class DashboardApp {
     const id = this.aliasFields.id.value;
     if (id) {
       this.aliasStore.set(id, alias);
+      this.setupQuickCrawlButtons();
       await this.queryCoordinator.reprocessLastResults();
     }
     this.closeAliasModal();
@@ -344,6 +346,7 @@ class DashboardApp {
       const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
       if (targets.length) {
         targets.forEach((id) => this.aliasStore.set(id, ""));
+        this.setupQuickCrawlButtons();
         await this.queryCoordinator.reprocessLastResults();
         this.closeAliasModal();
         this.toastQueue.show(
@@ -354,6 +357,7 @@ class DashboardApp {
         const id = this.aliasFields.id?.value;
         if (id) {
           this.aliasStore.set(id, "");
+          this.setupQuickCrawlButtons();
           await this.queryCoordinator.reprocessLastResults();
         }
         this.closeAliasModal();

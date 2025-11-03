@@ -40,14 +40,7 @@ export class AliasStore {
       if (response.ok) {
         const data = await response.json();
         if (data && typeof data === "object") {
-          Object.entries(data).forEach(([k, v]) => {
-            if (v && typeof v === "object" && v.name) {
-              this.map.set(String(k), String(v.name));
-              if (v.addButton === true) {
-                this.buttonMap.set(String(k), String(v.name));
-              }
-            }
-          });
+          this.applyAliasEntries(Object.entries(data));
         }
       }
     } catch (error) {
@@ -59,23 +52,7 @@ export class AliasStore {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed && typeof parsed === "object") {
-          Object.entries(parsed).forEach(([k, v]) => {
-            const key = String(k);
-            if (!v) {
-              this.map.delete(key);
-              this.buttonMap.delete(key);
-              return;
-            }
-            if (typeof v === "object" && v.name) {
-              const name = String(v.name);
-              this.map.set(key, name);
-              if (v.addButton === true) {
-                this.buttonMap.set(key, name);
-              } else {
-                this.buttonMap.delete(key);
-              }
-            }
-          });
+          this.applyAliasEntries(Object.entries(parsed));
         }
       }
     } catch (error) {
@@ -86,6 +63,67 @@ export class AliasStore {
     console.log(
       `[AliasStore] Loaded ${this.map.size} aliases, ${this.buttonMap.size} quick-crawl buttons`,
     );
+  }
+
+  buildSnapshot() {
+    const snapshot = {};
+    this.map.forEach((name, oappId) => {
+      snapshot[oappId] = { name, addButton: this.buttonMap.has(oappId) };
+    });
+    return snapshot;
+  }
+
+  applyAliasEntries(entries) {
+    if (!Array.isArray(entries)) {
+      return;
+    }
+
+    entries.forEach(([rawKey, rawValue]) => {
+      if (rawKey === undefined || rawKey === null) {
+        return;
+      }
+
+      const key = String(rawKey);
+      if (!key) {
+        return;
+      }
+
+      if (!rawValue) {
+        this.map.delete(key);
+        this.buttonMap.delete(key);
+        return;
+      }
+
+      let aliasName = null;
+      let addButton = false;
+
+      if (typeof rawValue === "string") {
+        aliasName = rawValue;
+      } else if (typeof rawValue === "object") {
+        aliasName =
+          rawValue.name !== undefined && rawValue.name !== null
+            ? rawValue.name
+            : rawValue.alias ?? null;
+        addButton = rawValue.addButton === true;
+      } else {
+        return;
+      }
+
+      const normalized =
+        aliasName === undefined || aliasName === null ? "" : String(aliasName).trim();
+      if (!normalized) {
+        this.map.delete(key);
+        this.buttonMap.delete(key);
+        return;
+      }
+
+      this.map.set(key, normalized);
+      if (addButton) {
+        this.buttonMap.set(key, normalized);
+      } else {
+        this.buttonMap.delete(key);
+      }
+    });
   }
 
   get(oappId) {
@@ -120,22 +158,14 @@ export class AliasStore {
 
   persist() {
     try {
-      const obj = {};
-      this.map.forEach((name, oappId) => {
-        obj[oappId] = { name, addButton: this.buttonMap.has(oappId) };
-      });
-      localStorage.setItem(this.storageKey, JSON.stringify(obj));
+      localStorage.setItem(this.storageKey, JSON.stringify(this.buildSnapshot()));
     } catch (error) {
       console.warn("[AliasStore] Failed to persist", error);
     }
   }
 
   export() {
-    const obj = {};
-    this.map.forEach((name, oappId) => {
-      obj[oappId] = { name, addButton: this.buttonMap.has(oappId) };
-    });
-    const content = JSON.stringify(obj, null, 2);
+    const content = JSON.stringify(this.buildSnapshot(), null, 2);
     const blob = new Blob([content], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
