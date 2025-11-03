@@ -16,6 +16,7 @@ import {
   parseOptionalPositiveInt,
   splitOAppId,
   stringifyScalar,
+  resolveChainDisplayLabel,
 } from "./core.js";
 import { resolveOAppSecurityConfigs } from "./resolver.js";
 
@@ -143,17 +144,38 @@ export class AliasStore {
     const id = String(oappId);
     const trimmed = alias === null || alias === undefined ? "" : String(alias).trim();
 
+    const hadAlias = this.map.has(id);
+    const previousAlias = hadAlias ? this.map.get(id) : null;
+    const hadButton = this.buttonMap.has(id);
+    const previousButtonLabel = hadButton ? this.buttonMap.get(id) : null;
+
+    let changed = false;
+
     if (trimmed) {
-      this.map.set(id, trimmed);
-      if (this.buttonMap.has(id)) {
+      if (!hadAlias || previousAlias !== trimmed) {
+        this.map.set(id, trimmed);
+        changed = true;
+      }
+
+      if (hadButton && previousButtonLabel !== trimmed) {
         this.buttonMap.set(id, trimmed);
+        changed = true;
       }
     } else {
-      this.map.delete(id);
-      this.buttonMap.delete(id);
+      if (hadAlias) {
+        this.map.delete(id);
+        changed = true;
+      }
+
+      if (hadButton) {
+        this.buttonMap.delete(id);
+        changed = true;
+      }
     }
 
-    this.persist();
+    if (changed) {
+      this.persist();
+    }
   }
 
   persist() {
@@ -195,22 +217,7 @@ export class QueryCoordinator {
   }
 
   getChainDisplayLabel(chainId) {
-    if (!chainId && chainId !== 0) {
-      return "";
-    }
-
-    const key = String(chainId);
-    if (typeof this.chainMetadata.getChainDisplayLabel === "function") {
-      const label = this.chainMetadata.getChainDisplayLabel(key);
-      return label || key;
-    }
-
-    if (typeof this.chainMetadata.getChainInfo === "function") {
-      const chainInfo = this.chainMetadata.getChainInfo(key);
-      return chainInfo ? `${chainInfo.primary} (${key})` : key;
-    }
-
-    return key;
+    return resolveChainDisplayLabel(this.chainMetadata, chainId);
   }
 
   formatOAppIdCell(oappId) {
@@ -1904,22 +1911,7 @@ export class ResultsView {
   }
 
   getChainDisplayLabel(chainId) {
-    if (!chainId && chainId !== 0) {
-      return "";
-    }
-
-    const key = String(chainId);
-    if (typeof this.chainMetadata.getChainDisplayLabel === "function") {
-      const label = this.chainMetadata.getChainDisplayLabel(key);
-      return label || key;
-    }
-
-    if (typeof this.chainMetadata.getChainInfo === "function") {
-      const chainInfo = this.chainMetadata.getChainInfo(key);
-      return chainInfo ? `${chainInfo.primary} (${key})` : key;
-    }
-
-    return key;
+    return resolveChainDisplayLabel(this.chainMetadata, chainId);
   }
 
   renderError(meta) {
