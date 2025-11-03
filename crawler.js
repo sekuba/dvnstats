@@ -31,21 +31,6 @@ export class SecurityGraphCrawler {
     const visited = new Set();
     const pending = new Set([seedOAppId]);
     const queue = [{ oappId: seedOAppId, depth: 0 }];
-    const dvnNameCache = new Map();
-
-    const resolveDvnNamesCached = (addresses, localEidValue) => {
-      const list = Array.isArray(addresses) ? addresses.filter(Boolean) : [];
-      if (!list.length) return [];
-      const key = `${localEidValue ?? ""}|${list.join(",").toLowerCase()}`;
-      if (dvnNameCache.has(key)) {
-        return dvnNameCache.get(key);
-      }
-      const context =
-        localEidValue !== undefined && localEidValue !== null ? { localEid: localEidValue } : {};
-      const names = this.chainMetadata.resolveDvnNames(list, context);
-      dvnNameCache.set(key, names);
-      return names;
-    };
 
     const normalizeKey = (value) => {
       if (value === undefined || value === null) return null;
@@ -179,8 +164,14 @@ export class SecurityGraphCrawler {
             ? cfg.effectiveOptionalDVNs
             : [];
 
-          const requiredDVNLabels = resolveDvnNamesCached(requiredDVNs, cfgLocalEid);
-          const optionalDVNLabels = resolveDvnNamesCached(optionalDVNs, cfgLocalEid);
+          const requiredDVNLabels = this.chainMetadata.resolveDvnNames(
+            requiredDVNs,
+            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {}
+          );
+          const optionalDVNLabels = this.chainMetadata.resolveDvnNames(
+            optionalDVNs,
+            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {}
+          );
 
           const peerDetails = this.derivePeer(cfg);
           const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;

@@ -163,7 +163,6 @@ export class QueryCoordinator {
     this.lastVariables = null;
     this.registry = null;
     this.chainLabelCache = new Map();
-    this.dvnLabelCache = new Map();
   }
 
   getChainDisplayLabel(chainId) {
@@ -209,28 +208,23 @@ export class QueryCoordinator {
       return [];
     }
 
-    const candidateLocal =
-      localEidOverride !== undefined && localEidOverride !== null
-        ? localEidOverride
-        : (meta?.localEid ?? meta?.eid ?? null);
     const normalizedAddresses = addresses.filter(Boolean);
     if (!normalizedAddresses.length) {
       return [];
     }
 
+    const candidateLocal =
+      localEidOverride !== undefined && localEidOverride !== null
+        ? localEidOverride
+        : (meta?.localEid ?? meta?.eid ?? null);
+
     const localKey =
       candidateLocal !== undefined && candidateLocal !== null && candidateLocal !== ""
         ? String(candidateLocal)
         : "";
-    const cacheKey = `${localKey}|${normalizedAddresses.join(",").toLowerCase()}`;
-    if (this.dvnLabelCache.has(cacheKey)) {
-      return this.dvnLabelCache.get(cacheKey);
-    }
 
     const context = localKey ? { localEid: localKey } : {};
-    const labels = this.chainMetadata.resolveDvnNames(normalizedAddresses, context);
-    this.dvnLabelCache.set(cacheKey, labels);
-    return labels;
+    return this.chainMetadata.resolveDvnNames(normalizedAddresses, context);
   }
 
   buildQueryRegistry() {
@@ -1548,7 +1542,6 @@ export class QueryCoordinator {
       throw new Error(`Unknown query: ${key}`);
     }
 
-    this.dvnLabelCache.clear();
     this.chainLabelCache.clear();
 
     const buildResult = config.buildVariables?.(card) ?? {};
