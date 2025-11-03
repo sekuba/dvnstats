@@ -14,7 +14,7 @@ const FALLBACK_FIELD_ORDER = [
   "optionalDVNThreshold",
 ];
 
-const REQUIRED_DVN_SENTINEL = 255;
+const REQUIRED_DVN_SENTINEL = APP_CONFIG.SENTINEL_VALUES.REQUIRED_DVN_SENTINEL;
 
 export function resolveOAppSecurityConfigs({
   oappId,
