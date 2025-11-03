@@ -1,7 +1,6 @@
 import { isZeroAddress } from "./core.js";
 import { getTrackedReceiveLibrary } from "./trackedLibraries.js";
-
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+import { APP_CONFIG } from "./config.js";
 
 const SYNTHETIC_ID_PREFIX = "synthetic:";
 
@@ -189,7 +188,7 @@ function buildSyntheticRow({
   let peerStateHint;
 
   if (!peerRecord) {
-    peer = ZERO_ADDRESS;
+    peer = APP_CONFIG.ADDRESSES.ZERO;
     peerStateHint = "implicit-blocked";
   } else if (isZeroAddress(peer)) {
     peerStateHint = "explicit-blocked";
