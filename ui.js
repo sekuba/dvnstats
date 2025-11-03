@@ -162,7 +162,6 @@ export class QueryCoordinator {
     this.lastMetaBase = null;
     this.lastVariables = null;
     this.registry = null;
-    this.chainLabelCache = new Map();
   }
 
   getChainDisplayLabel(chainId) {
@@ -171,14 +170,17 @@ export class QueryCoordinator {
     }
 
     const key = String(chainId);
-    if (this.chainLabelCache.has(key)) {
-      return this.chainLabelCache.get(key);
+    if (typeof this.chainMetadata.getChainDisplayLabel === "function") {
+      const label = this.chainMetadata.getChainDisplayLabel(key);
+      return label || key;
     }
 
-    const chainInfo = this.chainMetadata.getChainInfo(key);
-    const display = chainInfo ? `${chainInfo.primary} (${key})` : key;
-    this.chainLabelCache.set(key, display);
-    return display;
+    if (typeof this.chainMetadata.getChainInfo === "function") {
+      const chainInfo = this.chainMetadata.getChainInfo(key);
+      return chainInfo ? `${chainInfo.primary} (${key})` : key;
+    }
+
+    return key;
   }
 
   formatOAppIdCell(oappId) {
@@ -232,6 +234,7 @@ export class QueryCoordinator {
       return this.registry;
     }
 
+    // Each buildVariables implementation must return { variables, meta? } to keep runQuery simple.
     this.registry = {
       "top-oapps": {
         label: "Top OApps",
@@ -1542,19 +1545,12 @@ export class QueryCoordinator {
       throw new Error(`Unknown query: ${key}`);
     }
 
-    this.chainLabelCache.clear();
-
-    const buildResult = config.buildVariables?.(card) ?? {};
-    const variables =
-      Object.prototype.hasOwnProperty.call(buildResult, "variables") && buildResult.variables
-        ? buildResult.variables
-        : buildResult.variables === null
-          ? {}
-          : buildResult;
-    const extraMeta =
-      Object.prototype.hasOwnProperty.call(buildResult, "meta") && buildResult.meta
-        ? buildResult.meta
-        : {};
+    const buildResult =
+      typeof config.buildVariables === "function" ? config.buildVariables(card) : {};
+    if (!buildResult || typeof buildResult !== "object") {
+      throw new Error("Query builder must return an object with `variables` and optional `meta`.");
+    }
+    const { variables, meta: extraMeta = {} } = buildResult;
 
     if (!variables || Object.keys(variables).length === 0) {
       throw new Error("Missing query input.");
@@ -1764,11 +1760,9 @@ export class ResultsView {
     this.toastQueue = toastQueue;
     this.lastRender = null;
     this.copyFeedbackTimers = new WeakMap();
-    this.chainLabelCache = new Map();
   }
 
   render(rows, payload, meta) {
-    this.chainLabelCache.clear();
     const metaSnapshot = { ...meta };
     this.lastRender = { rows, payload, meta: metaSnapshot };
 
@@ -1885,14 +1879,17 @@ export class ResultsView {
     }
 
     const key = String(chainId);
-    if (this.chainLabelCache.has(key)) {
-      return this.chainLabelCache.get(key);
+    if (typeof this.chainMetadata.getChainDisplayLabel === "function") {
+      const label = this.chainMetadata.getChainDisplayLabel(key);
+      return label || key;
     }
 
-    const chainInfo = this.chainMetadata.getChainInfo(key);
-    const display = chainInfo ? `${chainInfo.primary} (${key})` : key;
-    this.chainLabelCache.set(key, display);
-    return display;
+    if (typeof this.chainMetadata.getChainInfo === "function") {
+      const chainInfo = this.chainMetadata.getChainInfo(key);
+      return chainInfo ? `${chainInfo.primary} (${key})` : key;
+    }
+
+    return key;
   }
 
   renderError(meta) {

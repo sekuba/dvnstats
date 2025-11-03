@@ -139,6 +139,19 @@ export class ChainDirectory {
     return result;
   }
 
+  getChainDisplayLabel(localEid) {
+    if (localEid === undefined || localEid === null || localEid === "") {
+      return "";
+    }
+
+    const key = String(localEid);
+    const info = this.getChainInfo(key);
+    if (!info) {
+      return key;
+    }
+    return `${info.primary} (${key})`;
+  }
+
   listLocalEndpoints() {
     return Array.from(this.localEidLabels.entries())
       .map(([id, label]) => ({ id, label }))
