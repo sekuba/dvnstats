@@ -307,24 +307,31 @@ class DashboardApp {
     const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
 
     if (targets.length) {
-      targets.forEach((id) => this.aliasStore.set(id, alias));
-      this.setupQuickCrawlButtons();
-      await this.queryCoordinator.reprocessLastResults();
+      const entries = targets.map((id) => ({ oappId: id, alias }));
+      const changed = this.aliasStore.setMany(entries);
+
+      if (changed) {
+        this.setupQuickCrawlButtons();
+        await this.queryCoordinator.reprocessLastResults();
+      }
+
       this.closeAliasModal();
 
       const hasAlias = alias?.trim().length > 0;
       const message = hasAlias
         ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}`
         : `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`;
-      this.toastQueue.show(message, hasAlias ? "success" : "info");
+      this.toastQueue.show(changed ? message : "No alias updates", changed ? (hasAlias ? "success" : "info") : "info");
       return;
     }
 
     const id = this.aliasFields.id.value;
     if (id) {
-      this.aliasStore.set(id, alias);
-      this.setupQuickCrawlButtons();
-      await this.queryCoordinator.reprocessLastResults();
+      const changed = this.aliasStore.set(id, alias);
+      if (changed) {
+        this.setupQuickCrawlButtons();
+        await this.queryCoordinator.reprocessLastResults();
+      }
     }
     this.closeAliasModal();
   }
@@ -345,20 +352,27 @@ class DashboardApp {
     } else if (action === "clear") {
       const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
       if (targets.length) {
-        targets.forEach((id) => this.aliasStore.set(id, ""));
-        this.setupQuickCrawlButtons();
-        await this.queryCoordinator.reprocessLastResults();
+        const entries = targets.map((id) => ({ oappId: id, alias: "" }));
+        const changed = this.aliasStore.setMany(entries);
+        if (changed) {
+          this.setupQuickCrawlButtons();
+          await this.queryCoordinator.reprocessLastResults();
+        }
         this.closeAliasModal();
         this.toastQueue.show(
-          `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`,
+          changed
+            ? `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`
+            : "No alias updates",
           "info",
         );
       } else {
         const id = this.aliasFields.id?.value;
         if (id) {
-          this.aliasStore.set(id, "");
-          this.setupQuickCrawlButtons();
-          await this.queryCoordinator.reprocessLastResults();
+          const changed = this.aliasStore.set(id, "");
+          if (changed) {
+            this.setupQuickCrawlButtons();
+            await this.queryCoordinator.reprocessLastResults();
+          }
         }
         this.closeAliasModal();
       }

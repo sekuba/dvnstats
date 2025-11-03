@@ -280,6 +280,13 @@ export function splitOAppId(oappId) {
   return { localEid, address };
 }
 
+export function normalizeKey(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return String(value);
+}
+
 export function clampInteger(rawValue, min, max, fallback) {
   const parsed = Number.parseInt(rawValue, 10);
   if (Number.isFinite(parsed)) {
