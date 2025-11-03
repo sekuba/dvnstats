@@ -189,6 +189,30 @@ export class ChainDirectory {
   }
 }
 
+export function resolveChainDisplayLabel(chainMetadata, chainId) {
+  if (chainId === undefined || chainId === null || chainId === "") {
+    return "";
+  }
+
+  const key = String(chainId);
+
+  if (chainMetadata && typeof chainMetadata.getChainDisplayLabel === "function") {
+    const label = chainMetadata.getChainDisplayLabel(key);
+    if (label) {
+      return label;
+    }
+  }
+
+  if (chainMetadata && typeof chainMetadata.getChainInfo === "function") {
+    const info = chainMetadata.getChainInfo(key);
+    if (info) {
+      return `${info.primary} (${key})`;
+    }
+  }
+
+  return key;
+}
+
 export function normalizeAddress(address) {
   if (address === undefined || address === null) {
     throw new Error("Address required");
