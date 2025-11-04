@@ -1,8 +1,3 @@
-/**
- * Mapping of local Endpoint IDs to the tracked ReceiveUln302 library address.
- * Mirrors the backend registry in src/localChainRegistry.ts.
- */
-
 const entries = [
   ["30101", "0xc02ab410f0734efa3f14628780e6e695156024c2"],
   ["30111", "0x3c4962ff6258dcfcafd23a814237b7d6eb712063"],

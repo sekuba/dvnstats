@@ -1,12 +1,6 @@
 import { APP_CONFIG } from "./config.js";
-
-const HEX_PREFIX = "0x";
-const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000";
-const BYTES32_HEX_LENGTH = 64;
-const EVM_ADDRESS_HEX_LENGTH = 40;
-const HEX_BODY_REGEX = /^[0-9a-f]+$/i;
-const HASH_PATTERN = /^0x[a-f0-9]{16,}$/i;
+import { AddressUtils } from "./utils/AddressUtils.js";
+import { resolveChainDisplayLabel as _resolveChainDisplayLabel } from "./utils/ChainUtils.js";
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -141,6 +135,19 @@ export class ChainDirectory {
     return result;
   }
 
+  getChainDisplayLabel(localEid) {
+    if (localEid === undefined || localEid === null || localEid === "") {
+      return "";
+    }
+
+    const key = String(localEid);
+    const info = this.getChainInfo(key);
+    if (!info) {
+      return key;
+    }
+    return `${info.primary} (${key})`;
+  }
+
   listLocalEndpoints() {
     return Array.from(this.localEidLabels.entries())
       .map(([id, label]) => ({ id, label }))
@@ -178,43 +185,13 @@ export class ChainDirectory {
   }
 }
 
+export function resolveChainDisplayLabel(chainMetadata, chainId) {
+  return _resolveChainDisplayLabel(chainMetadata, chainId);
+}
+
+// Re-exported from AddressUtils for backward compatibility
 export function normalizeAddress(address) {
-  if (address === undefined || address === null) {
-    throw new Error("Address required");
-  }
-
-  const raw = String(address).trim();
-  if (!raw) {
-    throw new Error("Address cannot be empty");
-  }
-
-  const hasHexPrefix = raw.slice(0, HEX_PREFIX.length).toLowerCase() === HEX_PREFIX;
-  if (!hasHexPrefix) {
-    return raw;
-  }
-
-  const lower = `${HEX_PREFIX}${raw.slice(HEX_PREFIX.length).toLowerCase()}`;
-  const hexBody = lower.slice(HEX_PREFIX.length);
-  if (!HEX_BODY_REGEX.test(hexBody)) {
-    throw new Error(`Invalid hex address: ${address}`);
-  }
-
-  if (hexBody.length === BYTES32_HEX_LENGTH) {
-    const trimmedHex = hexBody.replace(/^0+/, "");
-    if (trimmedHex.length === 0) {
-      return ZERO_ADDRESS;
-    }
-    if (trimmedHex.length <= EVM_ADDRESS_HEX_LENGTH) {
-      return `${HEX_PREFIX}${trimmedHex.padStart(EVM_ADDRESS_HEX_LENGTH, "0")}`;
-    }
-    return lower;
-  }
-
-  if (hexBody.length <= EVM_ADDRESS_HEX_LENGTH) {
-    return `${HEX_PREFIX}${hexBody.padStart(EVM_ADDRESS_HEX_LENGTH, "0")}`;
-  }
-
-  return lower;
+  return AddressUtils.normalize(address);
 }
 
 export function normalizeOAppId(value) {
@@ -245,6 +222,13 @@ export function splitOAppId(oappId) {
   return { localEid, address };
 }
 
+export function normalizeKey(value) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return String(value);
+}
+
 export function clampInteger(rawValue, min, max, fallback) {
   const parsed = Number.parseInt(rawValue, 10);
   if (Number.isFinite(parsed)) {
@@ -265,56 +249,16 @@ export function parseOptionalPositiveInt(rawValue) {
   return Number.NaN;
 }
 
-export function stringifyScalar(value) {
-  if (typeof value === "bigint") {
-    return value.toString();
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return value ?? "";
-}
-
-export function formatTimestampValue(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return null;
-
-  const millis = numeric < 1e12 ? numeric * 1000 : numeric;
-  const date = new Date(millis);
-  if (Number.isNaN(date.getTime())) return null;
-
-  return {
-    primary: date.toISOString().replace("T", " ").replace("Z", " UTC"),
-    secondary: `unix ${value}`,
-    copyValue: String(value),
-  };
-}
-
-export function looksLikeHash(column, value) {
-  const lower = column.toLowerCase();
-  return (
-    lower.includes("hash") ||
-    lower.includes("tx") ||
-    (typeof value === "string" && HASH_PATTERN.test(value))
-  );
-}
-
-export function looksLikeTimestampColumn(column) {
-  const lower = column.toLowerCase();
-  return lower.includes("timestamp") || lower.endsWith("time");
-}
-
-export function looksLikeEidColumn(column) {
-  const lower = column.toLowerCase();
-  if (lower === "eid") {
-    return true;
-  }
-  return lower.endsWith("_eid") || lower.includes("eid_");
-}
+export {
+  formatInteger,
+  formatPercent,
+  formatTimestampValue,
+  looksLikeEidColumn,
+  looksLikeHash,
+  looksLikeTimestampColumn,
+  stringifyScalar,
+} from "./formatters/valueFormatters.js";
 
 export function isZeroAddress(address) {
-  if (!address) return false;
-  const normalized = String(address).toLowerCase();
-  // Check both EVM address (40 chars) and bytes32 (64 chars) formats
-  return normalized === ZERO_ADDRESS.toLowerCase() || normalized === ZERO_BYTES32.toLowerCase();
+  return AddressUtils.isZero(address);
 }

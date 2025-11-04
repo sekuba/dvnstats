@@ -53,4 +53,38 @@ export const APP_CONFIG = Object.freeze({
   STORAGE_KEYS: Object.freeze({
     OAPP_ALIASES: "dashboard:oappAliases",
   }),
+
+  SENTINEL_VALUES: Object.freeze({
+    REQUIRED_DVN_SENTINEL: 255,
+    CONFIRMATIONS_SENTINEL: "18446744073709551615",
+  }),
+
+  SVG: Object.freeze({
+    NAMESPACE: "http://www.w3.org/2000/svg",
+  }),
+
+  GRAPH_COLORS: Object.freeze({
+    EDGE_BLOCKED: "#999999",
+    EDGE_UNKNOWN: "#ff6666",
+    EDGE_ANOMALY: "#ff1df5",
+    EDGE_WEAK: "#ff0000",
+    EDGE_NORMAL: "#000000ff",
+    NODE_BLOCKED: "#999999",
+    NODE_SECURE: "#ffff99",
+    NODE_WEAK: "#ff9999",
+  }),
+
+  GRAPH_STYLES: Object.freeze({
+    EDGE_BLOCKED_WIDTH: "1.4",
+    EDGE_BLOCKED_OPACITY: "0.65",
+    EDGE_BLOCKED_DASH: "8,4",
+    EDGE_UNKNOWN_WIDTH: "1.2",
+    EDGE_UNKNOWN_OPACITY: "0.45",
+    EDGE_UNKNOWN_DASH: "6,4",
+    EDGE_WIDTH_BASE: 1.8,
+    EDGE_WIDTH_ANOMALY: 2.4,
+    EDGE_WIDTH_TRAFFIC: 2.6,
+    EDGE_OPACITY_BASE: 0.45,
+    EDGE_OPACITY_TRAFFIC: 0.35,
+  }),
 });

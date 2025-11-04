@@ -1,6 +1,7 @@
 import { APP_CONFIG } from "./config.js";
 import { ChainDirectory, HasuraClient } from "./core.js";
 import { AliasStore, QueryCoordinator, ResultsView, ToastQueue } from "./ui.js";
+import { AddressUtils } from "./utils/AddressUtils.js";
 
 class DashboardApp {
   constructor() {
@@ -307,22 +308,34 @@ class DashboardApp {
     const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
 
     if (targets.length) {
-      targets.forEach((id) => this.aliasStore.set(id, alias));
-      await this.queryCoordinator.reprocessLastResults();
+      const entries = targets.map((id) => ({ oappId: id, alias }));
+      const changed = this.aliasStore.setMany(entries);
+
+      if (changed) {
+        this.setupQuickCrawlButtons();
+        await this.queryCoordinator.reprocessLastResults();
+      }
+
       this.closeAliasModal();
 
       const hasAlias = alias?.trim().length > 0;
       const message = hasAlias
         ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}`
         : `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`;
-      this.toastQueue.show(message, hasAlias ? "success" : "info");
+      this.toastQueue.show(
+        changed ? message : "No alias updates",
+        changed ? (hasAlias ? "success" : "info") : "info",
+      );
       return;
     }
 
     const id = this.aliasFields.id.value;
     if (id) {
-      this.aliasStore.set(id, alias);
-      await this.queryCoordinator.reprocessLastResults();
+      const changed = this.aliasStore.set(id, alias);
+      if (changed) {
+        this.setupQuickCrawlButtons();
+        await this.queryCoordinator.reprocessLastResults();
+      }
     }
     this.closeAliasModal();
   }
@@ -332,7 +345,6 @@ class DashboardApp {
 
     const action = event.target.dataset.action;
     if (!action) {
-      // Allow submit buttons without data-action (e.g., Save) to trigger form submission
       return;
     }
 
@@ -343,18 +355,27 @@ class DashboardApp {
     } else if (action === "clear") {
       const targets = this.sanitizeAliasTargets(this.bulkAliasTargets);
       if (targets.length) {
-        targets.forEach((id) => this.aliasStore.set(id, ""));
-        await this.queryCoordinator.reprocessLastResults();
+        const entries = targets.map((id) => ({ oappId: id, alias: "" }));
+        const changed = this.aliasStore.setMany(entries);
+        if (changed) {
+          this.setupQuickCrawlButtons();
+          await this.queryCoordinator.reprocessLastResults();
+        }
         this.closeAliasModal();
         this.toastQueue.show(
-          `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`,
+          changed
+            ? `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`
+            : "No alias updates",
           "info",
         );
       } else {
         const id = this.aliasFields.id?.value;
         if (id) {
-          this.aliasStore.set(id, "");
-          await this.queryCoordinator.reprocessLastResults();
+          const changed = this.aliasStore.set(id, "");
+          if (changed) {
+            this.setupQuickCrawlButtons();
+            await this.queryCoordinator.reprocessLastResults();
+          }
         }
         this.closeAliasModal();
       }
@@ -364,11 +385,7 @@ class DashboardApp {
   }
 
   sanitizeAliasTargets(input) {
-    const zeroAddrs = new Set(
-      [APP_CONFIG.ADDRESSES.ZERO, APP_CONFIG.ADDRESSES.ZERO_PEER]
-        .filter(Boolean)
-        .map((v) => String(v).toLowerCase()),
-    );
+    const zeroAddrs = new Set([AddressUtils.constants.ZERO, AddressUtils.constants.ZERO_PEER]);
     const seen = new Set();
     const result = [];
 
