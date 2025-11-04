@@ -1,4 +1,3 @@
-
 import { clampInteger, parseOptionalPositiveInt } from "../../../core.js";
 import { POPULAR_OAPPS_WINDOW_QUERY } from "../../../queries/popularOAppsWindow.js";
 

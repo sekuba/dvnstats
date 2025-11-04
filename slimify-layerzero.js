@@ -1,9 +1,7 @@
 #!/usr/bin/env node
 
-
 const fs = require("fs");
 const path = require("path");
-
 
 const args = process.argv.slice(2);
 const inputPath = args[0] || path.join(__dirname, "layerzero.json");
@@ -16,7 +14,6 @@ function slimifyDeployment(deployment) {
 
   const slim = {};
 
-  
   if (deployment.eid !== undefined) slim.eid = deployment.eid;
   if (deployment.stage !== undefined) slim.stage = deployment.stage;
 
@@ -30,7 +27,6 @@ function slimifyDvn(dvn) {
 
   const slim = {};
 
-  
   if (dvn.canonicalName !== undefined) slim.canonicalName = dvn.canonicalName;
   if (dvn.name !== undefined) slim.name = dvn.name;
   if (dvn.id !== undefined) slim.id = dvn.id;
@@ -63,12 +59,10 @@ function slimifyChain(chain) {
     }
   }
 
-  
   if (Array.isArray(chain.deployments)) {
     slim.deployments = chain.deployments.map(slimifyDeployment);
   }
 
-  
   if (chain.dvns && typeof chain.dvns === "object") {
     slim.dvns = {};
     for (const [address, dvn] of Object.entries(chain.dvns)) {

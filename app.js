@@ -345,7 +345,6 @@ class DashboardApp {
 
     const action = event.target.dataset.action;
     if (!action) {
-      
       return;
     }
 

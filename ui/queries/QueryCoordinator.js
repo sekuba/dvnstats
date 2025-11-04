@@ -1,4 +1,3 @@
-
 import { resolveChainDisplayLabel } from "../../core.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
 import { OAppFormatter } from "./formatters/OAppFormatter.js";
@@ -19,7 +18,6 @@ export class QueryCoordinator {
     this.lastVariables = null;
     this.registry = null;
 
-    
     this.securityConfigFormatter = new SecurityConfigFormatter(
       this.chainMetadata,
       this.aliasStore,

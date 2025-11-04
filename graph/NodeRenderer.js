@@ -1,4 +1,3 @@
-
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 
@@ -12,7 +11,7 @@ export class NodeRenderer {
     this.onRecenter = onRecenter;
   }
 
-    renderNodes(
+  renderNodes(
     svgNS,
     nodes,
     nodePositions,
@@ -50,7 +49,6 @@ export class NodeRenderer {
 
       let fillColor;
       if (isBlocked) {
-        
         fillColor = APP_CONFIG.GRAPH_COLORS.NODE_BLOCKED;
       } else if (node.isDangling) {
         fillColor = "none";
@@ -120,7 +118,6 @@ export class NodeRenderer {
         }
       });
 
-      
       circle.addEventListener("dblclick", (e) => {
         e.stopPropagation();
         if (this.onRecenter) {

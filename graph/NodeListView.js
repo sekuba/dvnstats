@@ -1,4 +1,3 @@
-
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { coerceToNumber } from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
@@ -15,7 +14,7 @@ export class NodeListView {
     this.requestUniformAlias = requestUniformAlias;
   }
 
-    renderNodeList(webData, analysis = {}) {
+  renderNodeList(webData, analysis = {}) {
     const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
     const container = document.createElement("section");
     container.className = "node-detail-board";
@@ -480,7 +479,6 @@ export class NodeListView {
       variation: hasPacketVariation,
     } = collectExtremes(packetExtremes, (metric) => metric?.totalPackets);
 
-    
     this.renderInsightsGrid(
       container,
       dominantCombination,
@@ -536,7 +534,6 @@ export class NodeListView {
     insightGrid.className = "node-insight-grid";
     container.appendChild(insightGrid);
 
-    
     const dominantCard = document.createElement("div");
     dominantCard.className = "insight-card";
     const domTitle = document.createElement("h4");
@@ -597,10 +594,8 @@ export class NodeListView {
 
     insightGrid.appendChild(dominantCard);
 
-    
     this.renderAnomaliesCard(insightGrid, nodeMetrics, formatNodeDescriptor);
 
-    
     this.renderStatsCard(
       insightGrid,
       eligibleNodes,
@@ -1139,7 +1134,6 @@ export class NodeListView {
     edgeCount.textContent = edgeParts.join(" / ");
     edgesCell.appendChild(edgeCount);
 
-    
     if (metric.activeIncoming && metric.activeIncoming.length > 0) {
       const activeList = document.createElement("div");
       activeList.className = "active-edges-list";
@@ -1159,7 +1153,6 @@ export class NodeListView {
       }
     }
 
-    
     if (metric.blockedIncoming && metric.blockedIncoming.length > 0) {
       const blockedList = document.createElement("div");
       blockedList.className = "blocked-edges-list";
@@ -1179,7 +1172,6 @@ export class NodeListView {
       }
     }
 
-    
     if (hasEdgeVariation && metric.isTracked && !metric.isBlocked) {
       if (edgeLows.includes(metric.id)) {
         edgesCell.classList.add("cell-extreme-low");

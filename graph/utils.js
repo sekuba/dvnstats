@@ -1,4 +1,3 @@
-
 export function shortenAddress(value) {
   if (!value) {
     return "";
@@ -80,13 +79,11 @@ export function describeCombination(combination) {
 export function findMostConnectedNode(nodes, edges) {
   const edgeCounts = new Map();
 
-  
   for (const edge of edges) {
     edgeCounts.set(edge.from, (edgeCounts.get(edge.from) || 0) + 1);
     edgeCounts.set(edge.to, (edgeCounts.get(edge.to) || 0) + 1);
   }
 
-  
   let maxCount = 0;
   let mostConnected = nodes[0]?.id || null;
 

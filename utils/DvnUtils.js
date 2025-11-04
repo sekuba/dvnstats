@@ -1,4 +1,3 @@
-
 export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
   if (!Array.isArray(addresses) || !addresses.length) {
     return [];
@@ -8,13 +7,11 @@ export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
     return addresses.filter(Boolean);
   }
 
-  
   const normalizedAddresses = addresses.filter(Boolean);
   if (!normalizedAddresses.length) {
     return [];
   }
 
-  
   const { localEid: localEidOverride, meta } = options;
 
   const candidateLocal =
@@ -55,8 +52,8 @@ export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
  *   config,
  *   chainMetadata
  * );
- * 
- * 
+ *
+ *
  */
 export function resolveConfigDvns(config, chainMetadata) {
   if (!config) {

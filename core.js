@@ -249,7 +249,6 @@ export function parseOptionalPositiveInt(rawValue) {
   return Number.NaN;
 }
 
-
 export {
   formatInteger,
   formatPercent,
@@ -259,7 +258,6 @@ export {
   looksLikeTimestampColumn,
   stringifyScalar,
 } from "./formatters/valueFormatters.js";
-
 
 export function isZeroAddress(address) {
   return AddressUtils.isZero(address);

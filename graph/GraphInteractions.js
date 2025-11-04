@@ -1,10 +1,9 @@
-
 export class GraphInteractions {
   constructor() {
     this.cleanupTooltipHandlers = null;
   }
 
-    setupZoomAndPan(svg, contentGroup) {
+  setupZoomAndPan(svg, contentGroup) {
     let scale = 1;
     let translateX = 0;
     let translateY = 0;
@@ -62,8 +61,7 @@ export class GraphInteractions {
     });
   }
 
-    setupPersistentTooltips(svg) {
-    
+  setupPersistentTooltips(svg) {
     this.clearAllTooltips();
 
     let persistentTooltip = null;
@@ -119,7 +117,6 @@ export class GraphInteractions {
     document.addEventListener("keydown", keyHandler);
     svg.addEventListener("click", clickHandler);
 
-    
     this.cleanupTooltipHandlers = () => {
       hide();
       document.removeEventListener("keydown", keyHandler);
@@ -129,7 +126,7 @@ export class GraphInteractions {
     return show;
   }
 
-    clearAllTooltips() {
+  clearAllTooltips() {
     document.querySelectorAll(".persistent-tooltip").forEach((el) => el.remove());
 
     if (this.cleanupTooltipHandlers) {
