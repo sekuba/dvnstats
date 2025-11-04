@@ -952,16 +952,11 @@ export class NodeListView {
         const effectiveLibrary = detail.effectiveReceiveLibrary || null;
         const hasEffectiveLibrary =
           Boolean(effectiveLibrary) && !AddressUtils.isZero(effectiveLibrary);
-        const hasDefaultLibraryRecord =
-          detail.defaultLibraryVersionId !== null &&
-          detail.defaultLibraryVersionId !== undefined;
-
         return (
           usesDefaultLibrary &&
           !hasLibraryOverride &&
           detail.libraryStatus === "none" &&
-          !hasEffectiveLibrary &&
-          !hasDefaultLibraryRecord
+          !hasEffectiveLibrary
         );
       };
 

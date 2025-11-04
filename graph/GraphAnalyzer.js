@@ -79,12 +79,8 @@ export class GraphAnalyzer {
           const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
           const hasEffectiveLibrary =
             Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
-          const defaultLibraryVersionId =
-            config.defaultLibraryVersionId !== undefined ? config.defaultLibraryVersionId : null;
           const libraryOverrideVersionId =
             config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
-          const hasDefaultLibraryRecord =
-            defaultLibraryVersionId !== null && defaultLibraryVersionId !== undefined;
           const hasLibraryOverride =
             libraryOverrideVersionId !== null && libraryOverrideVersionId !== undefined;
           const defaultLibraryFallback = usesDefaultLibrary && !hasLibraryOverride;
@@ -95,8 +91,7 @@ export class GraphAnalyzer {
             !isBlocked &&
             defaultLibraryFallback &&
             libraryStatusValue === "none" &&
-            !hasEffectiveLibrary &&
-            !hasDefaultLibraryRecord
+            !hasEffectiveLibrary
           ) {
             isBlocked = true;
             blockReason = "missing-library";
