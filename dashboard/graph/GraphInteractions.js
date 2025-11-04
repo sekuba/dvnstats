@@ -66,7 +66,7 @@ export class GraphInteractions {
 
     let persistentTooltip = null;
 
-    const show = (text, x, y) => {
+    const show = (content, x, y) => {
       hide();
 
       persistentTooltip = document.createElement("div");
@@ -87,7 +87,33 @@ export class GraphInteractions {
         box-shadow: 4px 4px 0 rgba(0,0,0,0.1);
         user-select: text;
       `;
-      persistentTooltip.textContent = text;
+
+      const appendContent = (value) => {
+        if (typeof value === "string") {
+          const pre = document.createElement("pre");
+          pre.style.margin = "0";
+          pre.style.whiteSpace = "pre-wrap";
+          pre.textContent = value;
+          persistentTooltip.appendChild(pre);
+        } else if (value && typeof value === "object") {
+          if (value.title) {
+            const pre = document.createElement("pre");
+            pre.style.margin = "0 0 8px 0";
+            pre.style.whiteSpace = "pre-wrap";
+            pre.textContent = value.title;
+            persistentTooltip.appendChild(pre);
+          }
+          if (typeof value.render === "function") {
+            const extra = document.createElement("div");
+            extra.className = "persistent-tooltip-extra";
+            value.render(extra);
+            persistentTooltip.appendChild(extra);
+          }
+        }
+      };
+
+      appendContent(content);
+
       document.body.appendChild(persistentTooltip);
 
       const rect = persistentTooltip.getBoundingClientRect();
@@ -97,6 +123,12 @@ export class GraphInteractions {
       if (rect.bottom > window.innerHeight - 10) {
         persistentTooltip.style.top = `${y - rect.height - 20}px`;
       }
+
+      if (content && typeof content === "object" && typeof content.onMount === "function") {
+        content.onMount(persistentTooltip);
+      }
+
+      return persistentTooltip;
     };
 
     const hide = () => {

@@ -1,4 +1,5 @@
 import { splitOAppId } from "../../core.js";
+import { AddressUtils } from "../../utils/AddressUtils.js";
 
 const SECURITY_BATCH_QUERY = `
   query GetSecurityConfigBatch($oappIds: [String!]!, $localEids: [numeric!]) {
@@ -148,6 +149,19 @@ export class CrawlerDataLoader {
     this.client = client;
   }
 
+  sanitizePeerOAppId(value) {
+    if (!value) {
+      return null;
+    }
+    const str = String(value);
+    const underscoreIndex = str.indexOf("_");
+    if (underscoreIndex === -1) {
+      return AddressUtils.isZero(str) ? null : str;
+    }
+    const addressPart = str.slice(underscoreIndex + 1);
+    return AddressUtils.isZero(addressPart) ? null : str;
+  }
+
   async fetchBatch(oappIds) {
     if (!Array.isArray(oappIds) || oappIds.length === 0) {
       return this.emptyBatch();
@@ -193,17 +207,35 @@ export class CrawlerDataLoader {
 
     const originMap = new Map();
     (data.origin || []).forEach((cfg) => {
+      const sanitizedPeerOappId = this.sanitizePeerOAppId(cfg.peerOappId);
+      const normalizedCfg =
+        sanitizedPeerOappId === cfg.peerOappId
+          ? cfg
+          : {
+              ...cfg,
+              peerOappId: sanitizedPeerOappId,
+              peerOAppId: sanitizedPeerOappId,
+            };
       const key = String(cfg.oappId);
       if (!originMap.has(key)) originMap.set(key, []);
-      originMap.get(key).push(cfg);
+      originMap.get(key).push(normalizedCfg);
     });
 
     const referencingMap = new Map();
     (data.referencing || []).forEach((cfg) => {
-      const key = cfg.peerOappId ? String(cfg.peerOappId) : null;
+      const sanitizedPeerOappId = this.sanitizePeerOAppId(cfg.peerOappId);
+      const normalizedCfg =
+        sanitizedPeerOappId === cfg.peerOappId
+          ? cfg
+          : {
+              ...cfg,
+              peerOappId: sanitizedPeerOappId,
+              peerOAppId: sanitizedPeerOappId,
+            };
+      const key = sanitizedPeerOappId ? String(sanitizedPeerOappId) : null;
       if (!key) return;
       if (!referencingMap.has(key)) referencingMap.set(key, []);
-      referencingMap.get(key).push(cfg);
+      referencingMap.get(key).push(normalizedCfg);
     });
 
     const oappMap = new Map();

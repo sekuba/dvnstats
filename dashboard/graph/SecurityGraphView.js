@@ -170,8 +170,12 @@ export class SecurityGraphView {
       context.centerNodeId,
     );
 
-    let focusedNodeId = null;
+    const nodesById = new Map(webData.nodes.map((node) => [node.id, node]));
+
+    let focusMode = "none"; // "none" | "neighbors" | "path"
+    let focusBaseNodeId = null;
     let visibleNodeIds = new Set();
+    let visibleEdgeKeys = null;
 
     const adjacencyMap = new Map();
     for (const node of webData.nodes) {
@@ -194,57 +198,161 @@ export class SecurityGraphView {
       blockedIncomingByTarget.get(toId).add(fromId);
     }
 
-    const updateVisibility = (nodeId) => {
-      if (focusedNodeId === nodeId) {
-        focusedNodeId = null;
-        visibleNodeIds.clear();
+    const edgeKeySet = new Set(webData.edges.map((edge) => `${edge.from}|${edge.to}`));
 
+    let nodesGroup = null;
+    let edgesGroup = null;
+
+    const applyVisibility = () => {
+      if (!nodesGroup || !edgesGroup) return;
+
+      if (focusMode === "none") {
         nodesGroup.querySelectorAll(".node").forEach((node) => {
           node.style.display = "";
         });
-        edgesGroup.querySelectorAll("line, g").forEach((edge) => {
+        edgesGroup.querySelectorAll("[data-edge-from]").forEach((edge) => {
           edge.style.display = "";
         });
-      } else {
-        // Focus on this node
-        focusedNodeId = nodeId;
-        visibleNodeIds = new Set([nodeId, ...(adjacencyMap.get(nodeId) || [])]);
+        return;
+      }
 
-        const blockedSources = blockedIncomingByTarget.get(nodeId);
-        if (blockedSources?.size) {
-          // Hide any neighbors whose inbound edge into this node is blocked
-          blockedSources.forEach((blockedNodeId) => {
-            if (blockedNodeId !== nodeId) {
-              visibleNodeIds.delete(blockedNodeId);
-            }
-          });
+      nodesGroup.querySelectorAll(".node").forEach((node) => {
+        const nodeData = node.getAttribute("data-node-id");
+        node.style.display = visibleNodeIds.has(nodeData) ? "" : "none";
+      });
+
+      edgesGroup.querySelectorAll("[data-edge-from]").forEach((edge) => {
+        const from = edge.getAttribute("data-edge-from");
+        const to = edge.getAttribute("data-edge-to");
+        let shouldShow = visibleNodeIds.has(from) && visibleNodeIds.has(to);
+        if (shouldShow && visibleEdgeKeys) {
+          const key = `${from}|${to}`;
+          shouldShow = visibleEdgeKeys.has(key);
         }
+        edge.style.display = shouldShow ? "" : "none";
+      });
+    };
 
-        // Hide unconnected nodes
-        nodesGroup.querySelectorAll(".node").forEach((node) => {
-          const nodeData = node.getAttribute("data-node-id");
-          if (!visibleNodeIds.has(nodeData)) {
-            node.style.display = "none";
-          } else {
-            node.style.display = "";
-          }
-        });
-
-        // Hide edges where either endpoint is not visible
-        edgesGroup.querySelectorAll("[data-edge-from]").forEach((edge) => {
-          const from = edge.getAttribute("data-edge-from");
-          const to = edge.getAttribute("data-edge-to");
-          if (!visibleNodeIds.has(from) || !visibleNodeIds.has(to)) {
-            edge.style.display = "none";
-          } else {
-            edge.style.display = "";
+    const setNeighborVisibility = (nodeId) => {
+      const baseVisible = new Set([nodeId, ...(adjacencyMap.get(nodeId) || [])]);
+      const blockedSources = blockedIncomingByTarget.get(nodeId);
+      if (blockedSources?.size) {
+        blockedSources.forEach((blockedNodeId) => {
+          if (blockedNodeId !== nodeId) {
+            baseVisible.delete(blockedNodeId);
           }
         });
       }
+      visibleNodeIds = baseVisible;
+      visibleEdgeKeys = null;
+    };
+
+    const findPathBetween = (startId, targetId) => {
+      if (!adjacencyMap.has(startId) || !adjacencyMap.has(targetId)) {
+        return null;
+      }
+      const queue = [startId];
+      const visited = new Set([startId]);
+      const parents = new Map();
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        if (current === targetId) {
+          const path = [];
+          let walker = current;
+          while (walker !== undefined) {
+            path.push(walker);
+            walker = parents.get(walker);
+          }
+          return path.reverse();
+        }
+        const neighbors = adjacencyMap.get(current) || new Set();
+        for (const neighbor of neighbors) {
+          if (visited.has(neighbor)) continue;
+          visited.add(neighbor);
+          parents.set(neighbor, current);
+          queue.push(neighbor);
+        }
+      }
+      return null;
+    };
+
+    const buildPathEdgeKeys = (pathNodes) => {
+      const edges = new Set();
+      for (let i = 0; i < pathNodes.length - 1; i += 1) {
+        const a = pathNodes[i];
+        const b = pathNodes[i + 1];
+        const forwardKey = `${a}|${b}`;
+        const reverseKey = `${b}|${a}`;
+        if (edgeKeySet.has(forwardKey)) edges.add(forwardKey);
+        if (edgeKeySet.has(reverseKey)) edges.add(reverseKey);
+      }
+      return edges;
+    };
+
+    const updateVisibility = (nodeId, options = {}) => {
+      const targetNodeIdRaw =
+        typeof options.targetNodeId === "string"
+          ? options.targetNodeId.trim()
+          : options.targetNodeId !== undefined && options.targetNodeId !== null
+            ? String(options.targetNodeId).trim()
+            : "";
+
+      const onSuccess = typeof options.onSuccess === "function" ? options.onSuccess : null;
+      const onFail = typeof options.onFail === "function" ? options.onFail : null;
+
+      if (targetNodeIdRaw) {
+        const normalizedTargetId = targetNodeIdRaw;
+        if (!nodesById.has(normalizedTargetId)) {
+          if (onFail) onFail("OApp ID not found in this web.");
+          return false;
+        }
+        if (normalizedTargetId === nodeId) {
+          if (onFail) onFail("Target OApp ID matches the selected node.");
+          return false;
+        }
+        const path = findPathBetween(nodeId, normalizedTargetId);
+        if (!path) {
+          if (onFail) onFail("No connection found between the selected nodes.");
+          return false;
+        }
+
+        focusMode = "path";
+        focusBaseNodeId = nodeId;
+        visibleNodeIds = new Set(path);
+        visibleEdgeKeys = buildPathEdgeKeys(path);
+        applyVisibility();
+        if (onSuccess) onSuccess(path);
+        return true;
+      }
+
+      if (focusMode === "path" && focusBaseNodeId === nodeId) {
+        focusMode = "none";
+        focusBaseNodeId = null;
+        visibleNodeIds.clear();
+        visibleEdgeKeys = null;
+        applyVisibility();
+        return true;
+      }
+
+      if (focusMode === "neighbors" && focusBaseNodeId === nodeId) {
+        focusMode = "none";
+        focusBaseNodeId = null;
+        visibleNodeIds.clear();
+        visibleEdgeKeys = null;
+        applyVisibility();
+        return true;
+      }
+
+      focusMode = "neighbors";
+      focusBaseNodeId = nodeId;
+      setNeighborVisibility(nodeId);
+      applyVisibility();
+      return true;
     };
 
     // Render edges
-    const edgesGroup = this.edgeRenderer.renderEdges(
+    edgesGroup = this.edgeRenderer.renderEdges(
       SVG_NS,
       edgeSecurityInfo,
       nodePositions,
@@ -256,7 +364,7 @@ export class SecurityGraphView {
 
     // Render nodes
     this.nodeRenderer.onRecenter = this.onRecenter;
-    const nodesGroup = this.nodeRenderer.renderNodes(
+    nodesGroup = this.nodeRenderer.renderNodes(
       SVG_NS,
       webData.nodes,
       nodePositions,
