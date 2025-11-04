@@ -3,9 +3,9 @@
  * Centralizes all query configurations
  */
 
-import { createTopOAppsConfig } from "./configs/TopOAppsConfig.js";
 import { createOAppSecurityConfig } from "./configs/OAppSecurityConfig.js";
 import { createPopularOAppsWindowConfig } from "./configs/PopularOAppsWindowConfig.js";
+import { createTopOAppsConfig } from "./configs/TopOAppsConfig.js";
 import { createWebOfSecurityConfig } from "./configs/WebOfSecurityConfig.js";
 
 /**

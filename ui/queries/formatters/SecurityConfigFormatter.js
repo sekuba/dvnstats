@@ -10,11 +10,11 @@ import { APP_CONFIG } from "../../../config.js";
 import { formatTimestampValue, isZeroAddress, splitOAppId } from "../../../core.js";
 import {
   createFormattedCell,
-  formatUpdateInfo,
   formatRouteActivityLine,
+  formatUpdateInfo,
 } from "../../../formatters/cellFormatters.js";
-import { bigIntSafe, coerceToNumber } from "../../../utils/NumberUtils.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../../utils/DvnUtils.js";
+import { bigIntSafe, coerceToNumber } from "../../../utils/NumberUtils.js";
 
 export class SecurityConfigFormatter {
   constructor(chainMetadata, aliasStore, getChainDisplayLabel, resolveDvnLabels) {

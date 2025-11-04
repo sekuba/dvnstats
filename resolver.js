@@ -1,7 +1,7 @@
 import { normalizeKey } from "./core.js";
-import { bigIntSafe } from "./utils/NumberUtils.js";
-import { getTrackedReceiveLibrary } from "./trackedLibraries.js";
 import { normalizeSecurityConfig } from "./security/SecurityConfigNormalizer.js";
+import { getTrackedReceiveLibrary } from "./trackedLibraries.js";
+import { bigIntSafe } from "./utils/NumberUtils.js";
 
 export function resolveOAppSecurityConfigs({
   oappId,

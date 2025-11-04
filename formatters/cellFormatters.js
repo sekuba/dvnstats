@@ -3,7 +3,7 @@
  * Functions for creating formatted cell objects and rendering cell content
  */
 
-import { formatTimestampValue, formatInteger, formatPercent } from "./valueFormatters.js";
+import { formatInteger, formatPercent, formatTimestampValue } from "./valueFormatters.js";
 
 /**
  * Creates a formatted cell object with multiple lines and metadata

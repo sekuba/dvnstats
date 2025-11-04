@@ -35,7 +35,7 @@ export function createWebOfSecurityConfig(coordinator) {
         );
       }
 
-      const isCrawl = !!seedOAppId;
+      const mode = seedOAppId ? "crawl" : "upload";
 
       if (file && seedOAppIdInput) {
         seedOAppIdInput.value = "";
@@ -43,16 +43,43 @@ export function createWebOfSecurityConfig(coordinator) {
 
       return {
         variables: {
-          seedOAppId,
+          seedOAppId: seedOAppId || null,
           depth,
-          file: isCrawl ? null : file,
-          isCrawl,
         },
         meta: {
           limitLabel: seedOAppId ? `seed=${seedOAppId}` : "web-of-security",
           summary: seedOAppId || "Web of Security",
         },
+        mode,
+        file,
+        seedOAppId,
+        depth,
       };
+    },
+
+    execute: async (request, context) => {
+      if (request.mode === "crawl") {
+        const seed = request.seedOAppId;
+        if (!seed) {
+          throw new Error("Seed OApp ID required for crawl.");
+        }
+        const { SecurityGraphCrawler } = await import("../../../crawler.js");
+        context.setStatus("Crawling...", "loading");
+        const crawler = new SecurityGraphCrawler(context.client, context.chainMetadata);
+        const webData = await crawler.crawl(seed, {
+          depth: request.depth,
+          onProgress: (status) => context.setStatus(status, "loading"),
+        });
+        return { webData };
+      }
+
+      const file = request.file;
+      if (!file) {
+        throw new Error("Web data file missing.");
+      }
+      const text = await file.text();
+      const webData = JSON.parse(text);
+      return { webData };
     },
 
     processResponse: async (payload, meta) => {

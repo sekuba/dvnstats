@@ -5,7 +5,7 @@
  * This class handles formatting for popular OApps aggregation and OApp ID cells.
  */
 
-import { formatTimestampValue, clampInteger } from "../../../core.js";
+import { clampInteger, formatTimestampValue } from "../../../core.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";
 
 export class OAppFormatter {
