@@ -199,4 +199,3 @@ function interpretValue(column, value, chainMetadata) {
     isCopyable: true,
   };
 }
-

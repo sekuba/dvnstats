@@ -246,4 +246,3 @@ function appendSummaryRow(list, label, value) {
   dd.textContent = String(value);
   list.append(dt, dd);
 }
-
