@@ -1,4 +1,3 @@
-
 import { clampInteger, formatTimestampValue } from "../../../core.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";
 
@@ -8,7 +7,7 @@ export class OAppFormatter {
     this.getChainDisplayLabel = getChainDisplayLabel;
   }
 
-    formatOAppIdCell(oappId) {
+  formatOAppIdCell(oappId) {
     if (!oappId) {
       return createFormattedCell(["—"], "");
     }

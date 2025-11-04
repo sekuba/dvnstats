@@ -1,4 +1,3 @@
-
 import { AddressUtils } from "../../utils/AddressUtils.js";
 import { coerceToNumber } from "../../utils/NumberUtils.js";
 
@@ -9,7 +8,7 @@ export class NodeMetricsCalculator {
     this.areStringArraysEqual = areStringArraysEqual;
   }
 
-    calculateMetrics(webData, analysis = {}) {
+  calculateMetrics(webData, analysis = {}) {
     const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
 
     if (!nodes.length) {
@@ -265,7 +264,6 @@ export class NodeMetricsCalculator {
       };
     });
 
-    
     nodeMetrics.sort((a, b) => {
       if (a.isTracked !== b.isTracked) {
         return a.isTracked ? -1 : 1;
@@ -281,7 +279,7 @@ export class NodeMetricsCalculator {
     return nodeMetrics;
   }
 
-    prepareRenameActions(nodeMetrics, requestUniformAlias) {
+  prepareRenameActions(nodeMetrics, requestUniformAlias) {
     if (!requestUniformAlias || !nodeMetrics.length) {
       return null;
     }

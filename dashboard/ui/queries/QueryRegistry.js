@@ -1,4 +1,3 @@
-
 import { createOAppSecurityConfig } from "./configs/OAppSecurityConfig.js";
 import { createPopularOAppsWindowConfig } from "./configs/PopularOAppsWindowConfig.js";
 import { createTopOAppsConfig } from "./configs/TopOAppsConfig.js";

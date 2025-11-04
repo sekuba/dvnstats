@@ -1,4 +1,3 @@
-
 import { APP_CONFIG } from "../../../config.js";
 import { formatTimestampValue, isZeroAddress, splitOAppId } from "../../../core.js";
 import {
@@ -17,7 +16,7 @@ export class SecurityConfigFormatter {
     this.resolveDvnLabels = resolveDvnLabels;
   }
 
-    formatSecurityConfigRows(rows, meta) {
+  formatSecurityConfigRows(rows, meta) {
     const activityData = this.prepareRouteActivity(meta);
 
     const decorated = rows.map((row) => {
@@ -328,14 +327,12 @@ export class SecurityConfigFormatter {
     formatted["Source EID"] = createFormattedCell([chainDisplay], row.eid);
     formatted.Library = this.formatLibraryDescriptor(row, highlightColumns.has("Library"));
 
-    
     formatted["Required DVNs"] = this.formatRequiredDvns(
       row,
       meta,
       highlightRequired || highlightColumns.has("Required DVNs"),
     );
 
-    
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta, highlightOptional);
 
     formatted.Peer = this.formatPeer(
@@ -347,7 +344,6 @@ export class SecurityConfigFormatter {
     formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
 
-    
     formatted.Fallbacks = this.formatFallbackFields(
       row.fallbackFields,
       row.usesDefaultConfig,
@@ -364,7 +360,6 @@ export class SecurityConfigFormatter {
     const address = row.effectiveReceiveLibrary || "—";
     const statusBits = [];
 
-    
     const libraryStatus = row.libraryStatus || "unknown";
     const statusExplanations = {
       tracked: "TRACKED (ULN config available)",
@@ -374,7 +369,6 @@ export class SecurityConfigFormatter {
     };
     statusBits.push(statusExplanations[libraryStatus] || libraryStatus);
 
-    
     if (row.usesDefaultLibrary && row.effectiveReceiveLibrary) {
       statusBits.push("Uses default library");
     }

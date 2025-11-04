@@ -1,4 +1,3 @@
-
 const HASH_PATTERN = /^0x[a-f0-9]{16,}$/i;
 
 export function stringifyScalar(value) {

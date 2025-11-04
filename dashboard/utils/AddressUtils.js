@@ -12,7 +12,7 @@ const NORMALIZED_CONSTANTS = Object.freeze({
 });
 
 export class AddressUtils {
-    static normalize(address, options = {}) {
+  static normalize(address, options = {}) {
     const { allowNull = false } = options;
 
     if (address === undefined || address === null) {
@@ -59,7 +59,7 @@ export class AddressUtils {
     return lower;
   }
 
-    static normalizeSafe(address) {
+  static normalizeSafe(address) {
     if (!address) {
       return null;
     }
@@ -70,7 +70,7 @@ export class AddressUtils {
     }
   }
 
-    static isZero(address) {
+  static isZero(address) {
     if (!address) {
       return false;
     }
@@ -80,18 +80,18 @@ export class AddressUtils {
     );
   }
 
-    static isDead(address) {
+  static isDead(address) {
     if (!address) {
       return false;
     }
     return String(address).toLowerCase() === NORMALIZED_CONSTANTS.DEAD;
   }
 
-    static isZeroOrDead(address) {
+  static isZeroOrDead(address) {
     return this.isZero(address) || this.isDead(address);
   }
 
-    static get constants() {
+  static get constants() {
     return NORMALIZED_CONSTANTS;
   }
 }

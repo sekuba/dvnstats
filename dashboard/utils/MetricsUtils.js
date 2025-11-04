@@ -1,4 +1,3 @@
-
 import { coerceToNumber } from "./NumberUtils.js";
 
 export function calculateTotalRoutePackets(routeStats) {

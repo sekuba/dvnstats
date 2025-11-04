@@ -1,4 +1,3 @@
-
 export function getChainDisplayLabel(chainId, chainMetadata) {
   if (chainId === undefined || chainId === null || chainId === "") {
     return "";

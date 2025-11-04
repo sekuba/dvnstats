@@ -1,4 +1,3 @@
-
 import { normalizeAddress, normalizeOAppId } from "../../../core.js";
 import { OAPP_SECURITY_CONFIG_QUERY } from "../../../queries/oappSecurityConfig.js";
 import { resolveOAppSecurityConfigs } from "../../../resolver.js";
@@ -37,9 +36,7 @@ export function createOAppSecurityConfig(coordinator) {
             if (normalized !== idInput.value) {
               idInput.value = normalized;
             }
-          } catch (error) {
-            
-          }
+          } catch (error) {}
         });
       }
     },

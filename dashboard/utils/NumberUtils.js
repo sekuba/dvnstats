@@ -1,4 +1,3 @@
-
 export function bigIntSafe(value) {
   try {
     return value !== undefined && value !== null ? BigInt(value) : null;

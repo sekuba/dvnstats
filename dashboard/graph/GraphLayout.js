@@ -1,4 +1,3 @@
-
 import { APP_CONFIG } from "../config.js";
 import { hashString } from "./utils.js";
 
@@ -13,11 +12,10 @@ export class GraphLayout {
     this.maxColumns = maxColumns || APP_CONFIG.GRAPH_VISUAL.MAX_COLUMNS;
   }
 
-    calculateDistancesFromCenter(nodes, edges, centerNodeId) {
+  calculateDistancesFromCenter(nodes, edges, centerNodeId) {
     const distances = new Map();
     const adjacency = new Map();
 
-    
     for (const node of nodes) {
       adjacency.set(node.id, []);
     }
@@ -26,7 +24,6 @@ export class GraphLayout {
       if (adjacency.has(edge.to)) adjacency.get(edge.to).push(edge.from);
     }
 
-    
     const queue = [{ id: centerNodeId, distance: 0 }];
     const visited = new Set([centerNodeId]);
     distances.set(centerNodeId, 0);
@@ -44,7 +41,6 @@ export class GraphLayout {
       }
     }
 
-    
     const maxDistance = Math.max(...Array.from(distances.values()), 0);
     for (const node of nodes) {
       if (!distances.has(node.id)) {
@@ -55,15 +51,13 @@ export class GraphLayout {
     return distances;
   }
 
-    layoutNodes(nodes, edges, centerNodeId) {
+  layoutNodes(nodes, edges, centerNodeId) {
     const positions = new Map();
 
     if (nodes.length === 0) return positions;
 
-    
     const distances = this.calculateDistancesFromCenter(nodes, edges, centerNodeId);
 
-    
     const nodesByDistance = new Map();
     for (const node of nodes) {
       const distance = distances.get(node.id) ?? 999;
@@ -73,46 +67,39 @@ export class GraphLayout {
       nodesByDistance.get(distance).push(node);
     }
 
-    
     for (const [distance, distanceNodes] of nodesByDistance.entries()) {
       distanceNodes.sort((a, b) => {
-        
         if (a.isTracked !== b.isTracked) {
           return a.isTracked ? -1 : 1;
         }
-        
+
         const packetsA = a.totalPacketsReceived || 0;
         const packetsB = b.totalPacketsReceived || 0;
         if (packetsA !== packetsB) {
           return packetsB - packetsA;
         }
-        
+
         return a.id.localeCompare(b.id);
       });
     }
 
-    
     const distancesToProcess = Array.from(nodesByDistance.keys()).filter((d) => d !== 0 && d < 999);
     for (const originalDistance of distancesToProcess) {
       const distanceNodes = nodesByDistance.get(originalDistance);
       if (!distanceNodes || distanceNodes.length <= 1) continue;
 
-      
       if (originalDistance === 1) {
         const trackedNodes = distanceNodes.filter((n) => n.isTracked);
         const untrackedNodes = distanceNodes.filter((n) => !n.isTracked);
 
-        
         if (trackedNodes.length > 0) {
           this.splitIntoColumns(trackedNodes, nodesByDistance, -0.1, -0.1);
         }
 
-        
         if (untrackedNodes.length > 0) {
           this.splitIntoColumns(untrackedNodes, nodesByDistance, originalDistance + 0.1, 0.1);
         }
       } else {
-        
         this.splitIntoColumns(distanceNodes, nodesByDistance, originalDistance + 0.1, 0.1);
       }
 
@@ -122,24 +109,19 @@ export class GraphLayout {
     const distanceKeys = Array.from(nodesByDistance.keys()).sort((a, b) => a - b);
     const centerX = this.width / 2;
 
-    
-    const leftDistances = distanceKeys.filter((d) => d < 0).sort((a, b) => b - a); 
-    const rightDistances = distanceKeys.filter((d) => d > 0).sort((a, b) => a - b); 
+    const leftDistances = distanceKeys.filter((d) => d < 0).sort((a, b) => b - a);
+    const rightDistances = distanceKeys.filter((d) => d > 0).sort((a, b) => a - b);
 
     for (const distance of distanceKeys) {
       const nodesAtDistance = nodesByDistance.get(distance);
 
-      
       let baseX;
       if (distance === 0) {
-        
         baseX = centerX;
       } else if (distance < 0) {
-        
         const columnIndex = leftDistances.indexOf(distance);
         baseX = centerX - this.seedGap - columnIndex * this.columnSpacing;
       } else {
-        
         const columnIndex = rightDistances.indexOf(distance);
         baseX = centerX + this.seedGap + columnIndex * this.columnSpacing;
       }
@@ -170,7 +152,6 @@ export class GraphLayout {
         const yJitter =
           (nodeHash % APP_CONFIG.GRAPH_VISUAL.HASH_MOD) - APP_CONFIG.GRAPH_VISUAL.Y_JITTER_MAX;
 
-        
         const x = distance < 0 ? baseX + xOffset : baseX - xOffset;
         const y = baseY + yJitter;
 
@@ -181,9 +162,8 @@ export class GraphLayout {
     return positions;
   }
 
-    splitIntoColumns(nodes, nodesByDepth, baseDepth, increment) {
+  splitIntoColumns(nodes, nodesByDepth, baseDepth, increment) {
     if (nodes.length <= this.maxNodesPerColumn) {
-      
       nodesByDepth.set(baseDepth, nodes);
       return;
     }

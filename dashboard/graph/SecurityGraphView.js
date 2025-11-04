@@ -1,4 +1,3 @@
-
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { EdgeRenderer } from "./EdgeRenderer.js";
@@ -27,7 +26,6 @@ export class SecurityGraphView {
     this.requestUniformAlias =
       typeof requestUniformAlias === "function" ? requestUniformAlias : null;
 
-    
     this.analyzer = new GraphAnalyzer({
       getChainDisplayLabel: this.getChainDisplayLabel,
     });
@@ -49,7 +47,7 @@ export class SecurityGraphView {
       getOAppAlias: this.getOAppAlias,
       formatChainLabel: this.formatChainLabel.bind(this),
       getNodeSecurityMetrics: this.analyzer.getNodeSecurityMetrics.bind(this.analyzer),
-      onRecenter: null, 
+      onRecenter: null,
     });
 
     this.nodeListView = new NodeListView({
@@ -60,7 +58,7 @@ export class SecurityGraphView {
     });
   }
 
-    render(webData, options = {}) {
+  render(webData, options = {}) {
     if (!webData?.nodes || !webData?.edges) return this.renderError();
 
     const container = document.createElement("div");
@@ -76,7 +74,6 @@ export class SecurityGraphView {
       edgeAnalysis.edgeSecurityInfo,
     );
 
-    
     const centerNodeId =
       options.centerNodeId || findMostConnectedNode(webData.nodes, webData.edges);
 
@@ -173,11 +170,9 @@ export class SecurityGraphView {
       context.centerNodeId,
     );
 
-    
     let focusedNodeId = null;
     let visibleNodeIds = new Set();
 
-    
     const adjacencyMap = new Map();
     for (const node of webData.nodes) {
       adjacencyMap.set(node.id, new Set());
@@ -201,11 +196,9 @@ export class SecurityGraphView {
 
     const updateVisibility = (nodeId) => {
       if (focusedNodeId === nodeId) {
-        
         focusedNodeId = null;
         visibleNodeIds.clear();
 
-        
         nodesGroup.querySelectorAll(".node").forEach((node) => {
           node.style.display = "";
         });

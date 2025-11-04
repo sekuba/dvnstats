@@ -1,4 +1,3 @@
-
 export function createWebOfSecurityConfig(coordinator) {
   return {
     label: "Web of Security",

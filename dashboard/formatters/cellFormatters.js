@@ -1,4 +1,3 @@
-
 import { formatInteger, formatPercent, formatTimestampValue } from "./valueFormatters.js";
 
 export function createFormattedCell(lines, copyValue, meta = {}) {

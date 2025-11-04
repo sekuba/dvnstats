@@ -1,4 +1,3 @@
-
 import { APP_CONFIG } from "../../config.js";
 import { resolveChainDisplayLabel } from "../../core.js";
 import { buildPayloadDetails } from "./ResultsPayloadDetails.js";
@@ -131,7 +130,6 @@ export class ResultsView {
       },
     });
 
-    
     renderer.onRecenter = (newCenterNodeId) => {
       this.renderGraph(webData, newCenterNodeId);
     };

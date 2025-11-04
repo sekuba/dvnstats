@@ -1,4 +1,3 @@
-
 import { APP_CONFIG } from "../../config.js";
 
 export class ToastQueue {
