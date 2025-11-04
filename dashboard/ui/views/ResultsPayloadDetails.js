@@ -15,4 +15,3 @@ export function buildPayloadDetails(payload) {
 
   return details;
 }
-

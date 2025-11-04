@@ -304,8 +304,7 @@ export class SecurityGraphCrawler {
               isStalePeer,
               blockReasonHint,
               isOutbound: false,
-              peerStateHint:
-                normalizedInbound?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
+              peerStateHint: normalizedInbound?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
               libraryStatus: normalizedInbound?.libraryStatus ?? null,
               synthetic: Boolean(normalizedInbound?.synthetic),
             };

@@ -366,4 +366,3 @@ function orderFallbackFields(fallbackSet) {
   }
   return result;
 }
-
