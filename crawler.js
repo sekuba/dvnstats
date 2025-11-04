@@ -1,6 +1,12 @@
 import { APP_CONFIG } from "./config.js";
 import { splitOAppId, normalizeKey } from "./core.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
+import {
+  createRouteStatsMap,
+  enrichRouteStatsWithShares,
+  calculateTotalRoutePackets,
+} from "./utils/MetricsUtils.js";
+import { resolveDvnLabels } from "./utils/DvnUtils.js";
 import { resolveOAppSecurityConfigs } from "./resolver.js";
 
 export class SecurityGraphCrawler {
@@ -81,33 +87,10 @@ export class SecurityGraphCrawler {
         const oappConfigs = batchData.oappConfigs.get(oappId) ?? [];
         const routeStatsRaw = batchData.routeStats.get(oappId) ?? [];
 
-        const totalRoutePackets = routeStatsRaw.reduce((acc, stat) => {
-          const value = Number(stat?.packetCount);
-          return acc + (Number.isFinite(value) && value > 0 ? value : 0);
-        }, 0);
-
-        const routeStatsMap = new Map();
-        routeStatsRaw.forEach((stat) => {
-          const key = normalizeKey(stat?.srcEid ?? stat?.eid);
-          if (!key) return;
-          const count = Number(stat?.packetCount);
-          const packetCount = Number.isFinite(count) && count > 0 ? count : 0;
-          const share = totalRoutePackets > 0 ? packetCount / totalRoutePackets : 0;
-          routeStatsMap.set(key, {
-            srcEid: key,
-            packetCount,
-            share,
-            percent: share > 0 ? share * 100 : 0,
-            lastPacketBlock:
-              stat?.lastPacketBlock !== undefined && stat?.lastPacketBlock !== null
-                ? Number(stat.lastPacketBlock)
-                : null,
-            lastPacketTimestamp:
-              stat?.lastPacketTimestamp !== undefined && stat?.lastPacketTimestamp !== null
-                ? Number(stat.lastPacketTimestamp)
-                : null,
-          });
-        });
+        const { routeStatsMap, totalRoutePackets } = createRouteStatsMap(
+          routeStatsRaw,
+          normalizeKey,
+        );
 
         const resolution = resolveOAppSecurityConfigs({
           oappId,
@@ -156,14 +139,12 @@ export class SecurityGraphCrawler {
             ? cfg.effectiveOptionalDVNs
             : [];
 
-          const requiredDVNLabels = this.chainMetadata.resolveDvnNames(
-            requiredDVNs,
-            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {},
-          );
-          const optionalDVNLabels = this.chainMetadata.resolveDvnNames(
-            optionalDVNs,
-            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {},
-          );
+          const requiredDVNLabels = resolveDvnLabels(requiredDVNs, this.chainMetadata, {
+            localEid: cfgLocalEid,
+          });
+          const optionalDVNLabels = resolveDvnLabels(optionalDVNs, this.chainMetadata, {
+            localEid: cfgLocalEid,
+          });
 
           const peerDetails = this.derivePeer(cfg);
           const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;
@@ -777,19 +758,8 @@ export class SecurityGraphCrawler {
       }
     }
 
-    const totalRoutePackets = filteredRouteStats.reduce((acc, stat) => {
-      const packetCount = Number(stat.packetCount);
-      return acc + (Number.isFinite(packetCount) && packetCount >= 0 ? packetCount : 0);
-    }, 0);
-
-    filteredRouteStats.forEach((stat) => {
-      const packetCount = Number(stat.packetCount);
-      const safeCount = Number.isFinite(packetCount) && packetCount >= 0 ? packetCount : 0;
-      const share = totalRoutePackets > 0 ? safeCount / totalRoutePackets : 0;
-      stat.packetCount = safeCount;
-      stat.share = share;
-      stat.percent = share > 0 ? share * 100 : 0;
-    });
+    enrichRouteStatsWithShares(filteredRouteStats);
+    const totalRoutePackets = calculateTotalRoutePackets(filteredRouteStats);
 
     const metricBySrc = new Map(
       filteredRouteStats.map((stat) => [normalize(stat.srcEid ?? stat.eid), stat]),

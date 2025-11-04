@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "./config.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
+import { resolveChainDisplayLabel as _resolveChainDisplayLabel } from "./utils/ChainUtils.js";
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -184,28 +185,9 @@ export class ChainDirectory {
   }
 }
 
+// Re-exported from ChainUtils for backward compatibility
 export function resolveChainDisplayLabel(chainMetadata, chainId) {
-  if (chainId === undefined || chainId === null || chainId === "") {
-    return "";
-  }
-
-  const key = String(chainId);
-
-  if (chainMetadata && typeof chainMetadata.getChainDisplayLabel === "function") {
-    const label = chainMetadata.getChainDisplayLabel(key);
-    if (label) {
-      return label;
-    }
-  }
-
-  if (chainMetadata && typeof chainMetadata.getChainInfo === "function") {
-    const info = chainMetadata.getChainInfo(key);
-    if (info) {
-      return `${info.primary} (${key})`;
-    }
-  }
-
-  return key;
+  return _resolveChainDisplayLabel(chainMetadata, chainId);
 }
 
 // Re-exported from AddressUtils for backward compatibility

@@ -175,7 +175,10 @@ export function createOAppSecurityConfig(coordinator) {
         enrichedMeta.securitySummary = resolution.summary;
       }
 
-      const formattedRows = coordinator.formatSecurityConfigRows(resolvedRows, enrichedMeta);
+      const formattedRows = coordinator.securityConfigFormatter.formatSecurityConfigRows(
+        resolvedRows,
+        enrichedMeta,
+      );
 
       return { rows: formattedRows, meta: enrichedMeta };
     },

@@ -3,6 +3,7 @@
  */
 
 import { AddressUtils } from "../utils/AddressUtils.js";
+import { coerceToNumber } from "../utils/NumberUtils.js";
 import { shortenAddress, appendSummaryRow, describeCombination } from "./utils.js";
 
 export class NodeListView {
@@ -239,21 +240,8 @@ export class NodeListView {
       const endpointId =
         node.localEid ?? (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
       const chainLabel = this.formatChainLabel(endpointId) || endpointId;
-      const totalPacketsValue = Number(
-        node.totalPacketsReceived === undefined || node.totalPacketsReceived === null
-          ? 0
-          : node.totalPacketsReceived,
-      );
-      const totalPackets = Number.isFinite(totalPacketsValue) ? totalPacketsValue : 0;
-      const totalRoutePacketsValue = Number(
-        node.totalRoutePackets === undefined || node.totalRoutePackets === null
-          ? 0
-          : node.totalRoutePackets,
-      );
-      const totalRoutePackets =
-        Number.isFinite(totalRoutePacketsValue) && totalRoutePacketsValue >= 0
-          ? totalRoutePacketsValue
-          : 0;
+      const totalPackets = coerceToNumber(node.totalPacketsReceived);
+      const totalRoutePackets = Math.max(0, coerceToNumber(node.totalRoutePackets));
       const securitySummary = node.securitySummary || null;
       if (
         securitySummary &&
