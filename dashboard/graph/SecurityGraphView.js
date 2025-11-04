@@ -247,6 +247,11 @@ export class SecurityGraphView {
       visibleEdgeKeys = null;
     };
 
+    const isBlockedInDirection = (sourceId, targetId) => {
+      const blockedSources = blockedIncomingByTarget.get(targetId);
+      return blockedSources ? blockedSources.has(sourceId) : false;
+    };
+
     const findPathBetween = (startId, targetId) => {
       if (!adjacencyMap.has(startId) || !adjacencyMap.has(targetId)) {
         return null;
@@ -269,6 +274,7 @@ export class SecurityGraphView {
         const neighbors = adjacencyMap.get(current) || new Set();
         for (const neighbor of neighbors) {
           if (visited.has(neighbor)) continue;
+          if (isBlockedInDirection(current, neighbor)) continue;
           visited.add(neighbor);
           parents.set(neighbor, current);
           queue.push(neighbor);
@@ -313,7 +319,7 @@ export class SecurityGraphView {
         }
         const path = findPathBetween(nodeId, normalizedTargetId);
         if (!path) {
-          if (onFail) onFail("No connection found between the selected nodes.");
+          if (onFail) onFail("No unblocked connection found.");
           return false;
         }
 
