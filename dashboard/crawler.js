@@ -161,11 +161,11 @@ export class SecurityGraphCrawler {
 
           const requiredDVNLabels = this.chainMetadata.resolveDvnNames(
             requiredDVNs,
-            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {}
+            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {},
           );
           const optionalDVNLabels = this.chainMetadata.resolveDvnNames(
             optionalDVNs,
-            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {}
+            cfgLocalEid !== undefined && cfgLocalEid !== null ? { localEid: cfgLocalEid } : {},
           );
 
           const peerDetails = this.derivePeer(cfg);

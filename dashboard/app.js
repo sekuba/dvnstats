@@ -321,7 +321,10 @@ class DashboardApp {
       const message = hasAlias
         ? `Applied alias to ${targets.length} node${targets.length === 1 ? "" : "s"}`
         : `Cleared ${targets.length} alias${targets.length === 1 ? "" : "es"}`;
-      this.toastQueue.show(changed ? message : "No alias updates", changed ? (hasAlias ? "success" : "info") : "info");
+      this.toastQueue.show(
+        changed ? message : "No alias updates",
+        changed ? (hasAlias ? "success" : "info") : "info",
+      );
       return;
     }
 

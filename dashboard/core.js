@@ -321,5 +321,8 @@ export function isZeroAddress(address) {
   if (!address) return false;
   const normalized = String(address).toLowerCase();
   // Check both EVM address (40 chars) and bytes32 (64 chars) formats
-  return normalized === APP_CONFIG.ADDRESSES.ZERO.toLowerCase() || normalized === APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase();
+  return (
+    normalized === APP_CONFIG.ADDRESSES.ZERO.toLowerCase() ||
+    normalized === APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase()
+  );
 }
