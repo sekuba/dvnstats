@@ -4,12 +4,12 @@
 
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { GraphAnalyzer } from "./GraphAnalyzer.js";
-import { GraphLayout } from "./GraphLayout.js";
-import { GraphInteractions } from "./GraphInteractions.js";
 import { EdgeRenderer } from "./EdgeRenderer.js";
-import { NodeRenderer } from "./NodeRenderer.js";
+import { GraphAnalyzer } from "./GraphAnalyzer.js";
+import { GraphInteractions } from "./GraphInteractions.js";
+import { GraphLayout } from "./GraphLayout.js";
 import { NodeListView } from "./NodeListView.js";
+import { NodeRenderer } from "./NodeRenderer.js";
 import { findMostConnectedNode } from "./utils.js";
 
 const SVG_NS = APP_CONFIG.SVG.NAMESPACE;

@@ -11,7 +11,7 @@
     "start": "envio start",
     "test": "pnpm mocha",
     "format": "biome format --write .",
-    "format:check": "biome format --check .",
+    "format:check": "biome check .",
     "stats:packets": "node scripts/packetSecuritySummary.js"
   },
   "devDependencies": {

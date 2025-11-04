@@ -252,13 +252,13 @@ export function parseOptionalPositiveInt(rawValue) {
 
 // Re-export formatting functions from centralized formatters
 export {
-  stringifyScalar,
-  formatTimestampValue,
-  looksLikeHash,
-  looksLikeTimestampColumn,
-  looksLikeEidColumn,
   formatInteger,
   formatPercent,
+  formatTimestampValue,
+  looksLikeEidColumn,
+  looksLikeHash,
+  looksLikeTimestampColumn,
+  stringifyScalar,
 } from "./formatters/valueFormatters.js";
 
 // Re-exported from AddressUtils for backward compatibility

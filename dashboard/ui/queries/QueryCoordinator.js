@@ -4,8 +4,8 @@
 
 import { resolveChainDisplayLabel } from "../../core.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
-import { SecurityConfigFormatter } from "./formatters/SecurityConfigFormatter.js";
 import { OAppFormatter } from "./formatters/OAppFormatter.js";
+import { SecurityConfigFormatter } from "./formatters/SecurityConfigFormatter.js";
 import { buildQueryRegistry } from "./QueryRegistry.js";
 
 export class QueryCoordinator {
@@ -86,40 +86,47 @@ export class QueryCoordinator {
       throw new Error(`Unknown query: ${key}`);
     }
 
-    const buildResult =
-      typeof config.buildVariables === "function" ? config.buildVariables(card) : {};
+    const buildFn =
+      typeof config.buildRequest === "function"
+        ? config.buildRequest
+        : typeof config.buildVariables === "function"
+          ? config.buildVariables
+          : null;
+    const buildResult = buildFn ? buildFn(card) : {};
     if (!buildResult || typeof buildResult !== "object") {
       throw new Error("Query builder must return an object with `variables` and optional `meta`.");
     }
     const { variables, meta: extraMeta = {} } = buildResult;
 
-    if (!variables || Object.keys(variables).length === 0) {
+    const hasCustomExecutor = typeof config.execute === "function";
+    if (!hasCustomExecutor && (!variables || Object.keys(variables).length === 0)) {
       throw new Error("Missing query input.");
     }
 
     const startedAt = performance.now();
 
     try {
-      let payload;
+      const executionContext = {
+        client: this.client,
+        chainMetadata: this.chainMetadata,
+        coordinator: this,
+        requestId,
+        setStatus: (text, state) => this.setStatus(statusEl, text, state),
+      };
 
-      // Handle web-of-security crawler
-      if (variables.isCrawl) {
-        const { SecurityGraphCrawler } = await import("../../crawler.js");
-        this.setStatus(statusEl, "Crawling...", "loading");
-        const crawler = new SecurityGraphCrawler(this.client, this.chainMetadata);
-        const webData = await crawler.crawl(variables.seedOAppId, {
-          depth: variables.depth,
-          onProgress: (status) => this.setStatus(statusEl, status, "loading"),
-        });
-        payload = { webData };
-      } else if (variables.file) {
-        const file = variables.file;
-        const text = await file.text();
-        const webData = JSON.parse(text);
-        payload = { webData };
+      let payload;
+      if (hasCustomExecutor) {
+        payload = await config.execute(buildResult, executionContext);
       } else {
+        if (!config.query) {
+          throw new Error(`Query definition for ${key} is missing an executor.`);
+        }
         const data = await this.client.query(config.query, variables);
         payload = { data };
+      }
+
+      if (!payload || typeof payload !== "object") {
+        throw new Error("Query execution returned an invalid payload.");
       }
 
       const elapsed = performance.now() - startedAt;

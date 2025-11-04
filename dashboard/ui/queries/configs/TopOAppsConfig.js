@@ -4,8 +4,8 @@
  */
 
 import { clampInteger, parseOptionalPositiveInt } from "../../../core.js";
-import { TOP_OAPPS_QUERY } from "../../../queries/topOApps.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";
+import { TOP_OAPPS_QUERY } from "../../../queries/topOApps.js";
 
 export function createTopOAppsConfig(coordinator) {
   return {

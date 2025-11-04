@@ -4,7 +4,7 @@
 
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { coerceToNumber } from "../utils/NumberUtils.js";
-import { shortenAddress, appendSummaryRow, describeCombination } from "./utils.js";
+import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
 
 export class NodeListView {
   constructor({ getOAppAlias, formatChainLabel, areStringArraysEqual, requestUniformAlias }) {

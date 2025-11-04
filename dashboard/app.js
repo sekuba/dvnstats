@@ -1,7 +1,7 @@
 import { APP_CONFIG } from "./config.js";
 import { ChainDirectory, HasuraClient } from "./core.js";
-import { AddressUtils } from "./utils/AddressUtils.js";
 import { AliasStore, QueryCoordinator, ResultsView, ToastQueue } from "./ui.js";
+import { AddressUtils } from "./utils/AddressUtils.js";
 
 class DashboardApp {
   constructor() {

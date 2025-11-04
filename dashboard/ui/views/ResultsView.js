@@ -4,9 +4,9 @@
 
 import { APP_CONFIG } from "../../config.js";
 import { resolveChainDisplayLabel } from "../../core.js";
+import { buildPayloadDetails } from "./ResultsPayloadDetails.js";
 import { renderSummaryPanels } from "./ResultsSummaryPanels.js";
 import { buildResultsTable } from "./ResultsTable.js";
-import { buildPayloadDetails } from "./ResultsPayloadDetails.js";
 
 export class ResultsView {
   constructor(
