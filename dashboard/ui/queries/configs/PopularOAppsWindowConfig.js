@@ -67,7 +67,7 @@ export function createPopularOAppsWindowConfig(coordinator) {
 
     processResponse: (payload, meta) => {
       const packets = payload?.data?.PacketDelivered ?? [];
-      const result = coordinator.aggregatePopularOapps(packets, meta);
+      const result = coordinator.oappFormatter.aggregatePopularOapps(packets, meta);
 
       return {
         rows: result.rows,

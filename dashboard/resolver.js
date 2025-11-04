@@ -1,5 +1,6 @@
 import { isZeroAddress, normalizeKey } from "./core.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
+import { bigIntSafe, toString } from "./utils/NumberUtils.js";
 import { getTrackedReceiveLibrary } from "./trackedLibraries.js";
 import { APP_CONFIG } from "./config.js";
 
@@ -109,8 +110,8 @@ export function resolveOAppSecurityConfigs({
   }
 
   resolvedRows.sort((a, b) => {
-    const aEid = BigIntSafe(a.eid);
-    const bEid = BigIntSafe(b.eid);
+    const aEid = bigIntSafe(a.eid);
+    const bEid = bigIntSafe(b.eid);
     if (aEid !== null && bEid !== null) {
       return aEid < bEid ? -1 : aEid > bEid ? 1 : 0;
     }
@@ -413,18 +414,6 @@ function derivePeerStateHint(row, peerRecord, isSynthetic) {
   }
 
   return "not-configured";
-}
-
-function BigIntSafe(value) {
-  try {
-    return value !== undefined && value !== null ? BigInt(value) : null;
-  } catch (error) {
-    return null;
-  }
-}
-
-function toString(value) {
-  return value === undefined || value === null ? null : String(value);
 }
 
 function orderFallbackFields(fallbackSet) {
