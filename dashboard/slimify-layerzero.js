@@ -79,12 +79,10 @@ function slimifyChain(chain) {
 
   const slim = {};
 
-  // Keep chainKey at chain level
   if (chain.chainKey !== undefined) {
     slim.chainKey = chain.chainKey;
   }
 
-  // Keep only used fields from chainDetails
   if (chain.chainDetails && typeof chain.chainDetails === "object") {
     slim.chainDetails = {};
 
@@ -94,7 +92,6 @@ function slimifyChain(chain) {
     if (chain.chainDetails.name !== undefined) {
       slim.chainDetails.name = chain.chainDetails.name;
     }
-    // Also keep chainKey in chainDetails for consistency
     if (chain.chainDetails.chainKey !== undefined) {
       slim.chainDetails.chainKey = chain.chainDetails.chainKey;
     }
@@ -128,7 +125,6 @@ function slimifyLayerzero(data) {
   let filteredCount = 0;
 
   for (const [chainName, chain] of Object.entries(data)) {
-    // Skip any chains with 'testnet' in their key
     if (chainName.toLowerCase().includes("testnet")) {
       filteredCount++;
       continue;
@@ -156,7 +152,6 @@ function displayStats(originalSize, slimSize, originalChainCount, slimChainCount
   console.log(`  Reduction:        ${(reduction / 1024).toFixed(2)} KB (${percentReduction}%)`);
 }
 
-// Main execution
 try {
   console.log("Reading input file:", inputPath);
 

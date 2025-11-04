@@ -35,7 +35,6 @@ export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
   }
 
   if (!chainMetadata || typeof chainMetadata.resolveDvnNames !== "function") {
-    // If no metadata service available, return addresses as-is
     return addresses.filter(Boolean);
   }
 

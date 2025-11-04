@@ -402,7 +402,6 @@ export class SecurityConfigFormatter {
   }
 
   formatRequiredDvns(row, meta, highlight = false) {
-    // If no library configured, ULN config is unavailable
     if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
       return createFormattedCell(["—", "No ULN config"], "", { highlight });
     }
@@ -425,7 +424,6 @@ export class SecurityConfigFormatter {
   }
 
   formatOptionalDvns(row, meta, highlight = false) {
-    // If no library configured, ULN config is unavailable
     if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
       return createFormattedCell(["—", "No ULN config"], "", { highlight });
     }
@@ -573,7 +571,6 @@ export class SecurityConfigFormatter {
   }
 
   formatConfirmations(row) {
-    // If no library configured, ULN config is unavailable
     if (row.libraryStatus === "none" || row.libraryStatus === "unsupported") {
       return createFormattedCell(["—", "No ULN config"], "");
     }
@@ -594,7 +591,6 @@ export class SecurityConfigFormatter {
   }
 
   formatFallbackFields(fields, usesDefaultConfig, libraryStatus, highlight = false) {
-    // If no library configured, show N/A
     if (libraryStatus === "none" || libraryStatus === "unsupported") {
       return createFormattedCell(["—", "No ULN config"], "", { highlight });
     }
