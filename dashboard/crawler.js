@@ -8,6 +8,7 @@ import {
 } from "./utils/MetricsUtils.js";
 import { resolveDvnLabels } from "./utils/DvnUtils.js";
 import { resolveOAppSecurityConfigs } from "./resolver.js";
+import { normalizeSecurityConfig } from "./security/SecurityConfigNormalizer.js";
 
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
@@ -146,7 +147,7 @@ export class SecurityGraphCrawler {
             localEid: cfgLocalEid,
           });
 
-          const peerDetails = this.derivePeer(cfg);
+          const peerDetails = this.buildPeerInfo(cfg);
           const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;
 
           const securityEntry = {
@@ -204,7 +205,7 @@ export class SecurityGraphCrawler {
               edgeFrom: edgeFromId,
               edgeTo: oappId,
               peerInfo: peerDetails,
-              peerRaw: peerDetails?.rawPeer ?? null,
+              peerRaw: peerDetails?.rawPeer ?? cfg?.peer ?? null,
               peerLocalEid: securityEntry.peerLocalEid,
               queueNext: securityEntry.peerOAppId,
               isOutbound: true,
@@ -226,6 +227,28 @@ export class SecurityGraphCrawler {
           .map((cfg) => {
             const remoteId = cfg.oappId;
             const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
+
+            const remotePeerRecords = batchData.peerRecordsByOapp.get(remoteId) ?? null;
+            const peerRecordKey = normalizeKey(cfg?.eid);
+            const peerRecord =
+              (remotePeerRecords && peerRecordKey ? remotePeerRecords.get(peerRecordKey) : null) ??
+              remotePeerRecords?.get("__unknown__") ??
+              null;
+
+            const normalizedInboundRaw = normalizeSecurityConfig({
+              eid: cfg.eid,
+              config: cfg,
+              peerRecord,
+              oappId: cfg.oappId,
+              oappAddress: cfg.oapp,
+              localEid: cfg.localEid,
+            });
+            const normalizedInbound =
+              normalizedInboundRaw && normalizedInboundRaw.peerOappId !== undefined
+                ? { ...normalizedInboundRaw, peerOAppId: normalizedInboundRaw.peerOappId }
+                : normalizedInboundRaw;
+
+            const peerDetails = this.buildPeerInfo(normalizedInbound);
 
             let isStalePeer = false;
             let blockReasonHint = null;
@@ -250,36 +273,41 @@ export class SecurityGraphCrawler {
               }
             }
 
-            const peerDetails = this.derivePeer(cfg);
-
             if (!blockReasonHint) {
               const peerState =
-                cfg?.peerStateHint ?? (peerDetails ? peerDetails.peerStateHint : null) ?? null;
-              const hasResolvedPeer = Boolean(peerDetails?.oappId || cfg?.peerOappId);
+                normalizedInbound?.peerStateHint ??
+                (peerDetails ? peerDetails.peerStateHint : null) ??
+                null;
+              const hasResolvedPeer = Boolean(
+                peerDetails?.oappId ||
+                  normalizedInbound?.peerOAppId ||
+                  normalizedInbound?.peerOappId,
+              );
               const isZeroPeer = peerDetails?.isZeroPeer === true;
               if (peerState === "explicit-blocked" || isZeroPeer) {
                 blockReasonHint = "explicit-block";
               } else if (!hasResolvedPeer) {
-                if (peerState === "implicit-blocked" || Boolean(cfg?.synthetic)) {
+                if (peerState === "implicit-blocked" || Boolean(normalizedInbound?.synthetic)) {
                   blockReasonHint = "implicit-block";
                 }
               }
             }
 
             return {
-              config: cfg,
+              config: normalizedInbound,
               edgeFrom: remoteId,
               edgeTo: oappId,
               peerInfo: peerDetails,
-              peerRaw: peerDetails?.rawPeer ?? cfg?.peer ?? null,
-              peerLocalEid: remoteLocalEid ?? null,
+              peerRaw: peerDetails?.rawPeer ?? normalizedInbound?.peer ?? null,
+              peerLocalEid: remoteLocalEid ?? peerDetails?.localEid ?? null,
               queueNext: remoteId,
               isStalePeer,
               blockReasonHint,
               isOutbound: false,
-              peerStateHint: cfg?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
-              libraryStatus: cfg?.libraryStatus ?? null,
-              synthetic: Boolean(cfg?.synthetic),
+              peerStateHint:
+                normalizedInbound?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
+              libraryStatus: normalizedInbound?.libraryStatus ?? null,
+              synthetic: Boolean(normalizedInbound?.synthetic),
             };
           });
 
@@ -615,77 +643,49 @@ export class SecurityGraphCrawler {
     };
   }
 
-  derivePeer(config) {
+  buildPeerInfo(config) {
     if (!config) {
       return null;
     }
 
     const rawPeer = config.peer ?? null;
     const peerStateHint = config.peerStateHint ?? null;
-    const normalizedRaw = AddressUtils.normalizeSafe(rawPeer);
+    const normalizedPeer = AddressUtils.normalizeSafe(rawPeer);
+    const peerOappId = config.peerOappId ?? null;
 
-    const explicitZero = AddressUtils.isZero(normalizedRaw);
-    const isImplicitBlock =
-      peerStateHint === "implicit-blocked" || peerStateHint === "not-configured";
+    let derivedLocalEid = null;
+    let derivedAddress = null;
+    if (peerOappId) {
+      const parsed = splitOAppId(peerOappId);
+      derivedLocalEid = parsed.localEid ?? null;
+      derivedAddress = parsed.address ?? null;
+    } else if (config.peerLocalEid !== undefined && config.peerLocalEid !== null) {
+      derivedLocalEid = String(config.peerLocalEid);
+    } else if (config.eid !== undefined && config.eid !== null) {
+      derivedLocalEid = String(config.eid);
+    } else if (config.localEid !== undefined && config.localEid !== null) {
+      derivedLocalEid = String(config.localEid);
+    }
+
     const isExplicitBlock = peerStateHint === "explicit-blocked";
-    const isZeroPeer = explicitZero || isExplicitBlock || isImplicitBlock;
+    const isImplicitBlock = peerStateHint === "implicit-blocked";
+    const isZeroPeer =
+      AddressUtils.isZero(normalizedPeer) ||
+      isExplicitBlock ||
+      isImplicitBlock ||
+      (!rawPeer && isImplicitBlock);
 
-    const eid =
-      config.eid !== undefined && config.eid !== null
-        ? String(config.eid)
-        : config.localEid !== undefined && config.localEid !== null
-          ? String(config.localEid)
-          : null;
-
-    if (isZeroPeer || (!rawPeer && isImplicitBlock)) {
-      return {
-        rawPeer,
-        localEid: eid,
-        address: null,
-        oappId: null,
-        resolved: false,
-        isZeroPeer: true,
-        peerStateHint: peerStateHint ?? (explicitZero ? "explicit-blocked" : "implicit-blocked"),
-      };
-    }
-
-    const peerOappId = config.peerOappId || null;
-    if (!peerOappId) {
-      if (!rawPeer) {
-        return null;
-      }
-      return {
-        rawPeer,
-        localEid: eid,
-        address: AddressUtils.normalizeSafe(rawPeer),
-        oappId: null,
-        resolved: false,
-        isZeroPeer: false,
-        peerStateHint: peerStateHint ?? null,
-      };
-    }
-
-    const { localEid: peerLocalEid, address } = splitOAppId(peerOappId);
-    if (AddressUtils.isZero(address)) {
-      return {
-        rawPeer,
-        localEid: peerLocalEid || eid,
-        address: null,
-        oappId: null,
-        resolved: false,
-        isZeroPeer: true,
-        peerStateHint: peerStateHint ?? "explicit-blocked",
-      };
-    }
+    const resolved = Boolean(peerOappId && derivedAddress);
 
     return {
       rawPeer,
-      localEid: peerLocalEid || null,
-      address: address || null,
-      oappId: address ? peerOappId : null,
-      resolved: Boolean(address),
-      isZeroPeer: false,
-      peerStateHint: peerStateHint ?? null,
+      normalizedPeer,
+      localEid: derivedLocalEid,
+      address: resolved ? derivedAddress : null,
+      oappId: resolved ? peerOappId : null,
+      resolved,
+      isZeroPeer,
+      peerStateHint,
     };
   }
 
