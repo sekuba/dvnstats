@@ -104,7 +104,7 @@ export class ResultsView {
     this.resultsBody.classList.remove("empty");
     this.resultsBody.innerHTML = "";
 
-    const { SecurityGraphView } = await import("../../graph.js");
+    const { SecurityGraphView } = await import("../../graph/SecurityGraphView.js");
     const renderer = new SecurityGraphView({
       getOAppAlias: (oappId) => this.aliasStore.get(oappId),
       getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
