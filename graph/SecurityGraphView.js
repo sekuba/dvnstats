@@ -3,6 +3,7 @@
  */
 
 import { APP_CONFIG } from "../config.js";
+import { AddressUtils } from "../utils/AddressUtils.js";
 import { GraphAnalyzer } from "./GraphAnalyzer.js";
 import { GraphLayout } from "./GraphLayout.js";
 import { GraphInteractions } from "./GraphInteractions.js";
@@ -26,9 +27,6 @@ export class SecurityGraphView {
     this.columnSpacing = APP_CONFIG.GRAPH_VISUAL.COLUMN_SPACING;
     this.maxNodesPerColumn = APP_CONFIG.GRAPH_VISUAL.MAX_NODES_PER_COLUMN;
     this.maxColumns = APP_CONFIG.GRAPH_VISUAL.MAX_COLUMNS;
-    this.deadAddress = APP_CONFIG.ADDRESSES.DEAD;
-    this.zeroPeer = APP_CONFIG.ADDRESSES.ZERO_PEER;
-    this.zeroAddress = APP_CONFIG.ADDRESSES.ZERO;
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.getChainDisplayLabel =
       typeof getChainDisplayLabel === "function" ? getChainDisplayLabel : () => "";
@@ -37,9 +35,6 @@ export class SecurityGraphView {
 
     // Initialize components
     this.analyzer = new GraphAnalyzer({
-      deadAddress: this.deadAddress,
-      zeroPeer: this.zeroPeer,
-      zeroAddress: this.zeroAddress,
       getChainDisplayLabel: this.getChainDisplayLabel,
     });
 
@@ -57,7 +52,6 @@ export class SecurityGraphView {
     this.edgeRenderer = new EdgeRenderer();
     this.nodeRenderer = new NodeRenderer({
       nodeRadius: this.nodeRadius,
-      zeroAddress: this.zeroAddress,
       getOAppAlias: this.getOAppAlias,
       formatChainLabel: this.formatChainLabel.bind(this),
       getNodeSecurityMetrics: this.analyzer.getNodeSecurityMetrics.bind(this.analyzer),
@@ -68,8 +62,6 @@ export class SecurityGraphView {
       getOAppAlias: this.getOAppAlias,
       formatChainLabel: this.formatChainLabel.bind(this),
       areStringArraysEqual: this.analyzer.areStringArraysEqual.bind(this.analyzer),
-      zeroAddress: this.zeroAddress,
-      zeroPeer: this.zeroPeer,
       requestUniformAlias: this.requestUniformAlias,
     });
   }

@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "./config.js";
 import { ChainDirectory, HasuraClient } from "./core.js";
+import { AddressUtils } from "./utils/AddressUtils.js";
 import { AliasStore, QueryCoordinator, ResultsView, ToastQueue } from "./ui.js";
 
 class DashboardApp {
@@ -385,11 +386,7 @@ class DashboardApp {
   }
 
   sanitizeAliasTargets(input) {
-    const zeroAddrs = new Set(
-      [APP_CONFIG.ADDRESSES.ZERO, APP_CONFIG.ADDRESSES.ZERO_PEER]
-        .filter(Boolean)
-        .map((v) => String(v).toLowerCase()),
-    );
+    const zeroAddrs = new Set([AddressUtils.constants.ZERO, AddressUtils.constants.ZERO_PEER]);
     const seen = new Set();
     const result = [];
 

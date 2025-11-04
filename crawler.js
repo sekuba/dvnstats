@@ -1,10 +1,7 @@
 import { APP_CONFIG } from "./config.js";
 import { splitOAppId, normalizeKey } from "./core.js";
+import { AddressUtils } from "./utils/AddressUtils.js";
 import { resolveOAppSecurityConfigs } from "./resolver.js";
-
-const ZERO_PEER_HEX = APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase();
-const ZERO_ADDRESS_HEX = APP_CONFIG.ADDRESSES.ZERO.toLowerCase();
-const DEAD_ADDRESS_HEX = APP_CONFIG.ADDRESSES.DEAD.toLowerCase();
 
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
@@ -218,7 +215,7 @@ export class SecurityGraphCrawler {
           if (!isBlockingFallback || securityEntry.peerOAppId) {
             let edgeFromId = securityEntry.peerOAppId;
             if (!edgeFromId && securityEntry.peerLocalEid) {
-              edgeFromId = `${securityEntry.peerLocalEid}_${ZERO_ADDRESS_HEX}`;
+              edgeFromId = `${securityEntry.peerLocalEid}_${AddressUtils.constants.ZERO}`;
             }
 
             const context = {
@@ -257,10 +254,8 @@ export class SecurityGraphCrawler {
                 (c) => normalizeKey(c.srcEid) === normalizeKey(remoteLocalEid),
               );
               if (ourConfigForThisSrc) {
-                const ourPeerAddress = ourConfigForThisSrc.peerAddress
-                  ? String(ourConfigForThisSrc.peerAddress).toLowerCase()
-                  : null;
-                const remoteAddr = remoteAddress ? String(remoteAddress).toLowerCase() : null;
+                const ourPeerAddress = AddressUtils.normalizeSafe(ourConfigForThisSrc.peerAddress);
+                const remoteAddr = AddressUtils.normalizeSafe(remoteAddress);
                 const ourPeerState = ourConfigForThisSrc.peerStateHint ?? null;
 
                 if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
@@ -646,9 +641,9 @@ export class SecurityGraphCrawler {
 
     const rawPeer = config.peer ?? null;
     const peerStateHint = config.peerStateHint ?? null;
-    const normalizedRaw = rawPeer ? String(rawPeer).toLowerCase() : null;
+    const normalizedRaw = AddressUtils.normalizeSafe(rawPeer);
 
-    const explicitZero = normalizedRaw === ZERO_PEER_HEX || normalizedRaw === ZERO_ADDRESS_HEX;
+    const explicitZero = AddressUtils.isZero(normalizedRaw);
     const isImplicitBlock =
       peerStateHint === "implicit-blocked" || peerStateHint === "not-configured";
     const isExplicitBlock = peerStateHint === "explicit-blocked";
@@ -681,7 +676,7 @@ export class SecurityGraphCrawler {
       return {
         rawPeer,
         localEid: eid,
-        address: rawPeer ? String(rawPeer).toLowerCase() : null,
+        address: AddressUtils.normalizeSafe(rawPeer),
         oappId: null,
         resolved: false,
         isZeroPeer: false,
@@ -690,7 +685,7 @@ export class SecurityGraphCrawler {
     }
 
     const { localEid: peerLocalEid, address } = splitOAppId(peerOappId);
-    if (address && address.toLowerCase() === ZERO_ADDRESS_HEX) {
+    if (AddressUtils.isZero(address)) {
       return {
         rawPeer,
         localEid: peerLocalEid || eid,
@@ -732,13 +727,9 @@ export class SecurityGraphCrawler {
     }
 
     if (synthetic) {
-      const normalizeAddress = (addr) =>
-        addr === undefined || addr === null ? null : String(addr).toLowerCase();
       const required = Array.isArray(entry.requiredDVNs) ? entry.requiredDVNs : [];
       const optional = Array.isArray(entry.optionalDVNs) ? entry.optionalDVNs : [];
-      const hasBlockingDvn = [...required, ...optional].some(
-        (addr) => normalizeAddress(addr) === DEAD_ADDRESS_HEX,
-      );
+      const hasBlockingDvn = [...required, ...optional].some((addr) => AddressUtils.isDead(addr));
 
       if (!entry.peerOAppId) {
         if (peerState === "explicit-blocked") {

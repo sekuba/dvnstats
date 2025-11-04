@@ -3,12 +3,10 @@
  */
 
 import { APP_CONFIG } from "../config.js";
+import { AddressUtils } from "../utils/AddressUtils.js";
 
 export class GraphAnalyzer {
-  constructor({ deadAddress, zeroPeer, zeroAddress, getChainDisplayLabel }) {
-    this.deadAddress = deadAddress || APP_CONFIG.ADDRESSES.DEAD;
-    this.zeroPeer = zeroPeer || APP_CONFIG.ADDRESSES.ZERO_PEER;
-    this.zeroAddress = zeroAddress || APP_CONFIG.ADDRESSES.ZERO;
+  constructor({ getChainDisplayLabel }) {
     this.getChainDisplayLabel =
       typeof getChainDisplayLabel === "function" ? getChainDisplayLabel : () => "";
   }
@@ -115,8 +113,8 @@ export class GraphAnalyzer {
 
       if (!isBlocked) {
         const fromId = typeof edge.from === "string" ? edge.from : "";
-        const fromAddress = (fromId.split("_").at(-1) || "").toLowerCase();
-        if (fromAddress === this.zeroAddress.toLowerCase()) {
+        const fromAddress = fromId.split("_").at(-1) || "";
+        if (AddressUtils.isZero(fromAddress)) {
           isBlocked = true;
           if (!blockReason) {
             blockReason = "implicit-block";
@@ -393,7 +391,7 @@ export class GraphAnalyzer {
   }
 
   isDeadAddress(address) {
-    return String(address).toLowerCase() === this.deadAddress.toLowerCase();
+    return AddressUtils.isDead(address);
   }
 
   isBlockingDvnLabel(label) {
@@ -416,11 +414,7 @@ export class GraphAnalyzer {
   }
 
   isZeroPeer(peerAddress) {
-    if (peerAddress === null || peerAddress === undefined) {
-      return false;
-    }
-    const value = String(peerAddress).toLowerCase();
-    return value === this.zeroPeer.toLowerCase() || value === this.zeroAddress.toLowerCase();
+    return AddressUtils.isZero(peerAddress);
   }
 
   findBlockedNodes(nodes, edgeSecurityInfo) {

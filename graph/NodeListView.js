@@ -2,17 +2,11 @@
  * Node List View - Detailed node table with security metrics
  */
 
+import { AddressUtils } from "../utils/AddressUtils.js";
 import { shortenAddress, appendSummaryRow, describeCombination } from "./utils.js";
 
 export class NodeListView {
-  constructor({
-    getOAppAlias,
-    formatChainLabel,
-    areStringArraysEqual,
-    zeroAddress,
-    zeroPeer,
-    requestUniformAlias,
-  }) {
+  constructor({ getOAppAlias, formatChainLabel, areStringArraysEqual, requestUniformAlias }) {
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.formatChainLabel = typeof formatChainLabel === "function" ? formatChainLabel : () => "";
     this.areStringArraysEqual =
@@ -20,8 +14,6 @@ export class NodeListView {
     this.shortenAddress = shortenAddress;
     this.appendSummaryRow = appendSummaryRow;
     this.describeCombination = describeCombination;
-    this.zeroAddress = zeroAddress;
-    this.zeroPeer = zeroPeer;
     this.requestUniformAlias = requestUniformAlias;
   }
 
@@ -319,11 +311,10 @@ export class NodeListView {
     nodeMetrics.forEach((metric) => metricsById.set(metric.id, metric));
 
     if (this.requestUniformAlias && nodeMetrics.length) {
-      const zeroAddresses = new Set(
-        [this.zeroAddress, this.zeroPeer]
-          .filter(Boolean)
-          .map((value) => String(value).toLowerCase()),
-      );
+      const zeroAddresses = new Set([
+        AddressUtils.constants.ZERO,
+        AddressUtils.constants.ZERO_PEER,
+      ]);
       const renameTargets = [];
       const seenRenameTargets = new Set();
 
@@ -340,16 +331,14 @@ export class NodeListView {
           continue;
         }
         const rawAddr = parts[parts.length - 1];
-        const addr = rawAddr ? String(rawAddr).toLowerCase() : "";
+        const addr = AddressUtils.normalizeSafe(rawAddr) || "";
         if (!addr.startsWith("0x")) {
           continue;
         }
         if (zeroAddresses.has(addr)) {
           continue;
         }
-        const nodeAddr = String(metric.node?.address || "")
-          .toLowerCase()
-          .trim();
+        const nodeAddr = AddressUtils.normalizeSafe(metric.node?.address) || "";
         if (zeroAddresses.has(nodeAddr)) {
           continue;
         }

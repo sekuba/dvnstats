@@ -1,4 +1,5 @@
 import { isZeroAddress, normalizeKey } from "./core.js";
+import { AddressUtils } from "./utils/AddressUtils.js";
 import { getTrackedReceiveLibrary } from "./trackedLibraries.js";
 import { APP_CONFIG } from "./config.js";
 
@@ -145,8 +146,8 @@ function buildSyntheticRow({
   const syntheticId = `${SYNTHETIC_ID_PREFIX}${oappId}_${normalizedEid}`;
 
   // Determine effective library
-  const defaultLibraryAddress = normalizeAddressSafe(defaultLibrary?.library);
-  const overrideLibraryAddress = normalizeAddressSafe(overrideLibrary?.library);
+  const defaultLibraryAddress = AddressUtils.normalizeSafe(defaultLibrary?.library);
+  const overrideLibraryAddress = AddressUtils.normalizeSafe(overrideLibrary?.library);
   const effectiveReceiveLibrary =
     overrideLibraryAddress && !isZeroAddress(overrideLibraryAddress)
       ? overrideLibraryAddress
@@ -199,7 +200,7 @@ function buildSyntheticRow({
   }
 
   if (!peerOappId && peer && !isZeroAddress(peer)) {
-    peerOappId = `${normalizedEid}_${peer.toLowerCase()}`;
+    peerOappId = `${normalizedEid}_${AddressUtils.normalizeSafe(peer)}`;
   }
 
   return {
@@ -377,17 +378,12 @@ function buildMap(list, keySelector) {
   return map;
 }
 
-function normalizeAddressSafe(address) {
-  if (!address) return null;
-  return String(address).toLowerCase();
-}
-
 function dedupeAddresses(addresses) {
   const seen = new Set();
   const result = [];
   for (const address of addresses) {
     if (!address) continue;
-    const normalized = normalizeAddressSafe(address);
+    const normalized = AddressUtils.normalizeSafe(address);
     if (!normalized || isZeroAddress(normalized) || seen.has(normalized)) {
       continue;
     }
