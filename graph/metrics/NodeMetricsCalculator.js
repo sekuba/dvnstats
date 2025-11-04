@@ -91,6 +91,8 @@ export class NodeMetricsCalculator {
           blockReasonSet.add("Dead DVN");
         } else if (edge.blockReason === "blocking-dvn") {
           blockReasonSet.add("Blocking DVN");
+        } else if (edge.blockReason === "missing-library") {
+          blockReasonSet.add("Missing default receive library");
         } else {
           blockReasonSet.add("Blocked route");
         }
@@ -190,6 +192,12 @@ export class NodeMetricsCalculator {
             libraryStatus: cfg.libraryStatus ?? "unknown",
             peerStateHint: cfg.peerStateHint ?? null,
             synthetic: Boolean(cfg.synthetic),
+            usesDefaultLibrary: cfg.usesDefaultLibrary !== false,
+            effectiveReceiveLibrary: cfg.effectiveReceiveLibrary || null,
+            defaultLibraryVersionId:
+              cfg.defaultLibraryVersionId !== undefined ? cfg.defaultLibraryVersionId : null,
+            libraryOverrideVersionId:
+              cfg.libraryOverrideVersionId !== undefined ? cfg.libraryOverrideVersionId : null,
           };
         })
         .filter(Boolean);
