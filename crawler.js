@@ -14,6 +14,19 @@ import { AddressUtils } from "./utils/AddressUtils.js";
 import { resolveDvnLabels } from "./utils/DvnUtils.js";
 import { createRouteStatsMap } from "./utils/MetricsUtils.js";
 
+const sanitizePeerOAppId = (value) => {
+  if (!value) {
+    return null;
+  }
+  const str = String(value);
+  const underscoreIndex = str.indexOf("_");
+  if (underscoreIndex === -1) {
+    return AddressUtils.isZero(str) ? null : str;
+  }
+  const addressPart = str.slice(underscoreIndex + 1);
+  return AddressUtils.isZero(addressPart) ? null : str;
+};
+
 export class SecurityGraphCrawler {
   constructor(client, chainMetadata) {
     this.client = client;
@@ -186,6 +199,10 @@ export class SecurityGraphCrawler {
               !peerDetails?.oappId && !(peerDetails && peerDetails.isZeroPeer) && !cfg.peerOappId,
           };
 
+          const sanitizedPeerOAppId = sanitizePeerOAppId(securityEntry.peerOAppId);
+          securityEntry.peerOAppId = sanitizedPeerOAppId ?? undefined;
+          securityEntry.peerOappId = sanitizedPeerOAppId ?? undefined;
+
           if (!shouldIncludeSecurityEntry(securityEntry)) {
             continue;
           }
@@ -205,6 +222,8 @@ export class SecurityGraphCrawler {
               edgeFromId = `${securityEntry.peerLocalEid}_${AddressUtils.constants.ZERO}`;
             }
 
+            const queueNextId = sanitizePeerOAppId(securityEntry.peerOAppId);
+
             const context = {
               config: securityEntry,
               edgeFrom: edgeFromId,
@@ -212,7 +231,7 @@ export class SecurityGraphCrawler {
               peerInfo: peerDetails,
               peerRaw: peerDetails?.rawPeer ?? cfg?.peer ?? null,
               peerLocalEid: securityEntry.peerLocalEid,
-              queueNext: securityEntry.peerOAppId,
+              queueNext: queueNextId,
               isOutbound: true,
               peerStateHint: securityEntry.peerStateHint ?? peerDetails?.peerStateHint ?? null,
               routeMetric,
@@ -228,12 +247,21 @@ export class SecurityGraphCrawler {
         }
 
         const inboundContexts = inboundConfigs
-          .filter((cfg) => cfg?.oappId && cfg.oappId !== oappId)
           .map((cfg) => {
-            const remoteId = cfg.oappId;
-            const { localEid: remoteLocalEid, address: remoteAddress } = splitOAppId(remoteId);
+            if (!cfg?.oappId || cfg.oappId === oappId) {
+              return null;
+            }
 
-            const remotePeerRecords = batchData.peerRecordsByOapp.get(remoteId) ?? null;
+            const sanitizedInboundOAppId = sanitizePeerOAppId(cfg.oappId);
+            if (!sanitizedInboundOAppId) {
+              return null;
+            }
+
+            const { localEid: remoteLocalEid, address: remoteAddress } =
+              splitOAppId(sanitizedInboundOAppId);
+
+            const remotePeerRecords =
+              batchData.peerRecordsByOapp.get(sanitizedInboundOAppId) ?? null;
             const peerRecordKey = normalizeKey(cfg?.eid);
             const peerRecord =
               (remotePeerRecords && peerRecordKey ? remotePeerRecords.get(peerRecordKey) : null) ??
@@ -244,13 +272,16 @@ export class SecurityGraphCrawler {
               eid: cfg.eid,
               config: cfg,
               peerRecord,
-              oappId: cfg.oappId,
+              oappId: sanitizedInboundOAppId,
               oappAddress: cfg.oapp,
               localEid: cfg.localEid,
             });
             const normalizedInbound =
               normalizedInboundRaw && normalizedInboundRaw.peerOappId !== undefined
-                ? { ...normalizedInboundRaw, peerOAppId: normalizedInboundRaw.peerOappId }
+                ? {
+                    ...normalizedInboundRaw,
+                    peerOAppId: sanitizePeerOAppId(normalizedInboundRaw.peerOAppId),
+                  }
                 : normalizedInboundRaw;
 
             const peerDetails = buildPeerInfo(normalizedInbound);
@@ -300,12 +331,12 @@ export class SecurityGraphCrawler {
 
             return {
               config: normalizedInbound,
-              edgeFrom: remoteId,
+              edgeFrom: sanitizedInboundOAppId,
               edgeTo: oappId,
               peerInfo: peerDetails,
               peerRaw: peerDetails?.rawPeer ?? normalizedInbound?.peer ?? null,
               peerLocalEid: remoteLocalEid ?? peerDetails?.localEid ?? null,
-              queueNext: remoteId,
+              queueNext: sanitizedInboundOAppId,
               isStalePeer,
               blockReasonHint,
               isOutbound: false,
@@ -313,7 +344,8 @@ export class SecurityGraphCrawler {
               libraryStatus: normalizedInbound?.libraryStatus ?? null,
               synthetic: Boolean(normalizedInbound?.synthetic),
             };
-          });
+          })
+          .filter(Boolean);
 
         nodes.set(oappId, node);
 

@@ -110,9 +110,96 @@ export class NodeRenderer {
       title.textContent = nodeTooltipText;
       circle.appendChild(title);
 
+      const buildTooltipContent = () => ({
+        title: nodeTooltipText,
+        render: (root) => {
+          const divider = document.createElement("hr");
+          divider.style.margin = "8px 0";
+          divider.style.border = "none";
+          divider.style.borderTop = "1px solid var(--ink)";
+          divider.style.opacity = "0.2";
+          root.appendChild(divider);
+
+          const form = document.createElement("form");
+          form.className = "node-connection-form";
+          form.style.display = "flex";
+          form.style.flexDirection = "column";
+          form.style.gap = "4px";
+
+          const label = document.createElement("label");
+          label.textContent = "Show path to OApp ID";
+          label.style.fontSize = "11px";
+          label.style.fontWeight = "600";
+          form.appendChild(label);
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.placeholder = "Paste OApp ID and press Enter";
+          input.style.fontFamily = "monospace";
+          input.style.fontSize = "12px";
+          input.style.padding = "4px 6px";
+          input.style.border = "1px solid var(--ink)";
+          input.style.borderRadius = "4px";
+          input.style.width = "100%";
+          form.appendChild(input);
+
+          const status = document.createElement("div");
+          status.className = "node-connection-status";
+          status.style.display = "none";
+          status.style.fontSize = "11px";
+          status.style.marginTop = "2px";
+
+          const setStatus = (message, tone = "info") => {
+            status.textContent = message;
+            status.style.display = "";
+            if (tone === "success") {
+              status.style.color = "var(--success, #1a7f37)";
+            } else if (tone === "error") {
+              status.style.color = "var(--danger, #b3261e)";
+            } else {
+              status.style.color = "var(--ink)";
+            }
+          };
+
+          form.addEventListener("submit", (evt) => {
+            evt.preventDefault();
+            const targetId = input.value.trim();
+            if (!targetId) {
+              setStatus("Enter an OApp ID to inspect the connecting path.", "error");
+              return;
+            }
+            const result = updateVisibility(node.id, {
+              targetNodeId: targetId,
+              onSuccess: (path) => {
+                const hops = Math.max(0, path.length - 1);
+                const hopLabel = hops === 1 ? "hop" : "hops";
+                setStatus(`Showing connection (${hops} ${hopLabel}).`, "success");
+              },
+              onFail: (message) => {
+                setStatus(message || "No connecting path found.", "error");
+              },
+            });
+            if (!result) {
+              // updateVisibility already handled status via onFail, but ensure we surface something
+              if (status.style.display === "none") {
+                setStatus("Unable to resolve a connecting path.", "error");
+              }
+            }
+          });
+
+          root.appendChild(form);
+          root.appendChild(status);
+
+          setTimeout(() => {
+            input.focus();
+            input.select();
+          }, 0);
+        },
+      });
+
       circle.addEventListener("click", (e) => {
         e.stopPropagation();
-        showPersistentTooltip(nodeTooltipText, e.pageX + 10, e.pageY + 10);
+        showPersistentTooltip(buildTooltipContent(), e.pageX + 10, e.pageY + 10);
         if (updateVisibility) {
           updateVisibility(node.id);
         }

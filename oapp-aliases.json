@@ -478,5 +478,109 @@
   "30181_0x0be393dc46248e4285dc5caca3084bc7e9bfbb41": {
     "name": "USDY token",
     "addButton": false
+  },
+  "30184_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30101_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": true
+  },
+  "30102_0x389ad4bb96d0d6ee5b6ef0efaf4b7db0ba2e02a0": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30110_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30109_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30111_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30214_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30145_0x0fc2a55d5bd13033f1ee0cdd11f60f7efe66f467": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30168_0xd68ee7ebdcd0a42955814a4f689434ff4ee42f1b035507e99e80ea2d59eb8f07": {
+    "name": "LA token",
+    "addButton": false
+  },
+  "30101_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": true
+  },
+  "30184_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30320_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30340_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30102_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30111_0xc3f854b2970f8727d28527ece33176fac67fef48": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30367_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30106_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30108_0xef3a1c7d6aa1a531336433e48d7b1d9b46c5bedc69f3db291df4e39bef4708e2": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30199_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30279_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30280_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30316_0xd7d4d91d64a6061fa00a94e2b3a2d2a5fb677849": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30332_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30335_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30336_0x717dae2baf7656be9a9b01dee31d571a9d4c9579": {
+    "name": "WBTC token",
+    "addButton": false
+  },
+  "30362_0x0555e30da8f98308edb960aa94c0db47230d2b9c": {
+    "name": "WBTC token",
+    "addButton": false
   }
 }

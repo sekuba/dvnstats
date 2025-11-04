@@ -5,6 +5,19 @@ import {
   enrichRouteStatsWithShares,
 } from "../../utils/MetricsUtils.js";
 
+const ZERO_ADDRESS = AddressUtils.constants.ZERO;
+
+const isZeroOAppId = (value) => {
+  if (!value || typeof value !== "string") {
+    return false;
+  }
+  const [, addressPart] = value.split("_");
+  if (!addressPart) {
+    return false;
+  }
+  return addressPart.toLowerCase() === ZERO_ADDRESS;
+};
+
 export function buildPeerInfo(config) {
   if (!config) {
     return null;
@@ -13,7 +26,7 @@ export function buildPeerInfo(config) {
   const rawPeer = config.peer ?? null;
   const peerStateHint = config.peerStateHint ?? null;
   const normalizedPeer = AddressUtils.normalizeSafe(rawPeer);
-  const peerOappId = config.peerOappId ?? null;
+  let peerOappId = config.peerOappId ?? null;
 
   let derivedLocalEid = null;
   let derivedAddress = null;
@@ -36,6 +49,11 @@ export function buildPeerInfo(config) {
     isExplicitBlock ||
     isImplicitBlock ||
     (!rawPeer && isImplicitBlock);
+
+  if (derivedAddress && AddressUtils.isZero(derivedAddress)) {
+    derivedAddress = null;
+    peerOappId = null;
+  }
 
   const resolved = Boolean(peerOappId && derivedAddress);
 
@@ -334,7 +352,13 @@ export function addPeerEdges({
     }
 
     const nextId = context.queueNext;
-    if (nextId && depth < maxDepth && !visited.has(nextId) && !pending.has(nextId)) {
+    if (
+      nextId &&
+      !isZeroOAppId(nextId) &&
+      depth < maxDepth &&
+      !visited.has(nextId) &&
+      !pending.has(nextId)
+    ) {
       queue.push({ oappId: nextId, depth: depth + 1 });
       pending.add(nextId);
     }
