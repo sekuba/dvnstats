@@ -71,13 +71,10 @@ export function formatChainLabel(chainId, chainMetadata, options = {}) {
   const { stripEid = false, addEidPrefix = false } = options;
   let display = getChainDisplayLabel(chainId, chainMetadata);
 
-  // Strip the EID number in parentheses for cleaner display
   if (stripEid && display) {
     display = display.replace(/\s*\(\d+\)$/, "");
   }
 
-  // If we got the original chainId back, it means no metadata was found
-  // Apply EID prefix formatting if requested
   if (addEidPrefix && display === String(chainId)) {
     const str = String(chainId);
     if (str.startsWith("eid-")) {

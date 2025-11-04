@@ -87,7 +87,6 @@ export class AddressUtils {
     try {
       return this.normalize(address, { allowNull: true });
     } catch {
-      // If normalization fails, return lowercase version as fallback
       return String(address).toLowerCase();
     }
   }

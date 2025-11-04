@@ -136,7 +136,6 @@ export class NodeRenderer {
 
       nodeGroup.appendChild(circle);
 
-      // Chain label
       const chainDisplaySource =
         node.localEid ?? (typeof node.id === "string" ? node.id.split("_")[0] : "unknown");
       let chainDisplayLabel =

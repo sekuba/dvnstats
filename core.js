@@ -185,7 +185,6 @@ export class ChainDirectory {
   }
 }
 
-// Re-exported from ChainUtils for backward compatibility
 export function resolveChainDisplayLabel(chainMetadata, chainId) {
   return _resolveChainDisplayLabel(chainMetadata, chainId);
 }

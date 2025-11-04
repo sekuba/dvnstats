@@ -142,10 +142,8 @@ export class GraphInteractions {
    * Clear all tooltips from the DOM
    */
   clearAllTooltips() {
-    // Remove all persistent tooltips from DOM
     document.querySelectorAll(".persistent-tooltip").forEach((el) => el.remove());
 
-    // Clean up previous handlers if they exist
     if (this.cleanupTooltipHandlers) {
       this.cleanupTooltipHandlers();
       this.cleanupTooltipHandlers = null;

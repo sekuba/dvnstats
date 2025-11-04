@@ -1105,7 +1105,6 @@ export class NodeListView {
     const edgesCell = document.createElement("td");
     edgesCell.className = "edges-cell";
 
-    // Main count display
     const edgeCount = document.createElement("div");
     edgeCount.className = "edge-count";
     const edgeParts = [`${metric.activeIncomingCount} active`];
