@@ -11,10 +11,7 @@ import {
   stringifyScalar,
   resolveChainDisplayLabel,
 } from "../../core.js";
-import {
-  createFormattedCell,
-  formatRouteActivityLine,
-} from "../../formatters/cellFormatters.js";
+import { createFormattedCell, formatRouteActivityLine } from "../../formatters/cellFormatters.js";
 
 export class ResultsView {
   constructor(

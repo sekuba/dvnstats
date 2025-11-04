@@ -16,9 +16,7 @@ export function createFormattedCell(lines, copyValue, meta = {}) {
   const normalizedLines = Array.isArray(lines) ? lines : [lines];
   return {
     __formatted: true,
-    lines: normalizedLines.map((line) =>
-      line === null || line === undefined ? "" : String(line),
-    ),
+    lines: normalizedLines.map((line) => (line === null || line === undefined ? "" : String(line))),
     copyValue,
     meta,
     highlight: meta.highlight || false,

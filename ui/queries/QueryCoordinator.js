@@ -779,7 +779,6 @@ export class QueryCoordinator {
     };
   }
 
-
   identifyBlockingReasons(row, meta) {
     const reasons = [];
     const seenTypes = new Set();

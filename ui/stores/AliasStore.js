@@ -85,7 +85,7 @@ export class AliasStore {
         aliasName =
           rawValue.name !== undefined && rawValue.name !== null
             ? rawValue.name
-            : rawValue.alias ?? null;
+            : (rawValue.alias ?? null);
         addButton = rawValue.addButton === true;
       } else {
         return;
