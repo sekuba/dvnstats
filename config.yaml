@@ -20,6 +20,7 @@ contracts:
   - event: RateLimitsChanged((uint32,uint256,uint256)[] rateLimitConfigs) # event RateLimitsChanged(tuple(uint32 dstEid, uint256 limit, uint256 window)[] rateLimitConfigs)
 networks:
 - id: 1
+  rpc_url: ${ETHEREUM_RPC_URL}
   start_block: 0
   contracts:
   - name: EndpointV2
@@ -50,6 +51,7 @@ networks:
     - 0xB217266c3A98C8B2709Ee26836C98cf12f6cCEC1
   - name: OAppOFT
 - id: 130
+  rpc_url: ${UNICHAIN_RPC_URL}
   start_block: 0
   contracts:
   - name: EndpointV2
@@ -150,6 +152,7 @@ networks:
     - 0x7B9E184e07a6EE1aC23eAe0fe8D6Be2f663f05e6
   - name: OAppOFT
 - id: 57073
+  rpc_url: ${INK_RPC_URL}
   start_block: 0
   contracts:
   - name: EndpointV2
@@ -160,6 +163,7 @@ networks:
     - 0x473132bb594caEF281c68718F4541f73FE14Dc89
   - name: OAppOFT
 - id: 59144
+  rpc_url: ${LINEA_RPC_URL}
   start_block: 0
   contracts:
   - name: EndpointV2
@@ -170,6 +174,7 @@ networks:
     - 0xE22ED54177CE1148C557de74E4873619e6c6b205
   - name: OAppOFT
 - id: 81457
+  rpc_url: ${BLAST_RPC_URL}
   start_block: 0
   contracts:
   - name: EndpointV2
@@ -180,6 +185,7 @@ networks:
     - 0x377530cdA84DFb2673bF4d145DCF0C4D7fdcB5b6
   - name: OAppOFT
 - id: 534352
+  rpc_url: ${SCROLL_RPC_URL}
   start_block: 0
   contracts:
   - name: EndpointV2
