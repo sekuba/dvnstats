@@ -1,6 +1,3 @@
-/**
- * Results renderer
- */
 
 import { APP_CONFIG } from "../../config.js";
 import { resolveChainDisplayLabel } from "../../core.js";
@@ -134,7 +131,7 @@ export class ResultsView {
       },
     });
 
-    // Set up recenter callback
+    
     renderer.onRecenter = (newCenterNodeId) => {
       this.renderGraph(webData, newCenterNodeId);
     };

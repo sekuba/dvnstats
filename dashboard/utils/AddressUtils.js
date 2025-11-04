@@ -5,29 +5,14 @@ const BYTES32_HEX_LENGTH = 64;
 const EVM_ADDRESS_HEX_LENGTH = 40;
 const HEX_BODY_REGEX = /^[0-9a-f]+$/i;
 
-/**
- * Pre-computed normalized address constants for fast comparison
- */
 const NORMALIZED_CONSTANTS = Object.freeze({
   ZERO: APP_CONFIG.ADDRESSES.ZERO.toLowerCase(),
   ZERO_PEER: APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase(),
   DEAD: APP_CONFIG.ADDRESSES.DEAD.toLowerCase(),
 });
 
-/**
- * Centralized address utilities for normalization, validation, and comparison
- */
 export class AddressUtils {
-  /**
-   * Normalize an address to a consistent format
-   *
-   * @param {string|null|undefined} address - The address to normalize
-   * @param {Object} options - Options for normalization
-   * @param {boolean} options.allowNull - If true, returns null for null/undefined input. If false, throws error.
-   * @returns {string|null} Normalized address
-   * @throws {Error} If address is invalid or empty (unless allowNull is true)
-   */
-  static normalize(address, options = {}) {
+    static normalize(address, options = {}) {
     const { allowNull = false } = options;
 
     if (address === undefined || address === null) {
@@ -74,13 +59,7 @@ export class AddressUtils {
     return lower;
   }
 
-  /**
-   * Null-safe address normalization - returns null for null/undefined/empty input
-   *
-   * @param {string|null|undefined} address - The address to normalize
-   * @returns {string|null} Normalized address or null
-   */
-  static normalizeSafe(address) {
+    static normalizeSafe(address) {
     if (!address) {
       return null;
     }
@@ -91,13 +70,7 @@ export class AddressUtils {
     }
   }
 
-  /**
-   * Check if an address is a zero address (either EVM or bytes32 format)
-   *
-   * @param {string|null|undefined} address - The address to check
-   * @returns {boolean} True if the address is a zero address
-   */
-  static isZero(address) {
+    static isZero(address) {
     if (!address) {
       return false;
     }
@@ -107,33 +80,18 @@ export class AddressUtils {
     );
   }
 
-  /**
-   * Check if an address is the dead address (0x...dead)
-   *
-   * @param {string|null|undefined} address - The address to check
-   * @returns {boolean} True if the address is the dead address
-   */
-  static isDead(address) {
+    static isDead(address) {
     if (!address) {
       return false;
     }
     return String(address).toLowerCase() === NORMALIZED_CONSTANTS.DEAD;
   }
 
-  /**
-   * Check if an address is either zero or dead
-   *
-   * @param {string|null|undefined} address - The address to check
-   * @returns {boolean} True if the address is zero or dead
-   */
-  static isZeroOrDead(address) {
+    static isZeroOrDead(address) {
     return this.isZero(address) || this.isDead(address);
   }
 
-  /**
-   * Get pre-computed normalized constants for fast comparison
-   */
-  static get constants() {
+    static get constants() {
     return NORMALIZED_CONSTANTS;
   }
 }

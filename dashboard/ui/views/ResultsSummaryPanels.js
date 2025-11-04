@@ -1,9 +1,5 @@
 import { formatTimestampValue } from "../../core.js";
 
-/**
- * Render the collection of summary panels shown above the results table.
- * Returns a DOM node containing zero or more panels, or null if nothing applies.
- */
 export function renderSummaryPanels(meta, { aliasStore, getChainDisplayLabel }) {
   if (!meta) {
     return null;

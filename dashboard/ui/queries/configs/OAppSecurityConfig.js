@@ -1,7 +1,3 @@
-/**
- * OApp Security Config Query Configuration
- * Resolve the current security posture for a single OApp
- */
 
 import { normalizeAddress, normalizeOAppId } from "../../../core.js";
 import { OAPP_SECURITY_CONFIG_QUERY } from "../../../queries/oappSecurityConfig.js";
@@ -42,7 +38,7 @@ export function createOAppSecurityConfig(coordinator) {
               idInput.value = normalized;
             }
           } catch (error) {
-            // ignore invalid input on blur
+            
           }
         });
       }

@@ -17,10 +17,6 @@ const FALLBACK_FIELD_ORDER = [
 
 const REQUIRED_DVN_SENTINEL = APP_CONFIG.SENTINEL_VALUES.REQUIRED_DVN_SENTINEL;
 
-/**
- * Normalize a security configuration row (materialized or synthetic) into the unified shape
- * expected by downstream renderers and crawlers.
- */
 export function normalizeSecurityConfig({
   eid,
   config,
@@ -75,9 +71,6 @@ export function normalizeSecurityConfig({
   });
 }
 
-/**
- * Determine the normalized peer state hint for a security config entry.
- */
 export function derivePeerStateHint(row, peerRecord, { isSynthetic = false } = {}) {
   if (row?.peerStateHint) {
     return row.peerStateHint;

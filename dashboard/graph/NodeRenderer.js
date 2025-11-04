@@ -1,6 +1,3 @@
-/**
- * Node Renderer - SVG node rendering with styling and interactions
- */
 
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
@@ -15,10 +12,7 @@ export class NodeRenderer {
     this.onRecenter = onRecenter;
   }
 
-  /**
-   * Render all nodes as SVG circles with labels
-   */
-  renderNodes(
+    renderNodes(
     svgNS,
     nodes,
     nodePositions,
@@ -56,7 +50,7 @@ export class NodeRenderer {
 
       let fillColor;
       if (isBlocked) {
-        // Grey color for nodes that cannot send packets to monitored nodes
+        
         fillColor = APP_CONFIG.GRAPH_COLORS.NODE_BLOCKED;
       } else if (node.isDangling) {
         fillColor = "none";
@@ -126,7 +120,7 @@ export class NodeRenderer {
         }
       });
 
-      // Add double-click handler to re-center on this node
+      
       circle.addEventListener("dblclick", (e) => {
         e.stopPropagation();
         if (this.onRecenter) {

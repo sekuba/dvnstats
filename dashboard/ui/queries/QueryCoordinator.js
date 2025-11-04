@@ -1,6 +1,3 @@
-/**
- * Manages queries and their execution
- */
 
 import { resolveChainDisplayLabel } from "../../core.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
@@ -22,7 +19,7 @@ export class QueryCoordinator {
     this.lastVariables = null;
     this.registry = null;
 
-    // Initialize formatters
+    
     this.securityConfigFormatter = new SecurityConfigFormatter(
       this.chainMetadata,
       this.aliasStore,

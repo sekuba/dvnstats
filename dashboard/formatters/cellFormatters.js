@@ -1,17 +1,6 @@
-/**
- * Cell Formatting Utilities
- * Functions for creating formatted cell objects and rendering cell content
- */
 
 import { formatInteger, formatPercent, formatTimestampValue } from "./valueFormatters.js";
 
-/**
- * Creates a formatted cell object with multiple lines and metadata
- * @param {Array<string>|string} lines - Lines to display in the cell
- * @param {string} copyValue - Value to copy when cell is clicked
- * @param {Object} meta - Metadata (highlight, oappId, localEid, meterPercent, etc.)
- * @returns {Object} - Formatted cell object with __formatted flag
- */
 export function createFormattedCell(lines, copyValue, meta = {}) {
   const normalizedLines = Array.isArray(lines) ? lines : [lines];
   return {
@@ -62,12 +51,6 @@ export function formatUpdateInfo({ block, timestamp, eventId, txHash }) {
   return createFormattedCell(lines.length ? lines : ["—"], copyValue);
 }
 
-/**
- * Creates an EID badge cell for chain display
- * @param {string} chainDisplay - Chain display label
- * @param {string|number} eid - Endpoint ID
- * @returns {Object} - Formatted cell object
- */
 export function createEidBadge(chainDisplay, eid) {
   return createFormattedCell([chainDisplay], eid);
 }

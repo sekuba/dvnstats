@@ -1,6 +1,3 @@
-/**
- * Edge Renderer - SVG edge rendering with styling and tooltips
- */
 
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
@@ -8,13 +5,10 @@ import { describeCombination } from "./utils.js";
 
 export class EdgeRenderer {
   constructor() {
-    // Use AddressUtils for address handling
+    
   }
 
-  /**
-   * Render all edges with bidirectional detection
-   */
-  renderEdges(
+    renderEdges(
     svgNS,
     edgeSecurityInfo,
     nodePositions,
@@ -26,7 +20,7 @@ export class EdgeRenderer {
     const edgesGroup = document.createElementNS(svgNS, "g");
     edgesGroup.setAttribute("class", "edges");
 
-    // Detect bidirectional edges
+    
     const edgeMap = new Map();
     const processedEdges = new Set();
 
@@ -44,7 +38,7 @@ export class EdgeRenderer {
       }
     }
 
-    // Render all edges
+    
     for (const info of edgeSecurityInfo) {
       const edge = info.edge;
       const key = `${edge.from}|${edge.to}`;
@@ -155,7 +149,7 @@ export class EdgeRenderer {
     const dy = toPos.y - fromPos.y;
     const angle = Math.atan2(dy, dx);
 
-    // Render two halves
+    
     this.renderHalfEdge(
       svgNS,
       edgesGroup,
@@ -183,7 +177,7 @@ export class EdgeRenderer {
       showPersistentTooltip,
     );
 
-    // Arrows
+    
     edgesGroup.appendChild(
       this.createArrowMarker(
         svgNS,

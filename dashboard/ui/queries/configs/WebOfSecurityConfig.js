@@ -1,7 +1,3 @@
-/**
- * Web of Security Query Configuration
- * Crawl or load the security graph for an OApp
- */
 
 export function createWebOfSecurityConfig(coordinator) {
   return {

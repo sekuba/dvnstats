@@ -1,6 +1,3 @@
-/**
- * Manages OApp aliases (friendly names for OApp IDs)
- */
 
 import { APP_CONFIG } from "../../config.js";
 

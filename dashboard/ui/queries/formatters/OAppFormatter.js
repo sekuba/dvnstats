@@ -1,9 +1,3 @@
-/**
- * OAppFormatter - Handles formatting of OApp-related data
- *
- * Extracted from QueryCoordinator to improve maintainability and separation of concerns.
- * This class handles formatting for popular OApps aggregation and OApp ID cells.
- */
 
 import { clampInteger, formatTimestampValue } from "../../../core.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";
@@ -14,10 +8,7 @@ export class OAppFormatter {
     this.getChainDisplayLabel = getChainDisplayLabel;
   }
 
-  /**
-   * Formats an OApp ID as a formatted cell with alias if available
-   */
-  formatOAppIdCell(oappId) {
+    formatOAppIdCell(oappId) {
     if (!oappId) {
       return createFormattedCell(["—"], "");
     }

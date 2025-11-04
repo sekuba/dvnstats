@@ -1,6 +1,3 @@
-/**
- * Security Graph View - Main coordinator for graph visualization
- */
 
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
@@ -14,9 +11,6 @@ import { findMostConnectedNode } from "./utils.js";
 
 const SVG_NS = APP_CONFIG.SVG.NAMESPACE;
 
-/**
- * Main graph renderer - coordinates all graph visualization components
- */
 export class SecurityGraphView {
   constructor({ getOAppAlias, getChainDisplayLabel, requestUniformAlias } = {}) {
     this.width = APP_CONFIG.GRAPH_VISUAL.WIDTH;
@@ -33,7 +27,7 @@ export class SecurityGraphView {
     this.requestUniformAlias =
       typeof requestUniformAlias === "function" ? requestUniformAlias : null;
 
-    // Initialize components
+    
     this.analyzer = new GraphAnalyzer({
       getChainDisplayLabel: this.getChainDisplayLabel,
     });
@@ -55,7 +49,7 @@ export class SecurityGraphView {
       getOAppAlias: this.getOAppAlias,
       formatChainLabel: this.formatChainLabel.bind(this),
       getNodeSecurityMetrics: this.analyzer.getNodeSecurityMetrics.bind(this.analyzer),
-      onRecenter: null, // Will be set in render
+      onRecenter: null, 
     });
 
     this.nodeListView = new NodeListView({
@@ -66,10 +60,7 @@ export class SecurityGraphView {
     });
   }
 
-  /**
-   * Renders the complete web of security visualization
-   */
-  render(webData, options = {}) {
+    render(webData, options = {}) {
     if (!webData?.nodes || !webData?.edges) return this.renderError();
 
     const container = document.createElement("div");
@@ -85,7 +76,7 @@ export class SecurityGraphView {
       edgeAnalysis.edgeSecurityInfo,
     );
 
-    // Find the most connected tracked node to use as center
+    
     const centerNodeId =
       options.centerNodeId || findMostConnectedNode(webData.nodes, webData.edges);
 
@@ -182,11 +173,11 @@ export class SecurityGraphView {
       context.centerNodeId,
     );
 
-    // Focus state for hiding unconnected nodes
+    
     let focusedNodeId = null;
     let visibleNodeIds = new Set();
 
-    // Build adjacency map for quick neighbor lookup
+    
     const adjacencyMap = new Map();
     for (const node of webData.nodes) {
       adjacencyMap.set(node.id, new Set());
@@ -210,11 +201,11 @@ export class SecurityGraphView {
 
     const updateVisibility = (nodeId) => {
       if (focusedNodeId === nodeId) {
-        // Toggle off - show everything
+        
         focusedNodeId = null;
         visibleNodeIds.clear();
 
-        // Show all nodes and edges
+        
         nodesGroup.querySelectorAll(".node").forEach((node) => {
           node.style.display = "";
         });

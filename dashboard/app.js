@@ -345,7 +345,7 @@ class DashboardApp {
 
     const action = event.target.dataset.action;
     if (!action) {
-      // Allow submit buttons without data-action (e.g., Save) to trigger form submission
+      
       return;
     }
 

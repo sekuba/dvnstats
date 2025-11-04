@@ -1,10 +1,4 @@
-/**
- * Utility functions for graph visualization
- */
 
-/**
- * Shorten address for display
- */
 export function shortenAddress(value) {
   if (!value) {
     return "";
@@ -40,9 +34,6 @@ export function appendSummaryRow(list, label, value) {
   list.append(dt, dd);
 }
 
-/**
- * Describe a DVN combination for display
- */
 export function describeCombination(combination) {
   if (!combination) {
     return "";
@@ -86,19 +77,16 @@ export function describeCombination(combination) {
   return `${base} (sentinel, quorum ${quorumLabel}${optionalText})`;
 }
 
-/**
- * Find the most connected tracked node (highest total edge count)
- */
 export function findMostConnectedNode(nodes, edges) {
   const edgeCounts = new Map();
 
-  // Count edges for each node
+  
   for (const edge of edges) {
     edgeCounts.set(edge.from, (edgeCounts.get(edge.from) || 0) + 1);
     edgeCounts.set(edge.to, (edgeCounts.get(edge.to) || 0) + 1);
   }
 
-  // Find tracked node with most edges
+  
   let maxCount = 0;
   let mostConnected = nodes[0]?.id || null;
 

@@ -1,10 +1,3 @@
-/**
- * NodeMetricsCalculator - Calculates security metrics for graph nodes
- *
- * Extracted from NodeListView to improve maintainability and separation of concerns.
- * This class handles all the complex logic for computing node-level security metrics
- * including edge analysis, configuration differences, and anomaly detection.
- */
 
 import { AddressUtils } from "../../utils/AddressUtils.js";
 import { coerceToNumber } from "../../utils/NumberUtils.js";
@@ -16,11 +9,7 @@ export class NodeMetricsCalculator {
     this.areStringArraysEqual = areStringArraysEqual;
   }
 
-  /**
-   * Main entry point: calculates metrics for all nodes
-   * Returns sorted array of node metrics with security analysis
-   */
-  calculateMetrics(webData, analysis = {}) {
+    calculateMetrics(webData, analysis = {}) {
     const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
 
     if (!nodes.length) {
@@ -276,7 +265,7 @@ export class NodeMetricsCalculator {
       };
     });
 
-    // Sort metrics
+    
     nodeMetrics.sort((a, b) => {
       if (a.isTracked !== b.isTracked) {
         return a.isTracked ? -1 : 1;
@@ -292,10 +281,7 @@ export class NodeMetricsCalculator {
     return nodeMetrics;
   }
 
-  /**
-   * Prepares rename action data for OApp aliases
-   */
-  prepareRenameActions(nodeMetrics, requestUniformAlias) {
+    prepareRenameActions(nodeMetrics, requestUniformAlias) {
     if (!requestUniformAlias || !nodeMetrics.length) {
       return null;
     }
