@@ -107,6 +107,8 @@ export class NodeListView {
           blockReasonSet.add("Dead DVN");
         } else if (edge.blockReason === "blocking-dvn") {
           blockReasonSet.add("Blocking DVN");
+        } else if (edge.blockReason === "missing-library") {
+          blockReasonSet.add("Missing default receive library");
         } else {
           blockReasonSet.add("Blocked route");
         }
@@ -940,6 +942,40 @@ export class NodeListView {
       const standardGroups = new Map();
       const variantDetails = [];
 
+      const isMissingConfig = (detail) => {
+        if (!detail) {
+          return false;
+        }
+        const usesDefaultLibrary = detail.usesDefaultLibrary !== false;
+        const hasLibraryOverride =
+          detail.libraryOverrideVersionId !== null && detail.libraryOverrideVersionId !== undefined;
+        const effectiveLibrary = detail.effectiveReceiveLibrary || null;
+        const hasEffectiveLibrary =
+          Boolean(effectiveLibrary) && !AddressUtils.isZero(effectiveLibrary);
+        const hasDefaultLibraryRecord =
+          detail.defaultLibraryVersionId !== null &&
+          detail.defaultLibraryVersionId !== undefined;
+
+        return (
+          usesDefaultLibrary &&
+          !hasLibraryOverride &&
+          detail.libraryStatus === "none" &&
+          !hasEffectiveLibrary &&
+          !hasDefaultLibraryRecord
+        );
+      };
+
+      const describeRequiredLabel = (detail) => {
+        if (!detail) {
+          return "—";
+        }
+        if (isMissingConfig(detail)) {
+          return "no config";
+        }
+        const count = Number.isFinite(detail.requiredDVNCount) ? detail.requiredDVNCount : 0;
+        return `${count} required`;
+      };
+
       metric.configDetails.forEach((detail) => {
         if (detail.matchesDominant && !detail.usesSentinel && !detail.differsFromDominant) {
           const key = detail.fingerprint || "dominant";
@@ -960,8 +996,8 @@ export class NodeListView {
         }
       });
 
-      const renderDvns = (pairs, container) => {
-        const safePairs = Array.isArray(pairs) ? pairs : [];
+      const renderDvns = (detail, container) => {
+        const safePairs = Array.isArray(detail?.requiredPairs) ? detail.requiredPairs : [];
         if (safePairs.length) {
           const list = document.createElement("div");
           list.className = "dvn-pill-row";
@@ -979,7 +1015,7 @@ export class NodeListView {
         } else {
           const placeholder = document.createElement("div");
           placeholder.className = "dvn-pill-row";
-          placeholder.textContent = "—";
+          placeholder.textContent = isMissingConfig(detail) ? "no config" : "—";
           container.appendChild(placeholder);
         }
       };
@@ -999,9 +1035,9 @@ export class NodeListView {
           detail.srcEid !== undefined && detail.srcEid !== null
             ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
             : "EID —";
-        header.textContent = `${chainLabel} • ${detail.requiredDVNCount} required`;
+        header.textContent = `${chainLabel} • ${describeRequiredLabel(detail)}`;
         line.appendChild(header);
-        renderDvns(detail.requiredPairs, line);
+        renderDvns(detail, line);
         stack.appendChild(line);
       };
 
@@ -1013,7 +1049,7 @@ export class NodeListView {
         line.className = "config-line config-line--standard";
         const header = document.createElement("div");
         header.className = "config-line-header";
-        header.textContent = `Dominant set • ${group.count} chain${group.count === 1 ? "" : "s"} • ${group.sample.requiredDVNCount} required`;
+        header.textContent = `Dominant set • ${group.count} chain${group.count === 1 ? "" : "s"} • ${describeRequiredLabel(group.sample)}`;
         line.appendChild(header);
 
         const uniqueEids = Array.from(
@@ -1028,7 +1064,7 @@ export class NodeListView {
           line.appendChild(note);
         }
 
-        renderDvns(group.sample.requiredPairs, line);
+        renderDvns(group.sample, line);
         stack.appendChild(line);
       };
 

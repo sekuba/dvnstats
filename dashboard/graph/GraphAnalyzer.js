@@ -35,6 +35,7 @@ export class GraphAnalyzer {
       let isBlocked = false;
       let blockReason = null;
       const libraryStatusEdge = edge.libraryStatus ?? null;
+      let libraryStatusValue = libraryStatusEdge;
       const syntheticEdge = Boolean(edge.synthetic);
       let peerStateHint = edge.peerStateHint ?? null;
 
@@ -73,6 +74,32 @@ export class GraphAnalyzer {
           usesSentinel = Boolean(config.usesRequiredDVNSentinel);
           if (!peerStateHint && config.peerStateHint) {
             peerStateHint = config.peerStateHint;
+          }
+          const usesDefaultLibrary = config.usesDefaultLibrary !== false;
+          const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
+          const hasEffectiveLibrary =
+            Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
+          const defaultLibraryVersionId =
+            config.defaultLibraryVersionId !== undefined ? config.defaultLibraryVersionId : null;
+          const libraryOverrideVersionId =
+            config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
+          const hasDefaultLibraryRecord =
+            defaultLibraryVersionId !== null && defaultLibraryVersionId !== undefined;
+          const hasLibraryOverride =
+            libraryOverrideVersionId !== null && libraryOverrideVersionId !== undefined;
+          const defaultLibraryFallback = usesDefaultLibrary && !hasLibraryOverride;
+
+          libraryStatusValue = config.libraryStatus ?? libraryStatusEdge;
+
+          if (
+            !isBlocked &&
+            defaultLibraryFallback &&
+            libraryStatusValue === "none" &&
+            !hasEffectiveLibrary &&
+            !hasDefaultLibraryRecord
+          ) {
+            isBlocked = true;
+            blockReason = "missing-library";
           }
 
           // Check for dead address in DVNs
@@ -201,7 +228,7 @@ export class GraphAnalyzer {
         isBlocked,
         blockReason,
         peerStateHint,
-        libraryStatus: config?.libraryStatus ?? libraryStatusEdge,
+        libraryStatus: libraryStatusValue,
         synthetic: config?.synthetic ?? syntheticEdge,
         routeFromLabel,
         routeToLabel,

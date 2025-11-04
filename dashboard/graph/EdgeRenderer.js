@@ -362,6 +362,8 @@ export class EdgeRenderer {
       blockMessage = "Status: BLOCKED (blocking DVN)";
     } else if (isBlocked && blockReason === "dead-dvn") {
       blockMessage = "Status: BLOCKED (dead DVN)";
+    } else if (isBlocked && blockReason === "missing-library") {
+      blockMessage = "Status: BLOCKED (missing default receive library)";
     } else if (isBlocked) {
       blockMessage = "Status: BLOCKED";
     }
