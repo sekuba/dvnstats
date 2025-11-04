@@ -1,6 +1,3 @@
-/**
- * Graph Analysis - Edge security analysis and metrics calculation
- */
 
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
@@ -50,7 +47,7 @@ export class GraphAnalyzer {
         blockReason = "stale-peer";
       }
 
-      // Check if this is a stale peer (target node's config points to a different peer for this srcEid)
+      
       if (!blockReason && edge.isStalePeer) {
         isBlocked = true;
         blockReason = "stale-peer";
@@ -97,7 +94,7 @@ export class GraphAnalyzer {
             blockReason = "missing-library";
           }
 
-          // Check for dead address in DVNs
+          
           if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
             isBlocked = true;
             blockReason = "dead-dvn";
@@ -119,7 +116,7 @@ export class GraphAnalyzer {
         }
       }
 
-      // Check if peer is zero address (blocks all traffic from that EID)
+      
       if (
         !isBlocked &&
         ((edge.peerRaw && this.isZeroPeer(edge.peerRaw)) ||
@@ -440,7 +437,7 @@ export class GraphAnalyzer {
   }
 
   findBlockedNodes(nodes, edgeSecurityInfo) {
-    // Build a map of nodeId -> incoming edges (edges pointing TO this node)
+    
     const incomingEdges = new Map();
     for (const info of edgeSecurityInfo) {
       const toNodeId = info.edge.to;
@@ -450,22 +447,22 @@ export class GraphAnalyzer {
       incomingEdges.get(toNodeId).push(info);
     }
 
-    // Find nodes that cannot send packets to monitored nodes (all incoming edges blocked)
+    
     const blocked = new Set();
     for (const node of nodes) {
       const incoming = incomingEdges.get(node.id) || [];
 
-      // Skip the seed node
+      
       if (node.depth === 0) continue;
 
-      // If the node has incoming edges, check if ALL are blocked
+      
       if (incoming.length > 0) {
         const allBlocked = incoming.every((info) => info.isBlocked);
         if (allBlocked) {
           blocked.add(node.id);
         }
       } else if (node.isDangling) {
-        // Dangling nodes with no incoming edges are also blocked
+        
         blocked.add(node.id);
       }
     }

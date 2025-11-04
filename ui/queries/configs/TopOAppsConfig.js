@@ -1,7 +1,3 @@
-/**
- * Top OApps Query Configuration
- * Ordered by total packets received
- */
 
 import { clampInteger, parseOptionalPositiveInt } from "../../../core.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";

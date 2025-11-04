@@ -1,6 +1,3 @@
-/**
- * Build the collapsible JSON payload viewer shown beneath tabular results.
- */
 export function buildPayloadDetails(payload) {
   const details = document.createElement("details");
   details.className = "json-dump";

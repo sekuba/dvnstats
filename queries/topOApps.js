@@ -1,7 +1,3 @@
-/**
- * Top OApps Query
- * Ordered by total packets received
- */
 export const TOP_OAPPS_QUERY = `
   query TopOApps($limit: Int, $minPackets: numeric!) {
     OAppStats(

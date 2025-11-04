@@ -249,7 +249,7 @@ export function parseOptionalPositiveInt(rawValue) {
   return Number.NaN;
 }
 
-// Re-export formatting functions from centralized formatters
+
 export {
   formatInteger,
   formatPercent,
@@ -260,7 +260,7 @@ export {
   stringifyScalar,
 } from "./formatters/valueFormatters.js";
 
-// Re-exported from AddressUtils for backward compatibility
+
 export function isZeroAddress(address) {
   return AddressUtils.isZero(address);
 }

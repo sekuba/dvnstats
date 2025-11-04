@@ -1,16 +1,10 @@
-/**
- * Graph Interactions - Zoom, pan, and tooltip management
- */
 
 export class GraphInteractions {
   constructor() {
     this.cleanupTooltipHandlers = null;
   }
 
-  /**
-   * Set up zoom and pan for SVG
-   */
-  setupZoomAndPan(svg, contentGroup) {
+    setupZoomAndPan(svg, contentGroup) {
     let scale = 1;
     let translateX = 0;
     let translateY = 0;
@@ -68,11 +62,8 @@ export class GraphInteractions {
     });
   }
 
-  /**
-   * Set up persistent tooltips for graph elements
-   */
-  setupPersistentTooltips(svg) {
-    // Clear any existing tooltips from previous renders
+    setupPersistentTooltips(svg) {
+    
     this.clearAllTooltips();
 
     let persistentTooltip = null;
@@ -128,7 +119,7 @@ export class GraphInteractions {
     document.addEventListener("keydown", keyHandler);
     svg.addEventListener("click", clickHandler);
 
-    // Store cleanup function
+    
     this.cleanupTooltipHandlers = () => {
       hide();
       document.removeEventListener("keydown", keyHandler);
@@ -138,10 +129,7 @@ export class GraphInteractions {
     return show;
   }
 
-  /**
-   * Clear all tooltips from the DOM
-   */
-  clearAllTooltips() {
+    clearAllTooltips() {
     document.querySelectorAll(".persistent-tooltip").forEach((el) => el.remove());
 
     if (this.cleanupTooltipHandlers) {

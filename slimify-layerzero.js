@@ -1,42 +1,14 @@
 #!/usr/bin/env node
 
-/**
- * slimify-layerzero.js
- *
- * Reduces the layerzero.json file to only the fields that the dashboard actually uses.
- *
- * Usage:
- *   node slimify-layerzero.js [input.json] [output.json]
- *   node slimify-layerzero.js layerzero.json layerzero-slim.json
- *
- * Or with default paths:
- *   node slimify-layerzero.js
- *
- * The script:
- * - Removes all chains with 'testnet' in their key (e.g., 'ethereum-testnet')
- * - Keeps only the fields that the dashboard actually uses:
- *   - chainKey
- *   - chainDetails.shortName
- *   - chainDetails.name
- *   - chainDetails.chainKey (for consistency)
- *   - deployments[].eid
- *   - deployments[].stage
- *   - dvns[address].canonicalName
- *   - dvns[address].name
- *   - dvns[address].id
- */
 
 const fs = require("fs");
 const path = require("path");
 
-// Parse command line arguments
+
 const args = process.argv.slice(2);
 const inputPath = args[0] || path.join(__dirname, "layerzero.json");
 const outputPath = args[1] || path.join(__dirname, "layerzero-slim.json");
 
-/**
- * Filters a deployment object to keep only used fields
- */
 function slimifyDeployment(deployment) {
   if (!deployment || typeof deployment !== "object") {
     return deployment;
@@ -44,16 +16,13 @@ function slimifyDeployment(deployment) {
 
   const slim = {};
 
-  // Only keep the fields the dashboard reads
+  
   if (deployment.eid !== undefined) slim.eid = deployment.eid;
   if (deployment.stage !== undefined) slim.stage = deployment.stage;
 
   return slim;
 }
 
-/**
- * Filters a DVN entry to keep only used fields
- */
 function slimifyDvn(dvn) {
   if (!dvn || typeof dvn !== "object") {
     return dvn;
@@ -61,7 +30,7 @@ function slimifyDvn(dvn) {
 
   const slim = {};
 
-  // Only keep the fields the dashboard reads
+  
   if (dvn.canonicalName !== undefined) slim.canonicalName = dvn.canonicalName;
   if (dvn.name !== undefined) slim.name = dvn.name;
   if (dvn.id !== undefined) slim.id = dvn.id;
@@ -69,9 +38,6 @@ function slimifyDvn(dvn) {
   return slim;
 }
 
-/**
- * Filters a chain object to keep only used fields
- */
 function slimifyChain(chain) {
   if (!chain || typeof chain !== "object") {
     return chain;
@@ -97,12 +63,12 @@ function slimifyChain(chain) {
     }
   }
 
-  // Process deployments array
+  
   if (Array.isArray(chain.deployments)) {
     slim.deployments = chain.deployments.map(slimifyDeployment);
   }
 
-  // Process DVNs object
+  
   if (chain.dvns && typeof chain.dvns === "object") {
     slim.dvns = {};
     for (const [address, dvn] of Object.entries(chain.dvns)) {
@@ -113,9 +79,6 @@ function slimifyChain(chain) {
   return slim;
 }
 
-/**
- * Main slimify function
- */
 function slimifyLayerzero(data) {
   if (!data || typeof data !== "object") {
     throw new Error("Invalid input data: expected an object");
@@ -136,9 +99,6 @@ function slimifyLayerzero(data) {
   return { data: slim, filteredCount };
 }
 
-/**
- * Calculate and display size reduction statistics
- */
 function displayStats(originalSize, slimSize, originalChainCount, slimChainCount, filteredCount) {
   const reduction = originalSize - slimSize;
   const percentReduction = ((reduction / originalSize) * 100).toFixed(2);

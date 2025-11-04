@@ -1,6 +1,3 @@
-/**
- * Node List View - Detailed node table with security metrics
- */
 
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { coerceToNumber } from "../utils/NumberUtils.js";
@@ -18,10 +15,7 @@ export class NodeListView {
     this.requestUniformAlias = requestUniformAlias;
   }
 
-  /**
-   * Render the complete node list panel with insights and table
-   */
-  renderNodeList(webData, analysis = {}) {
+    renderNodeList(webData, analysis = {}) {
     const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
     const container = document.createElement("section");
     container.className = "node-detail-board";
@@ -486,7 +480,7 @@ export class NodeListView {
       variation: hasPacketVariation,
     } = collectExtremes(packetExtremes, (metric) => metric?.totalPackets);
 
-    // Render insights grid and table
+    
     this.renderInsightsGrid(
       container,
       dominantCombination,
@@ -542,7 +536,7 @@ export class NodeListView {
     insightGrid.className = "node-insight-grid";
     container.appendChild(insightGrid);
 
-    // Dominant DVN Set Card
+    
     const dominantCard = document.createElement("div");
     dominantCard.className = "insight-card";
     const domTitle = document.createElement("h4");
@@ -603,10 +597,10 @@ export class NodeListView {
 
     insightGrid.appendChild(dominantCard);
 
-    // Anomalies Card
+    
     this.renderAnomaliesCard(insightGrid, nodeMetrics, formatNodeDescriptor);
 
-    // Stats Card
+    
     this.renderStatsCard(
       insightGrid,
       eligibleNodes,
@@ -1145,7 +1139,7 @@ export class NodeListView {
     edgeCount.textContent = edgeParts.join(" / ");
     edgesCell.appendChild(edgeCount);
 
-    // Show active edge sources
+    
     if (metric.activeIncoming && metric.activeIncoming.length > 0) {
       const activeList = document.createElement("div");
       activeList.className = "active-edges-list";
@@ -1165,7 +1159,7 @@ export class NodeListView {
       }
     }
 
-    // Show blocked edge sources if any
+    
     if (metric.blockedIncoming && metric.blockedIncoming.length > 0) {
       const blockedList = document.createElement("div");
       blockedList.className = "blocked-edges-list";
@@ -1185,7 +1179,7 @@ export class NodeListView {
       }
     }
 
-    // Apply extreme highlighting to entire cell
+    
     if (hasEdgeVariation && metric.isTracked && !metric.isBlocked) {
       if (edgeLows.includes(metric.id)) {
         edgesCell.classList.add("cell-extreme-low");

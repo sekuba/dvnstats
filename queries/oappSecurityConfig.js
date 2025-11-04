@@ -1,7 +1,3 @@
-/**
- * OApp Security Config Query
- * Resolves the current security posture for a single OApp
- */
 export const OAPP_SECURITY_CONFIG_QUERY = `
   query CurrentSecurityConfig($oappId: String!, $localEid: numeric!) {
     OAppStats(where: { id: { _eq: $oappId } }) {

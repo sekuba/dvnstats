@@ -1,10 +1,3 @@
-/**
- * SecurityConfigFormatter - Handles formatting of security configuration data
- *
- * Extracted from QueryCoordinator to improve maintainability and separation of concerns.
- * This class handles all the complex logic for formatting security config rows,
- * including DVN sets, peers, libraries, and blocking reasons.
- */
 
 import { APP_CONFIG } from "../../../config.js";
 import { formatTimestampValue, isZeroAddress, splitOAppId } from "../../../core.js";
@@ -24,11 +17,7 @@ export class SecurityConfigFormatter {
     this.resolveDvnLabels = resolveDvnLabels;
   }
 
-  /**
-   * Main entry point: formats an array of security config rows
-   * Separates blocked vs non-blocked routes, highlights outliers
-   */
-  formatSecurityConfigRows(rows, meta) {
+    formatSecurityConfigRows(rows, meta) {
     const activityData = this.prepareRouteActivity(meta);
 
     const decorated = rows.map((row) => {
@@ -339,14 +328,14 @@ export class SecurityConfigFormatter {
     formatted["Source EID"] = createFormattedCell([chainDisplay], row.eid);
     formatted.Library = this.formatLibraryDescriptor(row, highlightColumns.has("Library"));
 
-    // Required DVNs with highlighting
+    
     formatted["Required DVNs"] = this.formatRequiredDvns(
       row,
       meta,
       highlightRequired || highlightColumns.has("Required DVNs"),
     );
 
-    // Optional DVNs with highlighting
+    
     formatted["Optional DVNs"] = this.formatOptionalDvns(row, meta, highlightOptional);
 
     formatted.Peer = this.formatPeer(
@@ -358,7 +347,7 @@ export class SecurityConfigFormatter {
     formatted["Peer Updated"] = this.formatPeerUpdate(row);
     formatted.Confirmations = this.formatConfirmations(row);
 
-    // Fallbacks with highlighting
+    
     formatted.Fallbacks = this.formatFallbackFields(
       row.fallbackFields,
       row.usesDefaultConfig,
@@ -375,7 +364,7 @@ export class SecurityConfigFormatter {
     const address = row.effectiveReceiveLibrary || "—";
     const statusBits = [];
 
-    // Handle three library states with explanations: "tracked", "unsupported", "none"
+    
     const libraryStatus = row.libraryStatus || "unknown";
     const statusExplanations = {
       tracked: "TRACKED (ULN config available)",
@@ -385,7 +374,7 @@ export class SecurityConfigFormatter {
     };
     statusBits.push(statusExplanations[libraryStatus] || libraryStatus);
 
-    // Only show "Uses default library" if there's actually a library resolved
+    
     if (row.usesDefaultLibrary && row.effectiveReceiveLibrary) {
       statusBits.push("Uses default library");
     }

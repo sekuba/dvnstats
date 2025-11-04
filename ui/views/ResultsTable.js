@@ -6,12 +6,6 @@ import {
   stringifyScalar,
 } from "../../core.js";
 
-/**
- * Build the results table for the provided row set.
- * @param {Array<object>} rows
- * @param {{ chainMetadata: any }} options
- * @returns {HTMLTableElement}
- */
 export function buildResultsTable(rows, { chainMetadata }) {
   const columnSet = new Set();
   rows.forEach((row) => {

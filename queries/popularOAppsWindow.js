@@ -1,7 +1,3 @@
-/**
- * Popular OApps Window Query
- * Ranks OApps by packets in a configurable time window
- */
 export const POPULAR_OAPPS_WINDOW_QUERY = `
   query PopularOAppsWindow($fromTimestamp: numeric!, $fetchLimit: Int) {
     PacketDelivered(

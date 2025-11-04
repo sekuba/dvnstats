@@ -1,6 +1,3 @@
-/**
- * Toast notification system
- */
 
 import { APP_CONFIG } from "../../config.js";
 

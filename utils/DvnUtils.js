@@ -1,34 +1,4 @@
-/**
- * DvnUtils - Centralized utilities for DVN (Decentralized Verifier Network) resolution
- *
- * This module provides consistent DVN name resolution logic across the dashboard,
- * eliminating duplicated DVN resolution patterns.
- */
 
-/**
- * Resolves DVN addresses to their display names using chain metadata.
- * Handles address filtering, localEid extraction, and context building.
- *
- * @param {Array<string>} addresses - Array of DVN addresses to resolve
- * @param {Object} chainMetadata - The chain metadata service with resolveDvnNames method
- * @param {Object} options - Resolution options
- * @param {string|number} options.localEid - The local endpoint ID for context
- * @param {Object} options.meta - Metadata object to extract localEid from (fallback)
- * @returns {Array<string>} Array of resolved DVN names/labels
- *
- * @example
- * const addresses = ["0x123...", "0x456..."];
- * const labels = resolveDvnLabels(addresses, chainMetadata, {
- *   localEid: "30101"
- * });
- * // Returns: ["Polyhedra DVN", "LayerZero DVN"]
- *
- * @example
- * // Using meta object for localEid
- * const labels = resolveDvnLabels(addresses, chainMetadata, {
- *   meta: { localEid: "30101", eid: "30102" }
- * });
- */
 export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
   if (!Array.isArray(addresses) || !addresses.length) {
     return [];
@@ -38,13 +8,13 @@ export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
     return addresses.filter(Boolean);
   }
 
-  // Filter out null/undefined/empty addresses
+  
   const normalizedAddresses = addresses.filter(Boolean);
   if (!normalizedAddresses.length) {
     return [];
   }
 
-  // Resolve localEid from options or meta object
+  
   const { localEid: localEidOverride, meta } = options;
 
   const candidateLocal =
@@ -85,8 +55,8 @@ export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
  *   config,
  *   chainMetadata
  * );
- * // requiredDVNLabels: ["Polyhedra DVN", "LayerZero DVN"]
- * // optionalDVNLabels: ["Google Cloud DVN"]
+ * 
+ * 
  */
 export function resolveConfigDvns(config, chainMetadata) {
   if (!config) {

@@ -1,7 +1,3 @@
-/**
- * Popular OApps Window Query Configuration
- * Rank OApps by packets in a configurable time window
- */
 
 import { clampInteger, parseOptionalPositiveInt } from "../../../core.js";
 import { POPULAR_OAPPS_WINDOW_QUERY } from "../../../queries/popularOAppsWindow.js";
