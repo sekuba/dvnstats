@@ -166,6 +166,16 @@ export class SecurityGraphView {
     this.interactions.setupZoomAndPan(svg, contentGroup);
     const showPersistentTooltip = this.interactions.setupPersistentTooltips(svg);
 
+    const {
+      edgeSecurityInfo,
+      maxRequiredDVNsInWeb,
+      dominantCombination,
+      maxMinRequiredDVNsForNodes,
+      blockedNodes,
+      centerNodeId,
+      maxEdgePacketCount,
+    } = context;
+
     const nodePositions = this.layout.layoutNodes(
       webData.nodes,
       webData.edges,
@@ -186,6 +196,18 @@ export class SecurityGraphView {
       if (adjacencyMap.has(edge.to)) adjacencyMap.get(edge.to).add(edge.from);
     }
 
+    const blockedIncomingByTarget = new Map();
+    for (const info of edgeSecurityInfo) {
+      const fromId = info?.edge?.from;
+      const toId = info?.edge?.to;
+      if (!fromId || !toId || !info.isBlocked) continue;
+
+      if (!blockedIncomingByTarget.has(toId)) {
+        blockedIncomingByTarget.set(toId, new Set());
+      }
+      blockedIncomingByTarget.get(toId).add(fromId);
+    }
+
     const updateVisibility = (nodeId) => {
       if (focusedNodeId === nodeId) {
         // Toggle off - show everything
@@ -203,6 +225,16 @@ export class SecurityGraphView {
         // Focus on this node
         focusedNodeId = nodeId;
         visibleNodeIds = new Set([nodeId, ...(adjacencyMap.get(nodeId) || [])]);
+
+        const blockedSources = blockedIncomingByTarget.get(nodeId);
+        if (blockedSources?.size) {
+          // Hide any neighbors whose inbound edge into this node is blocked
+          blockedSources.forEach((blockedNodeId) => {
+            if (blockedNodeId !== nodeId) {
+              visibleNodeIds.delete(blockedNodeId);
+            }
+          });
+        }
 
         // Hide unconnected nodes
         nodesGroup.querySelectorAll(".node").forEach((node) => {
@@ -226,16 +258,6 @@ export class SecurityGraphView {
         });
       }
     };
-
-    const {
-      edgeSecurityInfo,
-      maxRequiredDVNsInWeb,
-      dominantCombination,
-      maxMinRequiredDVNsForNodes,
-      blockedNodes,
-      centerNodeId,
-      maxEdgePacketCount,
-    } = context;
 
     // Render edges
     const edgesGroup = this.edgeRenderer.renderEdges(
