@@ -127,7 +127,7 @@ export class NodeRenderer {
           form.style.gap = "4px";
 
           const label = document.createElement("label");
-          label.textContent = "Show path to OApp ID";
+          label.textContent = "Show unblocked path to OApp ID";
           label.style.fontSize = "11px";
           label.style.fontWeight = "600";
           form.appendChild(label);
