@@ -64,10 +64,10 @@ export const APP_CONFIG = Object.freeze({
   }),
 
   GRAPH_COLORS: Object.freeze({
-    EDGE_BLOCKED: "#ff0000",
-    EDGE_UNKNOWN: "#6b7280",
+    EDGE_BLOCKED: "#999999",
+    EDGE_UNKNOWN: "#ff6666",
     EDGE_ANOMALY: "#ff1df5",
-    EDGE_WEAK: "#ff6666",
+    EDGE_WEAK: "#ff0000",
     EDGE_NORMAL: "#000000ff",
     NODE_BLOCKED: "#999999",
     NODE_SECURE: "#ffff99",

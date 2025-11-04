@@ -3,13 +3,12 @@
  */
 
 import { APP_CONFIG } from "../config.js";
+import { AddressUtils } from "../utils/AddressUtils.js";
 import { describeCombination } from "./utils.js";
 
 export class EdgeRenderer {
   constructor() {
-    this.deadAddress = APP_CONFIG.ADDRESSES.DEAD;
-    this.zeroPeer = APP_CONFIG.ADDRESSES.ZERO_PEER;
-    this.zeroAddress = APP_CONFIG.ADDRESSES.ZERO;
+    // Use AddressUtils for address handling
   }
 
   /**

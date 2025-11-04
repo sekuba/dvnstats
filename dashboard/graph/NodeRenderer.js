@@ -3,18 +3,11 @@
  */
 
 import { APP_CONFIG } from "../config.js";
+import { AddressUtils } from "../utils/AddressUtils.js";
 
 export class NodeRenderer {
-  constructor({
-    nodeRadius,
-    zeroAddress,
-    getOAppAlias,
-    formatChainLabel,
-    getNodeSecurityMetrics,
-    onRecenter,
-  }) {
+  constructor({ nodeRadius, getOAppAlias, formatChainLabel, getNodeSecurityMetrics, onRecenter }) {
     this.nodeRadius = nodeRadius || APP_CONFIG.GRAPH_VISUAL.NODE_RADIUS;
-    this.zeroAddress = zeroAddress || APP_CONFIG.ADDRESSES.ZERO;
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.formatChainLabel = typeof formatChainLabel === "function" ? formatChainLabel : () => "";
     this.getNodeSecurityMetrics =
@@ -52,7 +45,7 @@ export class NodeRenderer {
       } else if (
         !node.isTracked &&
         node.id &&
-        String(node.id).split("_").at(-1) === this.zeroAddress.toLowerCase()
+        AddressUtils.isZero(String(node.id).split("_").at(-1))
       ) {
         radius = this.nodeRadius * 0.65;
       }
