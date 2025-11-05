@@ -4,7 +4,7 @@ import {
   looksLikeHash,
   looksLikeTimestampColumn,
   stringifyScalar,
-} from "../../core.js";
+} from "../../formatters/valueFormatters.js";
 import { isNullish } from "../../utils/NumberUtils.js";
 import { DomBuilder } from "../../utils/dom/DomBuilder.js";
 
