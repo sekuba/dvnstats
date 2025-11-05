@@ -1,4 +1,4 @@
-import { formatTimestampValue } from "../../core.js";
+import { formatTimestampValue } from "../../formatters/valueFormatters.js";
 
 export function renderSummaryPanels(meta, { aliasStore, getChainDisplayLabel }) {
   if (!meta) {

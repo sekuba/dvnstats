@@ -1,4 +1,4 @@
-import { resolveChainDisplayLabel } from "../../core.js";
+import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
 import { OAppFormatter } from "./formatters/OAppFormatter.js";
 import { SecurityConfigFormatter } from "./formatters/SecurityConfigFormatter.js";
@@ -21,21 +21,13 @@ export class QueryCoordinator {
     this.securityConfigFormatter = new SecurityConfigFormatter(
       this.chainMetadata,
       this.aliasStore,
-      (chainId) => this.getChainDisplayLabel(chainId),
+      (chainId) => getChainDisplayLabel(chainId, this.chainMetadata),
       (addresses, meta, localEidOverride) =>
         this.resolveDvnLabels(addresses, meta, localEidOverride),
     );
     this.oappFormatter = new OAppFormatter(this.aliasStore, (chainId) =>
-      this.getChainDisplayLabel(chainId),
+      getChainDisplayLabel(chainId, this.chainMetadata),
     );
-  }
-
-  getChainDisplayLabel(chainId) {
-    return resolveChainDisplayLabel(this.chainMetadata, chainId);
-  }
-
-  formatOAppIdCell(oappId) {
-    return this.oappFormatter.formatOAppIdCell(oappId);
   }
 
   resolveDvnLabels(addresses, meta, localEidOverride) {

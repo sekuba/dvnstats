@@ -1,5 +1,5 @@
 import { APP_CONFIG } from "../config.js";
-import { isZeroAddress, normalizeKey } from "../core.js";
+import { normalizeKey } from "../core.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { toString } from "../utils/NumberUtils.js";
 
@@ -81,7 +81,7 @@ export function derivePeerStateHint(row, peerRecord, { isSynthetic = false } = {
     return isSynthetic ? "implicit-blocked" : "not-configured";
   }
 
-  if (isZeroAddress(peer)) {
+  if (AddressUtils.isZero(peer)) {
     if (peerRecord && peerRecord.fromPacketDelivered) {
       return "auto-discovered";
     }
@@ -113,9 +113,9 @@ function createSyntheticSecurityConfig({
   const defaultLibraryAddress = AddressUtils.normalizeSafe(defaultLibrary?.library);
   const overrideLibraryAddress = AddressUtils.normalizeSafe(overrideLibrary?.library);
   const effectiveReceiveLibrary =
-    overrideLibraryAddress && !isZeroAddress(overrideLibraryAddress)
+    overrideLibraryAddress && !AddressUtils.isZero(overrideLibraryAddress)
       ? overrideLibraryAddress
-      : defaultLibraryAddress && !isZeroAddress(defaultLibraryAddress)
+      : defaultLibraryAddress && !AddressUtils.isZero(defaultLibraryAddress)
         ? defaultLibraryAddress
         : null;
 
@@ -131,7 +131,7 @@ function createSyntheticSecurityConfig({
     }
   }
 
-  if (overrideLibraryAddress && !isZeroAddress(overrideLibraryAddress)) {
+  if (overrideLibraryAddress && !AddressUtils.isZero(overrideLibraryAddress)) {
     usesDefaultLibrary = false;
   } else if (effectiveReceiveLibrary) {
     fallbackFields.add("receiveLibrary");
@@ -153,7 +153,7 @@ function createSyntheticSecurityConfig({
   if (!peerRecord) {
     peer = APP_CONFIG.ADDRESSES.ZERO;
     peerStateHint = "implicit-blocked";
-  } else if (isZeroAddress(peer)) {
+  } else if (AddressUtils.isZero(peer)) {
     peerStateHint = "explicit-blocked";
   } else if (peerRecord.fromPacketDelivered) {
     peerStateHint = "auto-discovered";
@@ -161,7 +161,7 @@ function createSyntheticSecurityConfig({
     peerStateHint = "explicit";
   }
 
-  if (!peerOappId && peer && !isZeroAddress(peer)) {
+  if (!peerOappId && peer && !AddressUtils.isZero(peer)) {
     peerOappId = `${eid}_${AddressUtils.normalizeSafe(peer)}`;
   }
 
@@ -341,7 +341,7 @@ function dedupeAddresses(addresses) {
   for (const address of addresses) {
     if (!address) continue;
     const normalized = AddressUtils.normalizeSafe(address);
-    if (!normalized || isZeroAddress(normalized) || seen.has(normalized)) {
+    if (!normalized || AddressUtils.isZero(normalized) || seen.has(normalized)) {
       continue;
     }
     seen.add(normalized);

@@ -1,5 +1,5 @@
 import { APP_CONFIG } from "../../config.js";
-import { resolveChainDisplayLabel } from "../../core.js";
+import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
 import { buildPayloadDetails } from "./ResultsPayloadDetails.js";
 import { renderSummaryPanels } from "./ResultsSummaryPanels.js";
 import { buildResultsTable } from "./ResultsTable.js";
@@ -67,7 +67,7 @@ export class ResultsView {
 
     const summaryPanel = renderSummaryPanels(metaSnapshot, {
       aliasStore: this.aliasStore,
-      getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
+      getChainDisplayLabel: (chainId) => getChainDisplayLabel(chainId, this.chainMetadata),
     });
 
     if (!rows.length) {
@@ -107,7 +107,7 @@ export class ResultsView {
     const { SecurityGraphView } = await import("../../graph/SecurityGraphView.js");
     const renderer = new SecurityGraphView({
       getOAppAlias: (oappId) => this.aliasStore.get(oappId),
-      getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
+      getChainDisplayLabel: (chainId) => getChainDisplayLabel(chainId, this.chainMetadata),
       requestUniformAlias: (ids) => {
         if (!Array.isArray(ids) || !ids.length) {
           return;
@@ -136,10 +136,6 @@ export class ResultsView {
 
     const graphContainer = renderer.render(webData, { centerNodeId });
     this.resultsBody.appendChild(graphContainer);
-  }
-
-  getChainDisplayLabel(chainId) {
-    return resolveChainDisplayLabel(this.chainMetadata, chainId);
   }
 
   renderError(meta) {

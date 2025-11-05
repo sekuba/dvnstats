@@ -1,5 +1,7 @@
 import { APP_CONFIG } from "../../../config.js";
-import { formatTimestampValue, isZeroAddress, splitOAppId } from "../../../core.js";
+import { splitOAppId } from "../../../core.js";
+import { formatTimestampValue } from "../../../formatters/valueFormatters.js";
+import { AddressUtils } from "../../../utils/AddressUtils.js";
 import {
   createFormattedCell,
   formatRouteActivityLine,
@@ -223,7 +225,7 @@ export class SecurityConfigFormatter {
     let peerState = row.peerStateHint || null;
     if (!peerState) {
       const peerRecord = peerMap?.get(String(row.eid));
-      const isZeroPeer = isZeroAddress(row.peer);
+      const isZeroPeer = AddressUtils.isZero(row.peer);
       if (peerRecord) {
         if (isZeroPeer && !peerRecord.fromPacketDelivered) {
           peerState = "explicitly-blocked";

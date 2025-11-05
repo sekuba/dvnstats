@@ -1,4 +1,5 @@
-import { clampInteger, formatTimestampValue } from "../../../core.js";
+import { clampInteger } from "../../../core.js";
+import { formatTimestampValue } from "../../../formatters/valueFormatters.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";
 
 export class OAppFormatter {

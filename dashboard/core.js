@@ -1,6 +1,5 @@
 import { APP_CONFIG } from "./config.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
-import { getChainDisplayLabel } from "./utils/ChainUtils.js";
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -185,15 +184,6 @@ export class ChainDirectory {
   }
 }
 
-export function resolveChainDisplayLabel(chainMetadata, chainId) {
-  return getChainDisplayLabel(chainId, chainMetadata);
-}
-
-// Re-exported from AddressUtils for backward compatibility
-export function normalizeAddress(address) {
-  return AddressUtils.normalize(address);
-}
-
 export function normalizeOAppId(value) {
   if (!value) throw new Error("OApp ID required");
 
@@ -205,7 +195,7 @@ export function normalizeOAppId(value) {
   if (!localEid) throw new Error("OApp ID must include localEid");
 
   const address = trimmed.slice(separatorIndex + 1);
-  return `${localEid}_${normalizeAddress(address)}`;
+  return `${localEid}_${AddressUtils.normalize(address)}`;
 }
 
 export function splitOAppId(oappId) {
@@ -249,16 +239,3 @@ export function parseOptionalPositiveInt(rawValue) {
   return Number.NaN;
 }
 
-export {
-  formatInteger,
-  formatPercent,
-  formatTimestampValue,
-  looksLikeEidColumn,
-  looksLikeHash,
-  looksLikeTimestampColumn,
-  stringifyScalar,
-} from "./formatters/valueFormatters.js";
-
-export function isZeroAddress(address) {
-  return AddressUtils.isZero(address);
-}
