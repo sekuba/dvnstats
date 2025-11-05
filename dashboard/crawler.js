@@ -20,6 +20,8 @@ import { resolveDvnLabels } from "./utils/DvnUtils.js";
 import { createRouteStatsMap } from "./utils/MetricsUtils.js";
 import { ensureArray } from "./utils/NumberUtils.js";
 
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
+
 const sanitizePeerOAppId = (value) => {
   if (!value) {
     return null;
@@ -285,11 +287,11 @@ export class SecurityGraphCrawler {
 
                 if (ourPeerAddress && remoteAddr && ourPeerAddress !== remoteAddr) {
                   isStalePeer = true;
-                  blockReasonHint = "stale-peer";
+                  blockReasonHint = BLOCK_REASONS.STALE_PEER;
                 } else if (ourPeerState === "explicit-blocked") {
-                  blockReasonHint = "explicit-block";
+                  blockReasonHint = BLOCK_REASONS.EXPLICIT_BLOCK;
                 } else if (ourPeerState === "implicit-blocked") {
-                  blockReasonHint = "implicit-block";
+                  blockReasonHint = BLOCK_REASONS.IMPLICIT_BLOCK;
                 }
               }
             }
@@ -302,10 +304,10 @@ export class SecurityGraphCrawler {
               const hasResolvedPeer = !!(peerDetails?.oappId || normalizedInbound?.peerOappId);
               const isZeroPeer = peerDetails?.isZeroPeer === true;
               if (peerState === "explicit-blocked" || isZeroPeer) {
-                blockReasonHint = "explicit-block";
+                blockReasonHint = BLOCK_REASONS.EXPLICIT_BLOCK;
               } else if (!hasResolvedPeer) {
                 if (peerState === "implicit-blocked" || !!normalizedInbound?.synthetic) {
-                  blockReasonHint = "implicit-block";
+                  blockReasonHint = BLOCK_REASONS.IMPLICIT_BLOCK;
                 }
               }
             }

@@ -2,6 +2,8 @@ import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { ensureArray, isDefined, isNullish } from "../utils/NumberUtils.js";
 
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
+
 export class GraphAnalyzer {
   constructor({ getChainDisplayLabel }) {
     this.getChainDisplayLabel =
@@ -36,20 +38,20 @@ export class GraphAnalyzer {
       const syntheticEdge = !!edge.synthetic;
       let peerStateHint = edge.peerStateHint ?? null;
 
-      if (edge.blockReasonHint === "implicit-block") {
+      if (edge.blockReasonHint === BLOCK_REASONS.IMPLICIT_BLOCK) {
         isBlocked = true;
-        blockReason = "implicit-block";
-      } else if (edge.blockReasonHint === "explicit-block") {
+        blockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
+      } else if (edge.blockReasonHint === BLOCK_REASONS.EXPLICIT_BLOCK) {
         isBlocked = true;
-        blockReason = "zero-peer";
-      } else if (edge.blockReasonHint === "stale-peer") {
+        blockReason = BLOCK_REASONS.ZERO_PEER;
+      } else if (edge.blockReasonHint === BLOCK_REASONS.STALE_PEER) {
         isBlocked = true;
-        blockReason = "stale-peer";
+        blockReason = BLOCK_REASONS.STALE_PEER;
       }
 
       if (!blockReason && edge.isStalePeer) {
         isBlocked = true;
-        blockReason = "stale-peer";
+        blockReason = BLOCK_REASONS.STALE_PEER;
       }
 
       let hasSecurityConfig = false;
@@ -90,16 +92,16 @@ export class GraphAnalyzer {
             !hasEffectiveLibrary
           ) {
             isBlocked = true;
-            blockReason = "missing-library";
+            blockReason = BLOCK_REASONS.MISSING_LIBRARY;
           }
 
           if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
             isBlocked = true;
-            blockReason = "dead-dvn";
+            blockReason = BLOCK_REASONS.DEAD_DVN;
           }
           if (!isBlocked && requiredDVNLabels.some((label) => this.isBlockingDvnLabel(label))) {
             isBlocked = true;
-            blockReason = "blocking-dvn";
+            blockReason = BLOCK_REASONS.BLOCKING_DVN;
           }
         }
       }
@@ -107,10 +109,10 @@ export class GraphAnalyzer {
       if (!isBlocked) {
         if (peerStateHint === "explicit-blocked") {
           isBlocked = true;
-          blockReason = "zero-peer";
+          blockReason = BLOCK_REASONS.ZERO_PEER;
         } else if (peerStateHint === "implicit-blocked") {
           isBlocked = true;
-          blockReason = "implicit-block";
+          blockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
         }
       }
 
@@ -120,7 +122,7 @@ export class GraphAnalyzer {
           (config && config.peer && this.isZeroPeer(config.peer)))
       ) {
         isBlocked = true;
-        blockReason = "zero-peer";
+        blockReason = BLOCK_REASONS.ZERO_PEER;
       }
 
       if (!isBlocked && hasSecurityConfig && requiredDVNCount > maxRequiredDVNsInWeb) {
@@ -133,7 +135,7 @@ export class GraphAnalyzer {
         if (AddressUtils.isZero(fromAddress)) {
           isBlocked = true;
           if (!blockReason) {
-            blockReason = "implicit-block";
+            blockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
           }
         }
       }

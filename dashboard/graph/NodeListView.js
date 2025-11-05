@@ -1,6 +1,9 @@
+import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { coerceToNumber, ensureArray, isDefined, isNullish } from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
+
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
 
 export class NodeListView {
   constructor({ getOAppAlias, formatChainLabel, areStringArraysEqual, requestUniformAlias }) {
@@ -86,17 +89,17 @@ export class NodeListView {
 
       const blockReasonSet = new Set();
       for (const edge of blockedIncoming) {
-        if (edge.blockReason === "stale-peer") {
+        if (edge.blockReason === BLOCK_REASONS.STALE_PEER) {
           blockReasonSet.add("Stale peer");
-        } else if (edge.blockReason === "zero-peer") {
+        } else if (edge.blockReason === BLOCK_REASONS.ZERO_PEER) {
           blockReasonSet.add("Zero peer");
-        } else if (edge.blockReason === "implicit-block") {
+        } else if (edge.blockReason === BLOCK_REASONS.IMPLICIT_BLOCK) {
           blockReasonSet.add("No peer configured");
-        } else if (edge.blockReason === "dead-dvn") {
+        } else if (edge.blockReason === BLOCK_REASONS.DEAD_DVN) {
           blockReasonSet.add("Dead DVN");
-        } else if (edge.blockReason === "blocking-dvn") {
+        } else if (edge.blockReason === BLOCK_REASONS.BLOCKING_DVN) {
           blockReasonSet.add("Blocking DVN");
-        } else if (edge.blockReason === "missing-library") {
+        } else if (edge.blockReason === BLOCK_REASONS.MISSING_LIBRARY) {
           blockReasonSet.add("Missing default receive library");
         } else {
           blockReasonSet.add("Blocked route");

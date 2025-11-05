@@ -30,6 +30,16 @@ export const APP_CONFIG = Object.freeze({
     BATCH_SIZE: 16,
   }),
 
+  BLOCK_REASONS: Object.freeze({
+    STALE_PEER: "stale-peer",
+    ZERO_PEER: "zero-peer",
+    IMPLICIT_BLOCK: "implicit-block",
+    EXPLICIT_BLOCK: "explicit-block",
+    DEAD_DVN: "dead-dvn",
+    BLOCKING_DVN: "blocking-dvn",
+    MISSING_LIBRARY: "missing-library",
+  }),
+
   FEEDBACK: Object.freeze({
     TOAST_DURATION: 1600,
     MAX_TOASTS: 6,

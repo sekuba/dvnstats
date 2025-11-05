@@ -1,3 +1,4 @@
+import { APP_CONFIG } from "../../config.js";
 import { splitOAppId } from "../../core.js";
 import { AddressUtils } from "../../utils/AddressUtils.js";
 import {
@@ -7,6 +8,7 @@ import {
 import { ensureArray, isDefined, isNullish } from "../../utils/NumberUtils.js";
 import { createGraphEdge } from "../factories/SecurityEntryFactory.js";
 
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
 const ZERO_ADDRESS = AddressUtils.constants.ZERO;
 
 function assignRouteMetrics(target, routeMetric, fallback = null) {
@@ -214,7 +216,7 @@ export function finalizeNodeMetrics({
             metric && metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
           if (context.config && context.config.unresolvedPeer && !edgeRecord.peerStateHint) {
             edgeRecord.peerStateHint = "implicit-blocked";
-            edgeRecord.blockReasonHint = edgeRecord.blockReasonHint || "implicit-block";
+            edgeRecord.blockReasonHint = edgeRecord.blockReasonHint || BLOCK_REASONS.IMPLICIT_BLOCK;
           }
         }
       }
@@ -294,7 +296,7 @@ export function addPeerEdges({
       !!(peerInfo?.unresolvedPeer) ||
       (!peerRaw && !contextConfig.peerOappId && peerStateHint === "implicit-blocked");
     if (!resolvedBlockReason && unresolvedPeer) {
-      resolvedBlockReason = "implicit-block";
+      resolvedBlockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
     }
     if (resolvedBlockReason && !context.blockReasonHint) {
       context.blockReasonHint = resolvedBlockReason;
