@@ -1,3 +1,4 @@
+import { createFormattedCell } from "../../formatters/cellFormatters.js";
 import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
 import { ensureArray } from "../../utils/NumberUtils.js";
@@ -29,6 +30,19 @@ export class QueryCoordinator {
     this.oappFormatter = new OAppFormatter(this.aliasStore, (chainId) =>
       getChainDisplayLabel(chainId, this.chainMetadata),
     );
+  }
+
+  getChainDisplayLabel(chainId) {
+    return getChainDisplayLabel(chainId, this.chainMetadata);
+  }
+
+  formatOAppIdCell(oappId) {
+    if (!oappId) {
+      return createFormattedCell(["—"], "");
+    }
+    const alias = this.aliasStore.get(oappId);
+    const lines = alias ? [alias, `ID ${oappId}`] : [oappId];
+    return createFormattedCell(lines, oappId, { oappId });
   }
 
   resolveDvnLabels(addresses, meta, localEidOverride) {
