@@ -21,7 +21,7 @@ export class GraphAnalyzer {
     for (const edge of edges) {
       const fromNode = nodesById.get(edge.from);
       const toNode = nodesById.get(edge.to);
-      const isUntrackedTarget = Boolean(toNode) && !toNode.isTracked;
+      const isUntrackedTarget = !!toNode && !toNode.isTracked;
       let requiredDVNCount = 0;
       let requiredDVNAddresses = [];
       let requiredDVNLabels = [];
@@ -33,7 +33,7 @@ export class GraphAnalyzer {
       let blockReason = null;
       const libraryStatusEdge = edge.libraryStatus ?? null;
       let libraryStatusValue = libraryStatusEdge;
-      const syntheticEdge = Boolean(edge.synthetic);
+      const syntheticEdge = !!edge.synthetic;
       let peerStateHint = edge.peerStateHint ?? null;
 
       if (edge.blockReasonHint === "implicit-block") {
@@ -67,14 +67,14 @@ export class GraphAnalyzer {
             config.optionalDVNCount ||
             (Array.isArray(optionalDVNLabels) ? optionalDVNLabels.length : 0);
           optionalDVNThreshold = config.optionalDVNThreshold || 0;
-          usesSentinel = Boolean(config.usesRequiredDVNSentinel);
+          usesSentinel = !!config.usesRequiredDVNSentinel;
           if (!peerStateHint && config.peerStateHint) {
             peerStateHint = config.peerStateHint;
           }
           const usesDefaultLibrary = config.usesDefaultLibrary !== false;
           const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
           const hasEffectiveLibrary =
-            Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
+            !!effectiveReceiveLibrary && !AddressUtils.isZero(effectiveReceiveLibrary);
           const libraryOverrideVersionId =
             config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
           const hasLibraryOverride =
@@ -294,7 +294,7 @@ export class GraphAnalyzer {
     for (const info of edgeSecurityInfo) {
       const matchesPopular =
         info.hasSecurityConfig &&
-        Boolean(dominantFingerprint) &&
+        !!dominantFingerprint &&
         !info.isBlocked &&
         !info.usesSentinel &&
         info.combinationFingerprint === dominantFingerprint;
@@ -304,7 +304,7 @@ export class GraphAnalyzer {
       const differsDueToSentinel = info.hasSecurityConfig && info.usesSentinel;
       const differsDueToCombination =
         info.hasSecurityConfig &&
-        Boolean(dominantFingerprint) &&
+        !!dominantFingerprint &&
         !info.isBlocked &&
         info.combinationFingerprint !== dominantFingerprint;
 

@@ -284,7 +284,7 @@ export class EdgeRenderer {
       };
     }
 
-    const differsFromPopular = Boolean(info.differsFromPopular);
+    const differsFromPopular = !!info.differsFromPopular;
     const baseColor = differsFromPopular
       ? APP_CONFIG.GRAPH_COLORS.EDGE_ANOMALY
       : info.requiredDVNCount < maxRequiredDVNsInWeb
@@ -355,7 +355,7 @@ export class EdgeRenderer {
       blockMessage = "Status: BLOCKED";
     }
 
-    const hasSecurityConfig = Boolean(info.hasSecurityConfig);
+    const hasSecurityConfig = !!info.hasSecurityConfig;
     const unknownMessage = info.isUnknownSecurity ? "Unknown security config (untracked)" : null;
     const routeLine = this.buildRouteLabel(info);
 

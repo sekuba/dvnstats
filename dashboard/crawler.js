@@ -298,14 +298,12 @@ export class SecurityGraphCrawler {
                 normalizedInbound?.peerStateHint ??
                 (peerDetails ? peerDetails.peerStateHint : null) ??
                 null;
-              const hasResolvedPeer = Boolean(
-                peerDetails?.oappId || normalizedInbound?.peerOappId,
-              );
+              const hasResolvedPeer = !!(peerDetails?.oappId || normalizedInbound?.peerOappId);
               const isZeroPeer = peerDetails?.isZeroPeer === true;
               if (peerState === "explicit-blocked" || isZeroPeer) {
                 blockReasonHint = "explicit-block";
               } else if (!hasResolvedPeer) {
-                if (peerState === "implicit-blocked" || Boolean(normalizedInbound?.synthetic)) {
+                if (peerState === "implicit-blocked" || !!normalizedInbound?.synthetic) {
                   blockReasonHint = "implicit-block";
                 }
               }
