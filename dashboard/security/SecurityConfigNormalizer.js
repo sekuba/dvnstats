@@ -1,7 +1,7 @@
 import { APP_CONFIG } from "../config.js";
 import { normalizeKey } from "../core.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { toString } from "../utils/NumberUtils.js";
+import { isDefined, toString } from "../utils/NumberUtils.js";
 
 const SYNTHETIC_ID_PREFIX = "synthetic:";
 
@@ -35,10 +35,9 @@ export function normalizeSecurityConfig({
     return null;
   }
 
-  const normalizedLocalEid =
-    config?.localEid !== undefined && config?.localEid !== null
-      ? toString(config.localEid)
-      : toString(localEid);
+  const normalizedLocalEid = isDefined(config?.localEid)
+    ? toString(config.localEid)
+    : toString(localEid);
 
   if (config) {
     const fallbackSource = Array.isArray(config.fallbackFields) ? config.fallbackFields : [];
@@ -52,7 +51,7 @@ export function normalizeSecurityConfig({
       oappId: config.oappId ?? oappId ?? null,
       fallbackFields,
       sourceType: config.sourceType || "materialized",
-      synthetic: Boolean(config.synthetic),
+      synthetic: !!config.synthetic,
       peerStateHint: derivePeerStateHint(config, peerRecord, { isSynthetic: false }),
     };
   }

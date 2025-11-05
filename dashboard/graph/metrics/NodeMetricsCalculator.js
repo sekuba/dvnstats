@@ -111,14 +111,14 @@ export class NodeMetricsCalculator {
           const fingerprint = JSON.stringify({
             required: cfg.requiredDVNCount || 0,
             names: normalized,
-            sentinel: Boolean(cfg.usesRequiredDVNSentinel),
+            sentinel: !!(cfg.usesRequiredDVNSentinel),
           });
           const matchesDominant =
-            Boolean(combinationFingerprint) &&
+            !!(combinationFingerprint) &&
             !cfg.usesRequiredDVNSentinel &&
             fingerprint === combinationFingerprint;
-          const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
-          const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
+          const differsFromDominant = !!(combinationFingerprint) && !matchesDominant;
+          const usesSentinel = !!(cfg.usesRequiredDVNSentinel);
 
           if (usesSentinel) {
             diffReasonSet.add(
@@ -179,7 +179,7 @@ export class NodeMetricsCalculator {
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",
             peerStateHint: cfg.peerStateHint ?? null,
-            synthetic: Boolean(cfg.synthetic),
+            synthetic: !!(cfg.synthetic),
             usesDefaultLibrary: cfg.usesDefaultLibrary !== false,
             effectiveReceiveLibrary: cfg.effectiveReceiveLibrary || null,
             defaultLibraryVersionId:
@@ -237,9 +237,9 @@ export class NodeMetricsCalculator {
         alias: this.getOAppAlias(node.id),
         chainLabel,
         depth: node.depth >= 0 ? node.depth : "—",
-        isTracked: Boolean(node.isTracked),
-        isDangling: Boolean(node.isDangling),
-        fromPacketDelivered: Boolean(node.fromPacketDelivered),
+        isTracked: !!(node.isTracked),
+        isDangling: !!(node.isDangling),
+        fromPacketDelivered: !!(node.fromPacketDelivered),
         isBlocked: blockedNodes.has(node.id),
         totalPackets,
         totalRoutePackets,

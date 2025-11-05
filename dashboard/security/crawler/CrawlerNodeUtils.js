@@ -4,6 +4,7 @@ import {
   calculateTotalRoutePackets,
   enrichRouteStatsWithShares,
 } from "../../utils/MetricsUtils.js";
+import { isDefined } from "../../utils/NumberUtils.js";
 
 const ZERO_ADDRESS = AddressUtils.constants.ZERO;
 
@@ -62,11 +63,11 @@ export function buildPeerInfo(config) {
     const parsed = splitOAppId(peerOappId);
     derivedLocalEid = parsed.localEid ?? null;
     derivedAddress = parsed.address ?? null;
-  } else if (config.peerLocalEid !== undefined && config.peerLocalEid !== null) {
+  } else if (isDefined(config.peerLocalEid)) {
     derivedLocalEid = String(config.peerLocalEid);
-  } else if (config.eid !== undefined && config.eid !== null) {
+  } else if (isDefined(config.eid)) {
     derivedLocalEid = String(config.eid);
-  } else if (config.localEid !== undefined && config.localEid !== null) {
+  } else if (isDefined(config.localEid)) {
     derivedLocalEid = String(config.localEid);
   }
 
@@ -83,7 +84,7 @@ export function buildPeerInfo(config) {
     peerOappId = null;
   }
 
-  const resolved = Boolean(peerOappId && derivedAddress);
+  const resolved = !!(peerOappId && derivedAddress);
 
   return {
     rawPeer,
@@ -102,7 +103,7 @@ export function shouldIncludeSecurityEntry(entry) {
     return false;
   }
 
-  const synthetic = Boolean(entry.synthetic);
+  const synthetic = !!(entry.synthetic);
   const sourceType = entry.sourceType || null;
   const peerState = entry.peerStateHint || null;
   const hasMaterializedConfig = !synthetic || sourceType === "materialized";
@@ -288,8 +289,8 @@ export function addPeerEdges({
       null;
     let resolvedBlockReason = blockReasonHint;
     const unresolvedPeer =
-      Boolean(contextConfig.unresolvedPeer) ||
-      Boolean(peerInfo?.unresolvedPeer) ||
+      !!(contextConfig.unresolvedPeer) ||
+      !!(peerInfo?.unresolvedPeer) ||
       (!peerRaw && !contextConfig.peerOappId && peerStateHint === "implicit-blocked");
     if (!resolvedBlockReason && unresolvedPeer) {
       resolvedBlockReason = "implicit-block";
@@ -312,9 +313,9 @@ export function addPeerEdges({
         peerOappId: edgeFrom,
         peerStateHint,
         blockReasonHint: resolvedBlockReason,
-        isStalePeer: Boolean(context.isStalePeer),
+        isStalePeer: !!(context.isStalePeer),
         libraryStatus: context.libraryStatus ?? contextConfig.libraryStatus ?? null,
-        synthetic: Boolean(context.synthetic ?? contextConfig.synthetic),
+        synthetic: !!(context.synthetic ?? contextConfig.synthetic),
         sourceType: context.sourceType ?? contextConfig.sourceType ?? null,
       };
       assignRouteMetrics(newEdge, routeMetric, configRouteMetric);

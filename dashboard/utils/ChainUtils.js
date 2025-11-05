@@ -1,31 +1,25 @@
+import { isNullish } from "./NumberUtils.js";
+
 export function getChainDisplayLabel(chainId, chainMetadata) {
-  if (chainId === undefined || chainId === null || chainId === "") {
-    return "";
-  }
+  if (isNullish(chainId) || chainId === "") return "";
 
   const key = String(chainId);
 
   if (chainMetadata && typeof chainMetadata.getChainDisplayLabel === "function") {
     const label = chainMetadata.getChainDisplayLabel(key);
-    if (label) {
-      return label;
-    }
+    if (label) return label;
   }
 
   if (chainMetadata && typeof chainMetadata.getChainInfo === "function") {
     const info = chainMetadata.getChainInfo(key);
-    if (info) {
-      return `${info.primary} (${key})`;
-    }
+    if (info) return `${info.primary} (${key})`;
   }
 
   return key;
 }
 
 export function formatChainLabel(chainId, chainMetadata, options = {}) {
-  if (chainId === undefined || chainId === null || chainId === "") {
-    return "";
-  }
+  if (isNullish(chainId) || chainId === "") return "";
 
   const { stripEid = false, addEidPrefix = false } = options;
   let display = getChainDisplayLabel(chainId, chainMetadata);

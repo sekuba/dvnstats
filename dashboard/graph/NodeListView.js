@@ -132,14 +132,14 @@ export class NodeListView {
           const fingerprint = JSON.stringify({
             required: cfg.requiredDVNCount || 0,
             names: normalized,
-            sentinel: Boolean(cfg.usesRequiredDVNSentinel),
+            sentinel: !!(cfg.usesRequiredDVNSentinel),
           });
           const matchesDominant =
-            Boolean(combinationFingerprint) &&
+            !!(combinationFingerprint) &&
             !cfg.usesRequiredDVNSentinel &&
             fingerprint === combinationFingerprint;
-          const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
-          const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
+          const differsFromDominant = !!(combinationFingerprint) && !matchesDominant;
+          const usesSentinel = !!(cfg.usesRequiredDVNSentinel);
 
           if (usesSentinel) {
             diffReasonSet.add(
@@ -200,7 +200,7 @@ export class NodeListView {
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",
             peerStateHint: cfg.peerStateHint ?? null,
-            synthetic: Boolean(cfg.synthetic),
+            synthetic: !!(cfg.synthetic),
           };
         })
         .filter(Boolean);
@@ -252,9 +252,9 @@ export class NodeListView {
         alias: this.getOAppAlias(node.id),
         chainLabel,
         depth: node.depth >= 0 ? node.depth : "—",
-        isTracked: Boolean(node.isTracked),
-        isDangling: Boolean(node.isDangling),
-        fromPacketDelivered: Boolean(node.fromPacketDelivered),
+        isTracked: !!(node.isTracked),
+        isDangling: !!(node.isDangling),
+        fromPacketDelivered: !!(node.fromPacketDelivered),
         isBlocked: blockedNodes.has(node.id),
         totalPackets,
         totalRoutePackets,
@@ -940,7 +940,7 @@ export class NodeListView {
           detail.libraryOverrideVersionId !== null && detail.libraryOverrideVersionId !== undefined;
         const effectiveLibrary = detail.effectiveReceiveLibrary || null;
         const hasEffectiveLibrary =
-          Boolean(effectiveLibrary) && !AddressUtils.isZero(effectiveLibrary);
+          !!(effectiveLibrary) && !AddressUtils.isZero(effectiveLibrary);
         return (
           usesDefaultLibrary &&
           !hasLibraryOverride &&
