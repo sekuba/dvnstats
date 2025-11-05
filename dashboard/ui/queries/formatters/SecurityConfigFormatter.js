@@ -10,6 +10,14 @@ import {
 import { resolveDvnLabels as _resolveDvnLabels } from "../../../utils/DvnUtils.js";
 import { bigIntSafe, coerceToNumber, ensureArray, isNullish } from "../../../utils/NumberUtils.js";
 
+const BLOCK_PRIORITY = [
+  "peer-zero-explicit",
+  "peer-zero-implicit",
+  "required-dead-address",
+  "required-dead-lz",
+  "default-library-zero",
+];
+
 export class SecurityConfigFormatter {
   constructor(chainMetadata, aliasStore, getChainDisplayLabel, resolveDvnLabels) {
     this.chainMetadata = chainMetadata;
@@ -90,14 +98,6 @@ export class SecurityConfigFormatter {
           }),
         );
       });
-
-    const BLOCK_PRIORITY = [
-      "peer-zero-explicit",
-      "peer-zero-implicit",
-      "required-dead-address",
-      "required-dead-lz",
-      "default-library-zero",
-    ];
 
     blocked
       .map((entry) => {
