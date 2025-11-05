@@ -4,7 +4,8 @@ import {
   calculateTotalRoutePackets,
   enrichRouteStatsWithShares,
 } from "../../utils/MetricsUtils.js";
-import { isDefined } from "../../utils/NumberUtils.js";
+import { isDefined, isNullish } from "../../utils/NumberUtils.js";
+import { createGraphEdge } from "../factories/SecurityEntryFactory.js";
 
 const ZERO_ADDRESS = AddressUtils.constants.ZERO;
 
@@ -304,7 +305,7 @@ export function addPeerEdges({
       contextConfig && typeof contextConfig.routePacketCount === "number" ? contextConfig : null;
 
     if (!existing) {
-      const newEdge = {
+      const newEdge = createGraphEdge({
         from: edgeFrom,
         to: edgeTo,
         srcEid,
@@ -313,16 +314,16 @@ export function addPeerEdges({
         peerOappId: edgeFrom,
         peerStateHint,
         blockReasonHint: resolvedBlockReason,
-        isStalePeer: !!(context.isStalePeer),
+        isStalePeer: !!context.isStalePeer,
         libraryStatus: context.libraryStatus ?? contextConfig.libraryStatus ?? null,
         synthetic: !!(context.synthetic ?? contextConfig.synthetic),
         sourceType: context.sourceType ?? contextConfig.sourceType ?? null,
-      };
+      });
       assignRouteMetrics(newEdge, routeMetric, configRouteMetric);
       edges.set(key, newEdge);
       context.attached = true;
     } else {
-      if (existing.srcEid === null || existing.srcEid === undefined) {
+      if (isNullish(existing.srcEid)) {
         existing.srcEid = srcEid;
       }
       if (!existing.peerRaw && peerRaw) {

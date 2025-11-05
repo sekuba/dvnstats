@@ -37,6 +37,29 @@ const SECURITY_ENTRY_DEFAULTS = {
 };
 
 /**
+ * Default template for graph edge objects
+ */
+const GRAPH_EDGE_DEFAULTS = {
+  from: null,
+  to: null,
+  srcEid: null,
+  peerRaw: null,
+  peerLocalEid: null,
+  peerOappId: null,
+  peerStateHint: null,
+  blockReasonHint: null,
+  isStalePeer: false,
+  libraryStatus: null,
+  synthetic: false,
+  sourceType: null,
+  routePacketCount: 0,
+  routePacketShare: 0,
+  routePacketPercent: 0,
+  routeLastPacketBlock: null,
+  routeLastPacketTimestamp: null,
+};
+
+/**
  * Default template for edge context objects
  */
 const EDGE_CONTEXT_DEFAULTS = {
@@ -195,4 +218,40 @@ export function createInboundEdgeContext({
     synthetic: !!normalizedInbound?.synthetic,
     isStalePeer,
   });
+}
+
+/**
+ * Creates a graph edge object with defaults
+ * @param {Object} options - Edge properties
+ * @returns {Object} Graph edge with all fields populated
+ */
+export function createGraphEdge({
+  from = null,
+  to = null,
+  srcEid = null,
+  peerRaw = null,
+  peerLocalEid = null,
+  peerOappId = null,
+  peerStateHint = null,
+  blockReasonHint = null,
+  isStalePeer = false,
+  libraryStatus = null,
+  synthetic = false,
+  sourceType = null,
+} = {}) {
+  return {
+    ...GRAPH_EDGE_DEFAULTS,
+    from,
+    to,
+    srcEid,
+    peerRaw,
+    peerLocalEid,
+    peerOappId: peerOappId ?? from,
+    peerStateHint,
+    blockReasonHint,
+    isStalePeer,
+    libraryStatus,
+    synthetic,
+    sourceType,
+  };
 }
