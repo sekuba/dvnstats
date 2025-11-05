@@ -8,7 +8,7 @@ import {
   formatUpdateInfo,
 } from "../../../formatters/cellFormatters.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../../utils/DvnUtils.js";
-import { bigIntSafe, coerceToNumber } from "../../../utils/NumberUtils.js";
+import { bigIntSafe, coerceToNumber, isNullish } from "../../../utils/NumberUtils.js";
 
 export class SecurityConfigFormatter {
   constructor(chainMetadata, aliasStore, getChainDisplayLabel, resolveDvnLabels) {
@@ -178,9 +178,7 @@ export class SecurityConfigFormatter {
 
     stats.forEach((stat) => {
       const key = stat?.srcEid ?? stat?.eid;
-      if (key === undefined || key === null) {
-        return;
-      }
+      if (isNullish(key)) return;
       const normalizedKey = String(key);
       const count = coerceToNumber(stat?.packetCount);
       map.set(normalizedKey, {
@@ -203,7 +201,7 @@ export class SecurityConfigFormatter {
 
   getRouteActivityForRow(row, activityData) {
     const key = row?.eid ?? null;
-    const normalizedKey = key === null || key === undefined ? null : String(key);
+    const normalizedKey = isNullish(key) ? null : String(key);
     const entry = normalizedKey ? activityData.map.get(normalizedKey) : undefined;
     const count = entry?.count ?? 0;
     const totalPackets = activityData.totalPackets > 0 ? activityData.totalPackets : 0;

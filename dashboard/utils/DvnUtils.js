@@ -61,7 +61,7 @@ export function resolveConfigDvns(config, chainMetadata) {
   }
 
   const localEid = config.localEid ?? config.eid ?? null;
-  const context = localEid !== undefined && localEid !== null ? { localEid } : {};
+  const context = isDefined(localEid) ? { localEid } : {};
 
   const requiredDVNs = Array.isArray(config.requiredDVNs) ? config.requiredDVNs : [];
   const optionalDVNs = Array.isArray(config.optionalDVNs) ? config.optionalDVNs : [];

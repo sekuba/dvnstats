@@ -1,4 +1,5 @@
 import { formatTimestampValue } from "../../formatters/valueFormatters.js";
+import { isDefined } from "../../utils/NumberUtils.js";
 
 export function renderSummaryPanels(meta, { aliasStore, getChainDisplayLabel }) {
   if (!meta) {
@@ -76,13 +77,13 @@ function renderOAppSummary(meta, aliasStore, getChainDisplayLabel) {
   appendSummaryRow(list, "Local EID", localLabel);
   appendSummaryRow(list, "Address", info.address ?? "");
 
-  if (info.totalPacketsReceived !== undefined && info.totalPacketsReceived !== null) {
+  if (isDefined(info.totalPacketsReceived)) {
     appendSummaryRow(list, "Total Packets", String(info.totalPacketsReceived));
   }
-  if (info.lastPacketBlock !== undefined && info.lastPacketBlock !== null) {
+  if (isDefined(info.lastPacketBlock)) {
     appendSummaryRow(list, "Last Packet Block", String(info.lastPacketBlock));
   }
-  if (info.lastPacketTimestamp !== undefined && info.lastPacketTimestamp !== null) {
+  if (isDefined(info.lastPacketTimestamp)) {
     const ts = formatTimestampValue(info.lastPacketTimestamp);
     if (ts) {
       appendSummaryRow(list, "Last Packet Time", ts.primary);
