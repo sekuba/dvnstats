@@ -9,6 +9,11 @@ import {
   finalizeNodeMetrics,
   shouldIncludeSecurityEntry,
 } from "./security/crawler/CrawlerNodeUtils.js";
+import {
+  createSecurityEntry,
+  createEdgeContext,
+  createInboundEdgeContext,
+} from "./security/factories/SecurityEntryFactory.js";
 import { normalizeSecurityConfig } from "./security/SecurityConfigNormalizer.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
 import { resolveDvnLabels } from "./utils/DvnUtils.js";
@@ -168,36 +173,16 @@ export class SecurityGraphCrawler {
           const peerDetails = buildPeerInfo(cfg);
           const routeMetric = cfgSrcEid ? routeStatsMap.get(cfgSrcEid) : null;
 
-          const securityEntry = {
-            id: cfg.id ?? null,
-            srcEid: cfg?.eid ?? null,
+          const securityEntry = createSecurityEntry({
+            config: cfg,
+            peerDetails,
+            routeMetric,
             localEid: cfgLocalEid,
-            requiredDVNCount: cfg?.effectiveRequiredDVNCount ?? 0,
             requiredDVNs,
             requiredDVNLabels,
-            optionalDVNCount: cfg?.effectiveOptionalDVNCount ?? 0,
             optionalDVNs,
             optionalDVNLabels,
-            optionalDVNThreshold: cfg?.effectiveOptionalDVNThreshold ?? 0,
-            usesRequiredDVNSentinel: cfg?.usesRequiredDVNSentinel ?? false,
-            libraryStatus: cfg?.libraryStatus ?? "unknown",
-            peer: cfg?.peer ?? null,
-            peerStateHint: cfg?.peerStateHint ?? null,
-            peerOappId: peerDetails?.oappId ?? null,
-            peerLocalEid: peerDetails?.localEid ?? null,
-            peerAddress: peerDetails?.address ?? null,
-            sourceType: cfg?.sourceType ?? "materialized",
-            synthetic: Boolean(cfg?.synthetic),
-            fallbackFields: Array.isArray(cfg?.fallbackFields) ? cfg.fallbackFields : [],
-            routePacketCount: routeMetric?.packetCount ?? 0,
-            routePacketShare: routeMetric?.share ?? 0,
-            routePacketPercent: routeMetric?.percent ?? 0,
-            routeLastPacketBlock: routeMetric?.lastPacketBlock ?? null,
-            routeLastPacketTimestamp: routeMetric?.lastPacketTimestamp ?? null,
-            attachedCandidate: false,
-            unresolvedPeer:
-              !peerDetails?.oappId && !(peerDetails && peerDetails.isZeroPeer) && !cfg.peerOappId,
-          };
+          });
 
           const sanitizedPeerOappId = sanitizePeerOAppId(securityEntry.peerOappId);
           securityEntry.peerOappId = sanitizedPeerOappId ?? undefined;
@@ -223,7 +208,7 @@ export class SecurityGraphCrawler {
 
             const queueNextId = sanitizePeerOAppId(securityEntry.peerOappId);
 
-            const context = {
+            const context = createEdgeContext({
               config: securityEntry,
               edgeFrom: edgeFromId,
               edgeTo: oappId,
@@ -237,9 +222,9 @@ export class SecurityGraphCrawler {
               sourceType: securityEntry.sourceType,
               libraryStatus: securityEntry.libraryStatus,
               synthetic: securityEntry.synthetic,
-              entryRef: securityEntry,
-              attached: false,
-            };
+            });
+            context.entryRef = securityEntry;
+            context.attached = false;
             securityEntry.attachedCandidate = true;
             outboundContexts.push(context);
           }
@@ -326,21 +311,16 @@ export class SecurityGraphCrawler {
               }
             }
 
-            return {
-              config: normalizedInbound,
-              edgeFrom: sanitizedInboundOAppId,
-              edgeTo: oappId,
-              peerInfo: peerDetails,
-              peerRaw: peerDetails?.rawPeer ?? normalizedInbound?.peer ?? null,
-              peerLocalEid: remoteLocalEid ?? peerDetails?.localEid ?? null,
-              queueNext: sanitizedInboundOAppId,
+            const context = createInboundEdgeContext({
+              normalizedInbound,
+              peerDetails,
+              sanitizedInboundOAppId,
+              oappId,
+              remoteLocalEid,
               isStalePeer,
-              blockReasonHint,
-              isOutbound: false,
-              peerStateHint: normalizedInbound?.peerStateHint ?? peerDetails?.peerStateHint ?? null,
-              libraryStatus: normalizedInbound?.libraryStatus ?? null,
-              synthetic: Boolean(normalizedInbound?.synthetic),
-            };
+            });
+            context.blockReasonHint = blockReasonHint;
+            return context;
           })
           .filter(Boolean);
 
