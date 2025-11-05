@@ -2,6 +2,8 @@ import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { describeCombination } from "./utils.js";
 
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
+
 export class EdgeRenderer {
   constructor() {}
 
@@ -339,17 +341,17 @@ export class EdgeRenderer {
     } = info;
 
     let blockMessage = null;
-    if (isBlocked && blockReason === "stale-peer") {
+    if (isBlocked && blockReason === BLOCK_REASONS.STALE_PEER) {
       blockMessage = "Status: BLOCKED (stale peer)";
-    } else if (isBlocked && blockReason === "zero-peer") {
+    } else if (isBlocked && blockReason === BLOCK_REASONS.ZERO_PEER) {
       blockMessage = "Status: BLOCKED (peer set to zero address)";
-    } else if (isBlocked && blockReason === "implicit-block") {
+    } else if (isBlocked && blockReason === BLOCK_REASONS.IMPLICIT_BLOCK) {
       blockMessage = "Status: BLOCKED / unknown (peer not configured)";
-    } else if (isBlocked && blockReason === "blocking-dvn") {
+    } else if (isBlocked && blockReason === BLOCK_REASONS.BLOCKING_DVN) {
       blockMessage = "Status: BLOCKED (blocking DVN)";
-    } else if (isBlocked && blockReason === "dead-dvn") {
+    } else if (isBlocked && blockReason === BLOCK_REASONS.DEAD_DVN) {
       blockMessage = "Status: BLOCKED (dead DVN)";
-    } else if (isBlocked && blockReason === "missing-library") {
+    } else if (isBlocked && blockReason === BLOCK_REASONS.MISSING_LIBRARY) {
       blockMessage = "Status: BLOCKED (missing default receive library)";
     } else if (isBlocked) {
       blockMessage = "Status: BLOCKED";
