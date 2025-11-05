@@ -236,7 +236,7 @@ function resolveConfig({ isConfigTracked, defaultCfg, overrideCfg, fallbackField
     assignConfig(effective, defaultCfg);
     usesSentinel = defaultCfg.requiredDVNCount === REQUIRED_DVN_SENTINEL;
     FALLBACK_FIELD_ORDER.forEach((field) => {
-      if (defaultCfg[field] !== undefined && defaultCfg[field] !== null) {
+      if (isDefined(defaultCfg[field])) {
         fallbackFields.add(field);
       }
     });
@@ -255,18 +255,11 @@ function normalizeConfig(input) {
   }
 
   const confirmations = input.confirmations ?? null;
-  const requiredDVNCount =
-    input.requiredDVNCount !== undefined && input.requiredDVNCount !== null
-      ? Number(input.requiredDVNCount)
-      : null;
-  const optionalDVNCount =
-    input.optionalDVNCount !== undefined && input.optionalDVNCount !== null
-      ? Number(input.optionalDVNCount)
-      : null;
-  const optionalDVNThreshold =
-    input.optionalDVNThreshold !== undefined && input.optionalDVNThreshold !== null
-      ? Number(input.optionalDVNThreshold)
-      : null;
+  const requiredDVNCount = isDefined(input.requiredDVNCount) ? Number(input.requiredDVNCount) : null;
+  const optionalDVNCount = isDefined(input.optionalDVNCount) ? Number(input.optionalDVNCount) : null;
+  const optionalDVNThreshold = isDefined(input.optionalDVNThreshold)
+    ? Number(input.optionalDVNThreshold)
+    : null;
 
   const requiredDVNs = Array.isArray(input.requiredDVNs) ? dedupeAddresses(input.requiredDVNs) : [];
   const optionalDVNs = Array.isArray(input.optionalDVNs) ? dedupeAddresses(input.optionalDVNs) : [];
@@ -314,22 +307,12 @@ function emptyEffectiveConfig() {
 }
 
 function assignConfig(target, source) {
-  target.confirmations =
-    source.confirmations !== undefined && source.confirmations !== null
-      ? source.confirmations
-      : null;
-  target.requiredDVNCount =
-    source.requiredDVNCount !== undefined && source.requiredDVNCount !== null
-      ? source.requiredDVNCount
-      : null;
-  target.optionalDVNCount =
-    source.optionalDVNCount !== undefined && source.optionalDVNCount !== null
-      ? source.optionalDVNCount
-      : 0;
-  target.optionalDVNThreshold =
-    source.optionalDVNThreshold !== undefined && source.optionalDVNThreshold !== null
-      ? source.optionalDVNThreshold
-      : null;
+  target.confirmations = isDefined(source.confirmations) ? source.confirmations : null;
+  target.requiredDVNCount = isDefined(source.requiredDVNCount) ? source.requiredDVNCount : null;
+  target.optionalDVNCount = isDefined(source.optionalDVNCount) ? source.optionalDVNCount : 0;
+  target.optionalDVNThreshold = isDefined(source.optionalDVNThreshold)
+    ? source.optionalDVNThreshold
+    : null;
   target.requiredDVNs = source.requiredDVNs ?? [];
   target.optionalDVNs = source.optionalDVNs ?? [];
 }

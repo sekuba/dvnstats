@@ -1,5 +1,6 @@
 import { splitOAppId } from "../../core.js";
 import { AddressUtils } from "../../utils/AddressUtils.js";
+import { isDefined, isNullish } from "../../utils/NumberUtils.js";
 
 const SECURITY_BATCH_QUERY = `
   query GetSecurityConfigBatch($oappIds: [String!]!, $localEids: [numeric!]) {
@@ -171,9 +172,7 @@ export class CrawlerDataLoader {
     const localEidSet = new Set();
     uniqueIds.forEach((id) => {
       const { localEid } = splitOAppId(id);
-      if (localEid === null || localEid === undefined) {
-        return;
-      }
+      if (isNullish(localEid)) return;
       const numeric = Number(localEid);
       if (Number.isFinite(numeric)) {
         localEidSet.add(numeric);
@@ -244,7 +243,7 @@ export class CrawlerDataLoader {
     const peerRecordsByOapp = new Map();
     (data.OAppPeer || []).forEach((peer) => {
       const oappKey = String(peer.oappId);
-      const eidKey = peer.eid !== undefined && peer.eid !== null ? String(peer.eid) : "__unknown__";
+      const eidKey = isDefined(peer.eid) ? String(peer.eid) : "__unknown__";
       if (!peerRecordsByOapp.has(oappKey)) {
         peerRecordsByOapp.set(oappKey, new Map());
       }
