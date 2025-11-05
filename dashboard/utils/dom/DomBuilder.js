@@ -84,6 +84,14 @@ export class DomBuilder {
     return this.create("h4", props, children);
   }
 
+  static h5(props, children) {
+    return this.create("h5", props, children);
+  }
+
+  static h6(props, children) {
+    return this.create("h6", props, children);
+  }
+
   static button(props, children) {
     return this.create("button", props, children);
   }
