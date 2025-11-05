@@ -1,4 +1,4 @@
-import { coerceToNumber } from "./NumberUtils.js";
+import { coerceToNumber, isDefined } from "./NumberUtils.js";
 
 export function calculateTotalRoutePackets(routeStats) {
   if (!Array.isArray(routeStats)) {
