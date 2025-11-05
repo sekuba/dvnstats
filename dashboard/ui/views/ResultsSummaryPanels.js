@@ -1,13 +1,13 @@
 import { formatTimestampValue } from "../../formatters/valueFormatters.js";
 import { isDefined } from "../../utils/NumberUtils.js";
+import { DomBuilder } from "../../utils/dom/DomBuilder.js";
 
 export function renderSummaryPanels(meta, { aliasStore, getChainDisplayLabel }) {
   if (!meta) {
     return null;
   }
 
-  const container = document.createElement("div");
-  container.className = "summary-panels";
+  const container = DomBuilder.div({ className: "summary-panels" });
 
   const oappPanels = [];
   if (meta.oappInfo) {
@@ -36,8 +36,7 @@ export function renderSummaryPanels(meta, { aliasStore, getChainDisplayLabel }) 
   }
 
   if (oappPanels.length > 0) {
-    const row = document.createElement("div");
-    row.className = "summary-panel-row";
+    const row = DomBuilder.div({ className: "summary-panel-row" });
     oappPanels.forEach((panel) => row.appendChild(panel));
     container.appendChild(row);
   }
@@ -45,8 +44,7 @@ export function renderSummaryPanels(meta, { aliasStore, getChainDisplayLabel }) 
   if (meta.popularOappsSummary) {
     const panel = renderPopularOappsSummary(meta.popularOappsSummary);
     if (panel) {
-      const row = document.createElement("div");
-      row.className = "summary-panel-row";
+      const row = DomBuilder.div({ className: "summary-panel-row" });
       row.appendChild(panel);
       container.appendChild(row);
     }
@@ -62,7 +60,7 @@ function renderOAppSummary(meta, aliasStore, getChainDisplayLabel) {
   }
 
   const panel = createPanel("OApp Overview");
-  const list = document.createElement("dl");
+  const list = DomBuilder.dl();
   panel.appendChild(list);
 
   const alias = aliasStore?.get?.(info.id);
@@ -99,7 +97,7 @@ function renderRouteStatsSummary(routeStats, getChainDisplayLabel) {
   }
 
   const panel = createPanel("Per-Route Activity");
-  const list = document.createElement("dl");
+  const list = DomBuilder.dl();
   panel.appendChild(list);
 
   appendSummaryRow(list, "Total Routes", routeStats.length);
@@ -126,7 +124,7 @@ function renderSecuritySummary(summary) {
   }
 
   const panel = createPanel("Security Snapshot");
-  const list = document.createElement("dl");
+  const list = DomBuilder.dl();
   panel.appendChild(list);
 
   const totalRoutes = summary.totalRoutes ?? 0;
@@ -159,7 +157,7 @@ function renderRateLimitingSummary(meta, getChainDisplayLabel) {
   const rateLimits = meta.rateLimits || [];
 
   const panel = createPanel("Rate Limiting (OFT)");
-  const list = document.createElement("dl");
+  const list = DomBuilder.dl();
   panel.appendChild(list);
 
   if (rateLimiter && rateLimiter.rateLimiter) {
@@ -195,7 +193,7 @@ function renderPopularOappsSummary(summary) {
   }
 
   const panel = createPanel("Window Overview");
-  const list = document.createElement("dl");
+  const list = DomBuilder.dl();
   panel.appendChild(list);
 
   appendSummaryRow(list, "Window", summary.windowLabel || "");
@@ -223,13 +221,8 @@ function renderPopularOappsSummary(summary) {
 }
 
 function createPanel(title) {
-  const panel = document.createElement("div");
-  panel.className = "summary-panel";
-
-  const heading = document.createElement("h3");
-  heading.textContent = title;
-  panel.appendChild(heading);
-
+  const panel = DomBuilder.div({ className: "summary-panel" });
+  panel.appendChild(DomBuilder.h3({ textContent: title }));
   return panel;
 }
 
@@ -237,9 +230,8 @@ function appendSummaryRow(list, label, value) {
   if (!value && value !== 0) {
     return;
   }
-  const dt = document.createElement("dt");
-  dt.textContent = label;
-  const dd = document.createElement("dd");
-  dd.textContent = String(value);
-  list.append(dt, dd);
+  list.append(
+    DomBuilder.dt({ textContent: label }),
+    DomBuilder.dd({ textContent: String(value) }),
+  );
 }
