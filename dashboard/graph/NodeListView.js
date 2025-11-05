@@ -1,5 +1,5 @@
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { coerceToNumber } from "../utils/NumberUtils.js";
+import { coerceToNumber, isDefined, isNullish } from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
 
 export class NodeListView {
@@ -64,9 +64,7 @@ export class NodeListView {
     const normalizeNames = (labels) =>
       Array.isArray(labels)
         ? labels
-            .map((label) =>
-              label === null || label === undefined ? "" : String(label).trim().toLowerCase(),
-            )
+            .map((label) => (isNullish(label) ? "" : String(label).trim().toLowerCase()))
             .filter(Boolean)
             .sort()
         : [];
@@ -109,7 +107,7 @@ export class NodeListView {
 
       const allowedSrcEids = new Set();
       const registerAllowed = (eid) => {
-        if (eid !== undefined && eid !== null) {
+        if (isDefined(eid)) {
           allowedSrcEids.add(String(eid));
         }
       };
@@ -118,8 +116,7 @@ export class NodeListView {
 
       const configDetails = (node.securityConfigs || [])
         .map((cfg) => {
-          const normalizedSrcEid =
-            cfg.srcEid !== undefined && cfg.srcEid !== null ? String(cfg.srcEid) : null;
+          const normalizedSrcEid = isDefined(cfg.srcEid) ? String(cfg.srcEid) : null;
           if (
             allowedSrcEids.size > 0 &&
             (!normalizedSrcEid || !allowedSrcEids.has(normalizedSrcEid))
@@ -184,18 +181,9 @@ export class NodeListView {
             matchesDominant,
             differsFromDominant,
             fingerprint,
-            packetCount:
-              cfg.routePacketCount !== undefined && cfg.routePacketCount !== null
-                ? Number(cfg.routePacketCount)
-                : 0,
-            packetShare:
-              cfg.routePacketShare !== undefined && cfg.routePacketShare !== null
-                ? Number(cfg.routePacketShare)
-                : 0,
-            packetPercent:
-              cfg.routePacketPercent !== undefined && cfg.routePacketPercent !== null
-                ? Number(cfg.routePacketPercent)
-                : 0,
+            packetCount: isDefined(cfg.routePacketCount) ? Number(cfg.routePacketCount) : 0,
+            packetShare: isDefined(cfg.routePacketShare) ? Number(cfg.routePacketShare) : 0,
+            packetPercent: isDefined(cfg.routePacketPercent) ? Number(cfg.routePacketPercent) : 0,
             lastPacketBlock: cfg.routeLastPacketBlock ?? null,
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",
@@ -378,12 +366,7 @@ export class NodeListView {
     const computeMedian = (values) => {
       const filtered = [];
       for (const value of values) {
-        const numeric =
-          typeof value === "number"
-            ? value
-            : value === undefined || value === null
-              ? NaN
-              : Number(value);
+        const numeric = typeof value === "number" ? value : isNullish(value) ? NaN : Number(value);
         if (Number.isFinite(numeric)) {
           filtered.push(numeric);
         }
@@ -684,8 +667,7 @@ export class NodeListView {
         const quorumNotes = metric.configDetails
           .filter((detail) => detail.usesSentinel || detail.optionalSummary)
           .map((detail) => {
-            const eidText =
-              detail.srcEid !== undefined && detail.srcEid !== null ? `EID ${detail.srcEid}: ` : "";
+            const eidText = isDefined(detail.srcEid) ? `EID ${detail.srcEid}: ` : "";
             return `${eidText}${detail.optionalSummary ? `quorum ${detail.optionalSummary}` : "sentinel"}`;
           });
         return {
@@ -972,7 +954,7 @@ export class NodeListView {
           }
           const group = standardGroups.get(key);
           group.count += 1;
-          if (detail.srcEid !== undefined && detail.srcEid !== null) {
+          if (isDefined(detail.srcEid)) {
             group.eids.push(detail.srcEid);
           }
         } else {
@@ -1015,10 +997,9 @@ export class NodeListView {
         }
         const header = document.createElement("div");
         header.className = "config-line-header";
-        const chainLabel =
-          detail.srcEid !== undefined && detail.srcEid !== null
-            ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
-            : "EID —";
+        const chainLabel = isDefined(detail.srcEid)
+          ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
+          : "EID —";
         header.textContent = `${chainLabel} • ${describeRequiredLabel(detail)}`;
         line.appendChild(header);
         renderDvns(detail, line);
@@ -1037,7 +1018,7 @@ export class NodeListView {
         line.appendChild(header);
 
         const uniqueEids = Array.from(
-          new Set(group.eids.filter((eid) => eid !== undefined && eid !== null)),
+          new Set(group.eids.filter((eid) => isDefined(eid))),
         ).map((eid) => String(eid));
         if (uniqueEids.length) {
           const chainLabels = uniqueEids.map((eid) => this.formatChainLabel(eid) || `EID ${eid}`);
@@ -1080,10 +1061,9 @@ export class NodeListView {
         block.className = "optional-line";
         const header = document.createElement("div");
         header.className = "optional-line-header";
-        const chainLabel =
-          detail.srcEid !== undefined && detail.srcEid !== null
-            ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
-            : "EID —";
+        const chainLabel = isDefined(detail.srcEid)
+          ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
+          : "EID —";
         const labelParts = [
           chainLabel,
           detail.optionalSummary
@@ -1140,7 +1120,7 @@ export class NodeListView {
       const activeSources = new Set();
       metric.activeIncoming.forEach((edgeInfo) => {
         const srcEid = edgeInfo?.edge?.srcEid;
-        if (srcEid !== undefined && srcEid !== null) {
+        if (isDefined(srcEid)) {
           activeSources.add(String(srcEid));
         }
       });
@@ -1159,7 +1139,7 @@ export class NodeListView {
       const blockedSources = new Set();
       metric.blockedIncoming.forEach((edgeInfo) => {
         const srcEid = edgeInfo?.edge?.srcEid;
-        if (srcEid !== undefined && srcEid !== null) {
+        if (isDefined(srcEid)) {
           blockedSources.add(String(srcEid));
         }
       });

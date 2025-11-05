@@ -228,7 +228,7 @@ function resolveConfig({ isConfigTracked, defaultCfg, overrideCfg, fallbackField
     usesSentinel = overrideCfg.requiredDVNCount === REQUIRED_DVN_SENTINEL;
 
     FALLBACK_FIELD_ORDER.forEach((field) => {
-      if (overrideCfg[field] === undefined || overrideCfg[field] === null) {
+      if (isNullish(overrideCfg[field])) {
         fallbackFields.add(field);
       }
     });

@@ -149,7 +149,7 @@ export function finalizeNodeMetrics({
   originalSecuritySummary = null,
   edgesMap = null,
 }) {
-  const normalize = (value) => (value === undefined || value === null ? null : String(value));
+  const normalize = (value) => (isNullish(value) ? null : String(value));
 
   const allowedSrcEids = new Set(
     node.securityConfigs.map((entry) => normalize(entry.srcEid)).filter((value) => value !== null),

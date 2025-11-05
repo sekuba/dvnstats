@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
+import { isDefined, isNullish } from "../utils/NumberUtils.js";
 
 export class GraphAnalyzer {
   constructor({ getChainDisplayLabel }) {
@@ -138,9 +139,7 @@ export class GraphAnalyzer {
       }
 
       const normalizedRequiredNames = (requiredDVNLabels || [])
-        .map((name) =>
-          name === null || name === undefined ? "" : String(name).trim().toLowerCase(),
-        )
+        .map((name) => (isNullish(name) ? "" : String(name).trim().toLowerCase()))
         .filter(Boolean)
         .sort();
 
@@ -264,7 +263,7 @@ export class GraphAnalyzer {
         entry.edges.push(info);
         entry.toNodes.add(edge.to);
         entry.fromNodes.add(edge.from);
-        if (edge.srcEid !== undefined && edge.srcEid !== null) {
+        if (isDefined(edge.srcEid)) {
           entry.srcEids.add(String(edge.srcEid));
         }
         entry.optionalCounts.add(optionalDVNCount || 0);
@@ -410,7 +409,7 @@ export class GraphAnalyzer {
   }
 
   isBlockingDvnLabel(label) {
-    if (label === null || label === undefined) {
+    if (isNullish(label)) {
       return false;
     }
     return String(label).trim().toLowerCase() === "lzdeaddvn";
@@ -497,17 +496,17 @@ export class GraphAnalyzer {
 
   resolveNodeChainLabel(node, nodeId, fallbackEid) {
     let chainSource = null;
-    if (node && node.localEid !== undefined && node.localEid !== null && node.localEid !== "") {
+    if (node && isDefined(node.localEid) && node.localEid !== "") {
       chainSource = node.localEid;
     } else if (node && typeof node.id === "string" && node.id.includes("_")) {
       chainSource = node.id.split("_")[0];
     } else if (typeof nodeId === "string" && nodeId.includes("_")) {
       chainSource = nodeId.split("_")[0];
-    } else if (fallbackEid !== undefined && fallbackEid !== null && fallbackEid !== "") {
+    } else if (isDefined(fallbackEid) && fallbackEid !== "") {
       chainSource = fallbackEid;
     }
 
-    if (chainSource === null || chainSource === undefined || chainSource === "") {
+    if (isNullish(chainSource) || chainSource === "") {
       return "";
     }
 
@@ -517,7 +516,7 @@ export class GraphAnalyzer {
   }
 
   formatChainLabel(chainId) {
-    if (chainId === undefined || chainId === null || chainId === "") {
+    if (isNullish(chainId) || chainId === "") {
       return "";
     }
     const display = this.getChainDisplayLabel(chainId);

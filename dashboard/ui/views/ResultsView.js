@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "../../config.js";
 import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
+import { isNullish } from "../../utils/NumberUtils.js";
 import { buildPayloadDetails } from "./ResultsPayloadDetails.js";
 import { renderSummaryPanels } from "./ResultsSummaryPanels.js";
 import { buildResultsTable } from "./ResultsTable.js";
@@ -113,9 +114,7 @@ export class ResultsView {
           return;
         }
         const uniqueIds = Array.from(
-          new Set(
-            ids.map((id) => (id === null || id === undefined ? null : String(id))).filter(Boolean),
-          ),
+          new Set(ids.map((id) => (isNullish(id) ? null : String(id))).filter(Boolean)),
         );
         if (!uniqueIds.length) {
           return;
@@ -155,7 +154,7 @@ export class ResultsView {
       return "";
     }
     for (const [key, value] of Object.entries(variables)) {
-      if (value === undefined || value === null) {
+      if (isNullish(value)) {
         continue;
       }
       if (key === "minPackets" && (value === "0" || value === 0)) {

@@ -1,5 +1,5 @@
 import { AddressUtils } from "../../utils/AddressUtils.js";
-import { coerceToNumber } from "../../utils/NumberUtils.js";
+import { coerceToNumber, isDefined, isNullish } from "../../utils/NumberUtils.js";
 
 export class NodeMetricsCalculator {
   constructor({ getOAppAlias, formatChainLabel, areStringArraysEqual }) {
@@ -43,9 +43,7 @@ export class NodeMetricsCalculator {
     const normalizeNames = (labels) =>
       Array.isArray(labels)
         ? labels
-            .map((label) =>
-              label === null || label === undefined ? "" : String(label).trim().toLowerCase(),
-            )
+            .map((label) => (isNullish(label) ? "" : String(label).trim().toLowerCase()))
             .filter(Boolean)
             .sort()
         : [];
@@ -88,7 +86,7 @@ export class NodeMetricsCalculator {
 
       const allowedSrcEids = new Set();
       const registerAllowed = (eid) => {
-        if (eid !== undefined && eid !== null) {
+        if (isDefined(eid)) {
           allowedSrcEids.add(String(eid));
         }
       };
@@ -97,8 +95,7 @@ export class NodeMetricsCalculator {
 
       const configDetails = (node.securityConfigs || [])
         .map((cfg) => {
-          const normalizedSrcEid =
-            cfg.srcEid !== undefined && cfg.srcEid !== null ? String(cfg.srcEid) : null;
+          const normalizedSrcEid = isDefined(cfg.srcEid) ? String(cfg.srcEid) : null;
           if (
             allowedSrcEids.size > 0 &&
             (!normalizedSrcEid || !allowedSrcEids.has(normalizedSrcEid))
@@ -163,18 +160,9 @@ export class NodeMetricsCalculator {
             matchesDominant,
             differsFromDominant,
             fingerprint,
-            packetCount:
-              cfg.routePacketCount !== undefined && cfg.routePacketCount !== null
-                ? Number(cfg.routePacketCount)
-                : 0,
-            packetShare:
-              cfg.routePacketShare !== undefined && cfg.routePacketShare !== null
-                ? Number(cfg.routePacketShare)
-                : 0,
-            packetPercent:
-              cfg.routePacketPercent !== undefined && cfg.routePacketPercent !== null
-                ? Number(cfg.routePacketPercent)
-                : 0,
+            packetCount: isDefined(cfg.routePacketCount) ? Number(cfg.routePacketCount) : 0,
+            packetShare: isDefined(cfg.routePacketShare) ? Number(cfg.routePacketShare) : 0,
+            packetPercent: isDefined(cfg.routePacketPercent) ? Number(cfg.routePacketPercent) : 0,
             lastPacketBlock: cfg.routeLastPacketBlock ?? null,
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",

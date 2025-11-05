@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../config.js";
+import { isNullish } from "./NumberUtils.js";
 
 const HEX_PREFIX = "0x";
 const BYTES32_HEX_LENGTH = 64;
@@ -12,7 +13,7 @@ export class AddressUtils {
   static normalize(address, options = {}) {
     const { allowNull = false } = options;
 
-    if (address === undefined || address === null) {
+    if (isNullish(address)) {
       if (allowNull) {
         return null;
       }

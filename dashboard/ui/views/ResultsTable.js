@@ -5,6 +5,7 @@ import {
   looksLikeTimestampColumn,
   stringifyScalar,
 } from "../../core.js";
+import { isNullish } from "../../utils/NumberUtils.js";
 
 export function buildResultsTable(rows, { chainMetadata }) {
   const columnSet = new Set();
@@ -105,12 +106,12 @@ function interpretValue(column, value, chainMetadata) {
     const lines = Array.isArray(value.lines) ? value.lines : [value.lines ?? ""];
     lines.forEach((line) => {
       const span = document.createElement("span");
-      const content = line === null || line === undefined || line === "" ? " " : String(line);
+      const content = isNullish(line) || line === "" ? " " : String(line);
       span.textContent = content;
       nodes.push(span);
     });
     const cleanedLines = lines
-      .map((line) => (line === null || line === undefined ? "" : String(line)))
+      .map((line) => (isNullish(line) ? "" : String(line)))
       .filter((line) => line.trim().length > 0);
     const copyValue = value.copyValue ?? cleanedLines.join(" | ");
     return {
@@ -122,7 +123,7 @@ function interpretValue(column, value, chainMetadata) {
     };
   }
 
-  if (value === null || value === undefined) {
+  if (isNullish(value)) {
     nodes.push(document.createTextNode("—"));
     return {
       nodes,

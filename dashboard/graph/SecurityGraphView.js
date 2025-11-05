@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
+import { isNullish } from "../utils/NumberUtils.js";
 import { EdgeRenderer } from "./EdgeRenderer.js";
 import { GraphAnalyzer } from "./GraphAnalyzer.js";
 import { GraphInteractions } from "./GraphInteractions.js";
@@ -389,7 +390,7 @@ export class SecurityGraphView {
   }
 
   formatChainLabel(chainId) {
-    if (chainId === undefined || chainId === null || chainId === "") {
+    if (isNullish(chainId) || chainId === "") {
       return "";
     }
     const display = this.getChainDisplayLabel(chainId);
