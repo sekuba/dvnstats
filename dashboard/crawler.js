@@ -183,7 +183,7 @@ export class SecurityGraphCrawler {
             libraryStatus: cfg?.libraryStatus ?? "unknown",
             peer: cfg?.peer ?? null,
             peerStateHint: cfg?.peerStateHint ?? null,
-            peerOAppId: peerDetails?.oappId ?? null,
+            peerOappId: peerDetails?.oappId ?? null,
             peerLocalEid: peerDetails?.localEid ?? null,
             peerAddress: peerDetails?.address ?? null,
             sourceType: cfg?.sourceType ?? "materialized",
@@ -199,9 +199,8 @@ export class SecurityGraphCrawler {
               !peerDetails?.oappId && !(peerDetails && peerDetails.isZeroPeer) && !cfg.peerOappId,
           };
 
-          const sanitizedPeerOAppId = sanitizePeerOAppId(securityEntry.peerOAppId);
-          securityEntry.peerOAppId = sanitizedPeerOAppId ?? undefined;
-          securityEntry.peerOappId = sanitizedPeerOAppId ?? undefined;
+          const sanitizedPeerOappId = sanitizePeerOAppId(securityEntry.peerOappId);
+          securityEntry.peerOappId = sanitizedPeerOappId ?? undefined;
 
           if (!shouldIncludeSecurityEntry(securityEntry)) {
             continue;
@@ -210,19 +209,19 @@ export class SecurityGraphCrawler {
           const isBlockingFallback =
             securityEntry.synthetic &&
             securityEntry.peerStateHint === "implicit-blocked" &&
-            !securityEntry.peerOAppId;
+            !securityEntry.peerOappId;
 
           securityEntry.isBlockingFallback = isBlockingFallback;
 
           node.securityConfigs.push(securityEntry);
 
-          if (!isBlockingFallback || securityEntry.peerOAppId) {
-            let edgeFromId = securityEntry.peerOAppId;
+          if (!isBlockingFallback || securityEntry.peerOappId) {
+            let edgeFromId = securityEntry.peerOappId;
             if (!edgeFromId && securityEntry.peerLocalEid) {
               edgeFromId = `${securityEntry.peerLocalEid}_${AddressUtils.constants.ZERO}`;
             }
 
-            const queueNextId = sanitizePeerOAppId(securityEntry.peerOAppId);
+            const queueNextId = sanitizePeerOAppId(securityEntry.peerOappId);
 
             const context = {
               config: securityEntry,
@@ -280,7 +279,7 @@ export class SecurityGraphCrawler {
               normalizedInboundRaw && normalizedInboundRaw.peerOappId !== undefined
                 ? {
                     ...normalizedInboundRaw,
-                    peerOAppId: sanitizePeerOAppId(normalizedInboundRaw.peerOAppId),
+                    peerOappId: sanitizePeerOAppId(normalizedInboundRaw.peerOappId),
                   }
                 : normalizedInboundRaw;
 
@@ -315,9 +314,7 @@ export class SecurityGraphCrawler {
                 (peerDetails ? peerDetails.peerStateHint : null) ??
                 null;
               const hasResolvedPeer = Boolean(
-                peerDetails?.oappId ||
-                  normalizedInbound?.peerOAppId ||
-                  normalizedInbound?.peerOappId,
+                peerDetails?.oappId || normalizedInbound?.peerOappId,
               );
               const isZeroPeer = peerDetails?.isZeroPeer === true;
               if (peerState === "explicit-blocked" || isZeroPeer) {

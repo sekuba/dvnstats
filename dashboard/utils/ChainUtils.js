@@ -45,7 +45,3 @@ export function formatChainLabel(chainId, chainMetadata, options = {}) {
 
   return display;
 }
-
-export function resolveChainDisplayLabel(chainMetadata, chainId) {
-  return getChainDisplayLabel(chainId, chainMetadata);
-}

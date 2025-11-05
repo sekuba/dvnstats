@@ -5,11 +5,8 @@ const BYTES32_HEX_LENGTH = 64;
 const EVM_ADDRESS_HEX_LENGTH = 40;
 const HEX_BODY_REGEX = /^[0-9a-f]+$/i;
 
-const NORMALIZED_CONSTANTS = Object.freeze({
-  ZERO: APP_CONFIG.ADDRESSES.ZERO.toLowerCase(),
-  ZERO_PEER: APP_CONFIG.ADDRESSES.ZERO_PEER.toLowerCase(),
-  DEAD: APP_CONFIG.ADDRESSES.DEAD.toLowerCase(),
-});
+// Use APP_CONFIG.ADDRESSES directly (already lowercase in config)
+const NORMALIZED_CONSTANTS = APP_CONFIG.ADDRESSES;
 
 export class AddressUtils {
   static normalize(address, options = {}) {

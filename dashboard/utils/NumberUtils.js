@@ -1,13 +1,31 @@
+/**
+ * Checks if a value is neither null nor undefined
+ * @param {*} value - The value to check
+ * @returns {boolean} true if value is not null and not undefined
+ */
+export function isDefined(value) {
+  return value !== undefined && value !== null;
+}
+
+/**
+ * Checks if a value is null or undefined
+ * @param {*} value - The value to check
+ * @returns {boolean} true if value is null or undefined
+ */
+export function isNullish(value) {
+  return value === undefined || value === null;
+}
+
 export function bigIntSafe(value) {
   try {
-    return value !== undefined && value !== null ? BigInt(value) : null;
+    return isDefined(value) ? BigInt(value) : null;
   } catch (error) {
     return null;
   }
 }
 
 export function coerceToNumber(value) {
-  if (value === null || value === undefined) {
+  if (isNullish(value)) {
     return 0;
   }
   if (typeof value === "number") {
@@ -21,5 +39,5 @@ export function coerceToNumber(value) {
 }
 
 export function toString(value) {
-  return value === undefined || value === null ? null : String(value);
+  return isNullish(value) ? null : String(value);
 }

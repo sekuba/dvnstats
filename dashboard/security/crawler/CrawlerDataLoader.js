@@ -214,7 +214,6 @@ export class CrawlerDataLoader {
           : {
               ...cfg,
               peerOappId: sanitizedPeerOappId,
-              peerOAppId: sanitizedPeerOappId,
             };
       const key = String(cfg.oappId);
       if (!originMap.has(key)) originMap.set(key, []);
@@ -230,7 +229,6 @@ export class CrawlerDataLoader {
           : {
               ...cfg,
               peerOappId: sanitizedPeerOappId,
-              peerOAppId: sanitizedPeerOappId,
             };
       const key = sanitizedPeerOappId ? String(sanitizedPeerOappId) : null;
       if (!key) return;
