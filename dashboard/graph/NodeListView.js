@@ -1,6 +1,12 @@
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { coerceToNumber, ensureArray, isDefined, isNullish } from "../utils/NumberUtils.js";
+import {
+  coerceToNumber,
+  ensureArray,
+  isDefined,
+  isNullish,
+  normalizeLabels,
+} from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
 
 const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
@@ -62,14 +68,6 @@ export class NodeListView {
       edgesByFrom.get(info.edge.from).push(info);
     }
 
-    const normalizeNames = (labels) =>
-      Array.isArray(labels)
-        ? labels
-            .map((label) => (isNullish(label) ? "" : String(label).trim().toLowerCase()))
-            .filter(Boolean)
-            .sort()
-        : [];
-
     const nodeMetrics = nodes.map((node) => {
       const incoming = edgesByTo.get(node.id) || [];
       const outgoing = edgesByFrom.get(node.id) || [];
@@ -89,19 +87,10 @@ export class NodeListView {
 
       const blockReasonSet = new Set();
       for (const edge of blockedIncoming) {
-        if (edge.blockReason === BLOCK_REASONS.STALE_PEER) {
-          blockReasonSet.add("Stale peer");
-        } else if (edge.blockReason === BLOCK_REASONS.ZERO_PEER) {
-          blockReasonSet.add("Zero peer");
-        } else if (edge.blockReason === BLOCK_REASONS.IMPLICIT_BLOCK) {
-          blockReasonSet.add("No peer configured");
-        } else if (edge.blockReason === BLOCK_REASONS.DEAD_DVN) {
-          blockReasonSet.add("Dead DVN");
-        } else if (edge.blockReason === BLOCK_REASONS.BLOCKING_DVN) {
-          blockReasonSet.add("Blocking DVN");
-        } else if (edge.blockReason === BLOCK_REASONS.MISSING_LIBRARY) {
-          blockReasonSet.add("Missing default receive library");
-        } else {
+        const label = APP_CONFIG.BLOCK_REASON_LABELS[edge.blockReason];
+        if (label) {
+          blockReasonSet.add(label);
+        } else if (edge.blockReason) {
           blockReasonSet.add("Blocked route");
         }
       }
@@ -126,7 +115,7 @@ export class NodeListView {
           }
           const requiredLabels = cfg.requiredDVNLabels || cfg.requiredDVNs || [];
           const requiredAddresses = cfg.requiredDVNs || [];
-          const normalized = normalizeNames(requiredLabels);
+          const normalized = normalizeLabels(requiredLabels);
           const fingerprint = JSON.stringify({
             required: cfg.requiredDVNCount || 0,
             names: normalized,

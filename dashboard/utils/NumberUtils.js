@@ -25,6 +25,18 @@ export function ensureArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+/**
+ * Normalize an array of label strings (trim, lowercase, filter empty, sort)
+ * @param {Array} labels - Array of label strings
+ * @returns {Array} Normalized and sorted array of labels
+ */
+export function normalizeLabels(labels) {
+  return ensureArray(labels)
+    .map((label) => (isNullish(label) ? "" : String(label).trim().toLowerCase()))
+    .filter(Boolean)
+    .sort();
+}
+
 export function bigIntSafe(value) {
   try {
     return isDefined(value) ? BigInt(value) : null;

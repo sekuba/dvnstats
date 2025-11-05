@@ -1,6 +1,6 @@
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { ensureArray, isDefined, isNullish } from "../utils/NumberUtils.js";
+import { ensureArray, isDefined, isNullish, normalizeLabels } from "../utils/NumberUtils.js";
 
 const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
 
@@ -140,10 +140,7 @@ export class GraphAnalyzer {
         }
       }
 
-      const normalizedRequiredNames = (requiredDVNLabels || [])
-        .map((name) => (isNullish(name) ? "" : String(name).trim().toLowerCase()))
-        .filter(Boolean)
-        .sort();
+      const normalizedRequiredNames = normalizeLabels(requiredDVNLabels);
 
       const combinationFingerprint = hasSecurityConfig
         ? JSON.stringify({
