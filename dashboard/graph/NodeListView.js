@@ -96,20 +96,20 @@ export class NodeListView {
       }
 
       if (renameTargets.length) {
-        renameActions = document.createElement("div");
-        renameActions.className = "summary-actions node-actions";
-        const renameButton = document.createElement("button");
-        renameButton.type = "button";
-        renameButton.textContent = "Rename All Nodes";
-        renameButton.title =
-          "Set a shared alias for every node in this crawl (excludes zero-peer sentinels)";
-        renameButton.addEventListener("click", () => {
-          if (!Array.isArray(renameTargets) || !renameTargets.length) {
-            return;
-          }
-          this.requestUniformAlias([...renameTargets]);
-        });
-        renameActions.appendChild(renameButton);
+        renameActions = DomBuilder.div(
+          { className: "summary-actions node-actions" },
+          DomBuilder.button({
+            attributes: { type: "button" },
+            textContent: "Rename All Nodes",
+            title: "Set a shared alias for every node in this crawl (excludes zero-peer sentinels)",
+            onClick: () => {
+              if (!Array.isArray(renameTargets) || !renameTargets.length) {
+                return;
+              }
+              this.requestUniformAlias([...renameTargets]);
+            },
+          }),
+        );
       }
     }
 
@@ -291,24 +291,21 @@ export class NodeListView {
     formatMedianValue,
     formatNumber,
   ) {
-    const insightGrid = document.createElement("div");
-    insightGrid.className = "node-insight-grid";
+    const insightGrid = DomBuilder.div({ className: "node-insight-grid" });
     container.appendChild(insightGrid);
 
-    const dominantCard = document.createElement("div");
-    dominantCard.className = "insight-card";
-    const domTitle = document.createElement("h4");
-    domTitle.textContent = "Dominant DVN Set";
-    dominantCard.appendChild(domTitle);
+    const dominantCard = DomBuilder.div({ className: "insight-card" });
+    dominantCard.appendChild(DomBuilder.h4({ textContent: "Dominant DVN Set" }));
 
     if (dominantCombination) {
-      const lead = document.createElement("p");
-      lead.className = "insight-lead";
-      lead.textContent = this.describeCombination(dominantCombination);
-      dominantCard.appendChild(lead);
+      dominantCard.appendChild(
+        DomBuilder.p({
+          className: "insight-lead",
+          textContent: this.describeCombination(dominantCombination),
+        }),
+      );
 
-      const dl = document.createElement("dl");
-      dl.className = "insight-list";
+      const dl = DomBuilder.dl({ className: "insight-list" });
       const shareText =
         typeof dominantCombination.share === "number"
           ? ` (${(dominantCombination.share * 100).toFixed(1)}%)`
@@ -348,9 +345,7 @@ export class NodeListView {
 
       dominantCard.appendChild(dl);
     } else {
-      const empty = document.createElement("p");
-      empty.textContent = "No dominant DVN set detected.";
-      dominantCard.appendChild(empty);
+      dominantCard.appendChild(DomBuilder.p({ textContent: "No dominant DVN set detected." }));
     }
 
     insightGrid.appendChild(dominantCard);
@@ -373,39 +368,35 @@ export class NodeListView {
   }
 
   renderAnomaliesCard(insightGrid, nodeMetrics, formatNodeDescriptor) {
-    const anomaliesCard = document.createElement("div");
-    anomaliesCard.className = "insight-card insight-card--alert";
-    const anomaliesTitle = document.createElement("h4");
-    anomaliesTitle.textContent = "Special Cases";
-    anomaliesCard.appendChild(anomaliesTitle);
+    const anomaliesCard = DomBuilder.div({ className: "insight-card insight-card--alert" });
+    anomaliesCard.appendChild(DomBuilder.h4({ textContent: "Special Cases" }));
 
-    const anomalyContainer = document.createElement("div");
-    anomalyContainer.className = "anomaly-groups";
+    const anomalyContainer = DomBuilder.div({ className: "anomaly-groups" });
     anomaliesCard.appendChild(anomalyContainer);
 
     const appendAnomalyGroup = (label, items) => {
       if (!items.length) {
         return;
       }
-      const group = document.createElement("div");
-      group.className = "anomaly-group";
-      const groupTitle = document.createElement("h5");
-      groupTitle.textContent = label;
-      group.appendChild(groupTitle);
+      const group = DomBuilder.div({ className: "anomaly-group" });
+      group.appendChild(DomBuilder.h5({ textContent: label }));
 
-      const list = document.createElement("ul");
-      list.className = "anomaly-list";
+      const list = DomBuilder.ul({ className: "anomaly-list" });
       items.forEach((item) => {
-        const li = document.createElement("li");
-        const nodeSpan = document.createElement("span");
-        nodeSpan.className = "anomaly-node";
-        nodeSpan.textContent = formatNodeDescriptor(item.metric);
-        li.appendChild(nodeSpan);
+        const li = DomBuilder.li();
+        li.appendChild(
+          DomBuilder.span({
+            className: "anomaly-node",
+            textContent: formatNodeDescriptor(item.metric),
+          }),
+        );
         if (item.detail) {
-          const detailSpan = document.createElement("span");
-          detailSpan.className = "anomaly-detail";
-          detailSpan.textContent = item.detail;
-          li.appendChild(detailSpan);
+          li.appendChild(
+            DomBuilder.span({
+              className: "anomaly-detail",
+              textContent: item.detail,
+            }),
+          );
         }
         list.appendChild(li);
       });
@@ -464,9 +455,9 @@ export class NodeListView {
     appendAnomalyGroup("From Packet", fromPacketItems);
 
     if (!anomalyContainer.childElementCount) {
-      const emptyAnomaly = document.createElement("p");
-      emptyAnomaly.textContent = "No anomalies detected in this crawl.";
-      anomalyContainer.appendChild(emptyAnomaly);
+      anomalyContainer.appendChild(
+        DomBuilder.p({ textContent: "No anomalies detected in this crawl." }),
+      );
     }
 
     insightGrid.appendChild(anomaliesCard);
@@ -485,14 +476,10 @@ export class NodeListView {
     formatMedianValue,
     formatNumber,
   ) {
-    const statsCard = document.createElement("div");
-    statsCard.className = "insight-card";
-    const statsTitle = document.createElement("h4");
-    statsTitle.textContent = "Connectivity Stats";
-    statsCard.appendChild(statsTitle);
+    const statsCard = DomBuilder.div({ className: "insight-card" });
+    statsCard.appendChild(DomBuilder.h4({ textContent: "Connectivity Stats" }));
 
-    const statsList = document.createElement("dl");
-    statsList.className = "insight-list";
+    const statsList = DomBuilder.dl({ className: "insight-list" });
     this.appendSummaryRow(
       statsList,
       "Median inbound edges",
@@ -548,9 +535,8 @@ export class NodeListView {
     hasPacketVariation,
     formatNumber,
   ) {
-    const table = document.createElement("table");
-    table.className = "node-detail-table";
-    const thead = document.createElement("thead");
+    const table = DomBuilder.table({ className: "node-detail-table" });
+    const thead = DomBuilder.thead();
     thead.innerHTML = `
       <tr>
         <th>Node</th>
@@ -563,7 +549,7 @@ export class NodeListView {
     `;
     table.appendChild(thead);
 
-    const tbody = document.createElement("tbody");
+    const tbody = DomBuilder.tbody();
     nodeMetrics.forEach((metric) => {
       const tr = this.rowRenderer.renderNodeRow(
         metric,
