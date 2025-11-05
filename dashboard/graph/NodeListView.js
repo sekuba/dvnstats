@@ -2,6 +2,7 @@ import { AddressUtils } from "../utils/AddressUtils.js";
 import { ensureArray } from "../utils/NumberUtils.js";
 import { DomBuilder } from "../utils/dom/DomBuilder.js";
 import { NodeMetricsCalculator } from "./node-list/NodeMetricsCalculator.js";
+import { NodeRowRenderer } from "./node-list/NodeRowRenderer.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
 
 export class NodeListView {
@@ -10,6 +11,10 @@ export class NodeListView {
       getOAppAlias,
       formatChainLabel,
       areStringArraysEqual,
+    });
+    this.rowRenderer = new NodeRowRenderer({
+      formatChainLabel,
+      shortenAddress,
     });
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.formatChainLabel = typeof formatChainLabel === "function" ? formatChainLabel : () => "";
@@ -543,16 +548,6 @@ export class NodeListView {
     hasPacketVariation,
     formatNumber,
   ) {
-    const createBadge = (label, tone = "default", tooltip = null) => {
-      const span = document.createElement("span");
-      span.className = `badge badge--${tone}`;
-      span.textContent = label;
-      if (tooltip) {
-        span.title = tooltip;
-      }
-      return span;
-    };
-
     const table = document.createElement("table");
     table.className = "node-detail-table";
     const thead = document.createElement("thead");
@@ -570,7 +565,7 @@ export class NodeListView {
 
     const tbody = document.createElement("tbody");
     nodeMetrics.forEach((metric) => {
-      const tr = this.renderNodeRow(
+      const tr = this.rowRenderer.renderNodeRow(
         metric,
         edgeLows,
         edgeHighs,
@@ -578,7 +573,6 @@ export class NodeListView {
         packetLows,
         packetHighs,
         hasPacketVariation,
-        createBadge,
         formatNumber,
       );
       tbody.appendChild(tr);
@@ -589,394 +583,5 @@ export class NodeListView {
       container.appendChild(renameActions);
     }
     container.appendChild(table);
-  }
-
-  renderNodeRow(
-    metric,
-    edgeLows,
-    edgeHighs,
-    hasEdgeVariation,
-    packetLows,
-    packetHighs,
-    hasPacketVariation,
-    createBadge,
-    formatNumber,
-  ) {
-    const tr = document.createElement("tr");
-    if (metric.isBlocked) {
-      tr.classList.add("row-blocked");
-    }
-    if (!metric.isTracked) {
-      tr.classList.add("row-untracked");
-    }
-    if (metric.hasConfigDifference) {
-      tr.classList.add("row-variant");
-    }
-
-    // Node cell
-    const nodeCell = document.createElement("td");
-    const nodeBlock = document.createElement("div");
-    nodeBlock.className = "node-identity";
-    const nodeInfo = document.createElement("span");
-    nodeInfo.className = "node-id copyable";
-    nodeInfo.dataset.copyValue = metric.id;
-    nodeInfo.dataset.oappId = metric.id;
-    if (metric.alias) {
-      const aliasLine = document.createElement("span");
-      aliasLine.className = "node-alias";
-      aliasLine.textContent = metric.alias;
-      nodeInfo.appendChild(aliasLine);
-    }
-
-    const chainLine = document.createElement("span");
-    chainLine.className = "node-id-chain";
-    chainLine.textContent = metric.chainLabel;
-    nodeInfo.appendChild(chainLine);
-
-    const idLine = document.createElement("span");
-    idLine.className = "node-id-value";
-    idLine.textContent = metric.id;
-    nodeInfo.appendChild(idLine);
-
-    nodeBlock.appendChild(nodeInfo);
-    nodeCell.appendChild(nodeBlock);
-    tr.appendChild(nodeCell);
-
-    // Config cell
-    const configCell = this.renderConfigCell(metric);
-    tr.appendChild(configCell);
-
-    // Optional cell
-    const optionalCell = this.renderOptionalCell(metric);
-    tr.appendChild(optionalCell);
-
-    // Edges cell
-    const edgesCell = this.renderEdgesCell(metric, edgeLows, edgeHighs, hasEdgeVariation);
-    tr.appendChild(edgesCell);
-
-    // Packets cell
-    const packetsCell = document.createElement("td");
-    packetsCell.className = "metric-cell";
-    packetsCell.textContent = formatNumber(metric.totalPackets);
-    if (hasPacketVariation && metric.isTracked && !metric.isBlocked) {
-      if (packetLows.includes(metric.id)) {
-        packetsCell.classList.add("cell-extreme-low");
-      } else if (packetHighs.includes(metric.id)) {
-        packetsCell.classList.add("cell-extreme-high");
-      }
-    }
-    tr.appendChild(packetsCell);
-
-    // Notes cell
-    const notesCell = this.renderNotesCell(metric, createBadge);
-    tr.appendChild(notesCell);
-
-    return tr;
-  }
-
-  renderConfigCell(metric) {
-    const configCell = document.createElement("td");
-    configCell.className = "config-cell";
-    if (!metric.configDetails.length) {
-      configCell.textContent = "—";
-    } else {
-      const stack = document.createElement("div");
-      stack.className = "config-stack";
-
-      const standardGroups = new Map();
-      const variantDetails = [];
-
-      const isMissingConfig = (detail) => {
-        if (!detail) {
-          return false;
-        }
-        const usesDefaultLibrary = detail.usesDefaultLibrary !== false;
-        const hasLibraryOverride =
-          detail.libraryOverrideVersionId !== null && detail.libraryOverrideVersionId !== undefined;
-        const effectiveLibrary = detail.effectiveReceiveLibrary || null;
-        const hasEffectiveLibrary =
-          !!(effectiveLibrary) && !AddressUtils.isZero(effectiveLibrary);
-        return (
-          usesDefaultLibrary &&
-          !hasLibraryOverride &&
-          detail.libraryStatus === "none" &&
-          !hasEffectiveLibrary
-        );
-      };
-
-      const describeRequiredLabel = (detail) => {
-        if (!detail) {
-          return "—";
-        }
-        if (isMissingConfig(detail)) {
-          return "no config";
-        }
-        const count = Number.isFinite(detail.requiredDVNCount) ? detail.requiredDVNCount : 0;
-        return `${count} required`;
-      };
-
-      metric.configDetails.forEach((detail) => {
-        if (detail.matchesDominant && !detail.usesSentinel && !detail.differsFromDominant) {
-          const key = detail.fingerprint || "dominant";
-          if (!standardGroups.has(key)) {
-            standardGroups.set(key, {
-              count: 0,
-              eids: [],
-              sample: detail,
-            });
-          }
-          const group = standardGroups.get(key);
-          group.count += 1;
-          if (isDefined(detail.srcEid)) {
-            group.eids.push(detail.srcEid);
-          }
-        } else {
-          variantDetails.push(detail);
-        }
-      });
-
-      const renderDvns = (detail, container) => {
-        const safePairs = ensureArray(detail?.requiredPairs);
-        if (safePairs.length) {
-          const list = document.createElement("div");
-          list.className = "dvn-pill-row";
-          safePairs.forEach((pair) => {
-            const pill = document.createElement("span");
-            pill.className = "dvn-pill copyable";
-            const copyValue = pair.address || pair.label;
-            pill.dataset.copyValue = copyValue || "";
-            pill.title = pair.address || pair.label;
-            pill.textContent =
-              pair.label || (pair.address ? this.shortenAddress(pair.address) : "—");
-            list.appendChild(pill);
-          });
-          container.appendChild(list);
-        } else {
-          const placeholder = document.createElement("div");
-          placeholder.className = "dvn-pill-row";
-          placeholder.textContent = isMissingConfig(detail) ? "no config" : "—";
-          container.appendChild(placeholder);
-        }
-      };
-
-      const renderVariantDetail = (detail) => {
-        const line = document.createElement("div");
-        line.className = "config-line";
-        if (detail.differsFromDominant) {
-          line.classList.add("config-line--variant");
-        }
-        if (detail.usesSentinel) {
-          line.classList.add("config-line--sentinel");
-        }
-        const header = document.createElement("div");
-        header.className = "config-line-header";
-        const chainLabel = isDefined(detail.srcEid)
-          ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
-          : "EID —";
-        header.textContent = `${chainLabel} • ${describeRequiredLabel(detail)}`;
-        line.appendChild(header);
-        renderDvns(detail, line);
-        stack.appendChild(line);
-      };
-
-      const renderStandardGroup = (group) => {
-        if (!group?.sample) {
-          return;
-        }
-        const line = document.createElement("div");
-        line.className = "config-line config-line--standard";
-        const header = document.createElement("div");
-        header.className = "config-line-header";
-        header.textContent = `Dominant set • ${group.count} chain${group.count === 1 ? "" : "s"} • ${describeRequiredLabel(group.sample)}`;
-        line.appendChild(header);
-
-        const uniqueEids = Array.from(
-          new Set(group.eids.filter((eid) => isDefined(eid))),
-        ).map((eid) => String(eid));
-        if (uniqueEids.length) {
-          const chainLabels = uniqueEids.map((eid) => this.formatChainLabel(eid) || `EID ${eid}`);
-          const preview = chainLabels.slice(0, 4).join(", ");
-          const note = document.createElement("div");
-          note.className = "config-line-note";
-          note.textContent = chainLabels.length > 4 ? `${preview}, …` : preview;
-          line.appendChild(note);
-        }
-
-        renderDvns(group.sample, line);
-        stack.appendChild(line);
-      };
-
-      variantDetails.forEach(renderVariantDetail);
-      standardGroups.forEach((group) => renderStandardGroup(group));
-
-      configCell.appendChild(stack);
-    }
-    if (metric.hasConfigDifference) {
-      configCell.classList.add("cell-variant");
-    }
-    return configCell;
-  }
-
-  renderOptionalCell(metric) {
-    const optionalCell = document.createElement("td");
-    optionalCell.className = "optional-cell";
-    const optionalChunks = metric.configDetails.filter((detail) => {
-      const pairs = ensureArray(detail.optionalPairs);
-      return (detail.optionalSummary && detail.optionalSummary !== "0") || pairs.length;
-    });
-    if (!optionalChunks.length) {
-      optionalCell.textContent = "—";
-    } else {
-      const stack = document.createElement("div");
-      stack.className = "optional-stack";
-      optionalChunks.forEach((detail) => {
-        const block = document.createElement("div");
-        block.className = "optional-line";
-        const header = document.createElement("div");
-        header.className = "optional-line-header";
-        const chainLabel = isDefined(detail.srcEid)
-          ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
-          : "EID —";
-        const labelParts = [
-          chainLabel,
-          detail.optionalSummary
-            ? `quorum ${detail.optionalSummary}`
-            : detail.usesSentinel
-              ? "sentinel"
-              : "optional DVNs",
-        ];
-        header.textContent = labelParts.join(" • ");
-        block.appendChild(header);
-
-        const optionalPairs = ensureArray(detail.optionalPairs);
-        if (optionalPairs.length) {
-          const list = document.createElement("div");
-          list.className = "dvn-pill-row";
-          optionalPairs.forEach((pair) => {
-            const pill = document.createElement("span");
-            pill.className = "dvn-pill dvn-pill--optional copyable";
-            const copyValue = pair.address || pair.label;
-            pill.dataset.copyValue = copyValue || "";
-            pill.title = pair.address || pair.label;
-            pill.textContent = pair.label || this.shortenAddress(pair.address);
-            list.appendChild(pill);
-          });
-          block.appendChild(list);
-        }
-
-        stack.appendChild(block);
-      });
-      optionalCell.appendChild(stack);
-    }
-    if (metric.hasSentinel) {
-      optionalCell.classList.add("cell-sentinel");
-    }
-    return optionalCell;
-  }
-
-  renderEdgesCell(metric, edgeLows, edgeHighs, hasEdgeVariation) {
-    const edgesCell = document.createElement("td");
-    edgesCell.className = "edges-cell";
-
-    const edgeCount = document.createElement("div");
-    edgeCount.className = "edge-count";
-    const edgeParts = [`${metric.activeIncomingCount} active`];
-    if (metric.blockedIncomingCount > 0) {
-      edgeParts.push(`${metric.blockedIncomingCount} blocked`);
-    }
-    edgeCount.textContent = edgeParts.join(" / ");
-    edgesCell.appendChild(edgeCount);
-
-    if (metric.activeIncoming && metric.activeIncoming.length > 0) {
-      const activeList = document.createElement("div");
-      activeList.className = "active-edges-list";
-      const activeSources = new Set();
-      metric.activeIncoming.forEach((edgeInfo) => {
-        const srcEid = edgeInfo?.edge?.srcEid;
-        if (isDefined(srcEid)) {
-          activeSources.add(String(srcEid));
-        }
-      });
-      if (activeSources.size > 0) {
-        const activeChains = Array.from(activeSources)
-          .map((eid) => this.formatChainLabel(eid) || `EID ${eid}`)
-          .sort();
-        activeList.textContent = `Active: ${activeChains.join(", ")}`;
-        edgesCell.appendChild(activeList);
-      }
-    }
-
-    if (metric.blockedIncoming && metric.blockedIncoming.length > 0) {
-      const blockedList = document.createElement("div");
-      blockedList.className = "blocked-edges-list";
-      const blockedSources = new Set();
-      metric.blockedIncoming.forEach((edgeInfo) => {
-        const srcEid = edgeInfo?.edge?.srcEid;
-        if (isDefined(srcEid)) {
-          blockedSources.add(String(srcEid));
-        }
-      });
-      if (blockedSources.size > 0) {
-        const blockedChains = Array.from(blockedSources)
-          .map((eid) => this.formatChainLabel(eid) || `EID ${eid}`)
-          .sort();
-        blockedList.textContent = `Blocked: ${blockedChains.join(", ")}`;
-        edgesCell.appendChild(blockedList);
-      }
-    }
-
-    if (hasEdgeVariation && metric.isTracked && !metric.isBlocked) {
-      if (edgeLows.includes(metric.id)) {
-        edgesCell.classList.add("cell-extreme-low");
-      } else if (edgeHighs.includes(metric.id)) {
-        edgesCell.classList.add("cell-extreme-high");
-      }
-    }
-    return edgesCell;
-  }
-
-  renderNotesCell(metric, createBadge) {
-    const notesCell = document.createElement("td");
-    notesCell.className = "notes-cell";
-    const noteBadges = [];
-
-    if (metric.diffReasonSummary.length) {
-      noteBadges.push(createBadge("Δ DVN set", "alert", metric.diffReasonSummary.join("; ")));
-    }
-    if (metric.blockReasons.length) {
-      noteBadges.push(createBadge("Blocked", "danger", metric.blockReasons.join("; ")));
-    }
-    if (metric.hasSentinel) {
-      const sentinelDetails = metric.configDetails
-        .filter((detail) => detail.usesSentinel || detail.optionalSummary)
-        .map((detail) =>
-          detail.optionalSummary
-            ? `EID ${detail.srcEid}: quorum ${detail.optionalSummary}`
-            : `EID ${detail.srcEid}: sentinel`,
-        );
-      noteBadges.push(
-        createBadge(
-          "Sentinel quorum",
-          "info",
-          sentinelDetails.length ? sentinelDetails.join("; ") : null,
-        ),
-      );
-    }
-    if (metric.fromPacketDelivered) {
-      noteBadges.push(createBadge("From packet", "info", "Inferred from packet"));
-    }
-    metric.notes.forEach((note) => {
-      if (note === "Blocked" || note === "Sentinel quorum") {
-        return;
-      }
-      noteBadges.push(createBadge(note, "muted"));
-    });
-
-    if (!noteBadges.length) {
-      notesCell.textContent = "—";
-    } else {
-      noteBadges.forEach((badge) => notesCell.appendChild(badge));
-    }
-    return notesCell;
   }
 }
