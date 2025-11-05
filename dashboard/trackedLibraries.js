@@ -1,3 +1,5 @@
+import { isNullish } from "./utils/NumberUtils.js";
+
 const entries = [
   ["30101", "0xc02ab410f0734efa3f14628780e6e695156024c2"],
   ["30111", "0x3c4962ff6258dcfcafd23a814237b7d6eb712063"],
@@ -20,16 +22,9 @@ const entries = [
 ];
 
 export const TRACKED_RECEIVE_LIBRARIES = Object.freeze(
-  entries.reduce((acc, [key, value]) => {
-    acc[key] = value.toLowerCase();
-    return acc;
-  }, {}),
+  Object.fromEntries(entries.map(([key, value]) => [key, value.toLowerCase()])),
 );
 
 export function getTrackedReceiveLibrary(localEid) {
-  if (localEid === undefined || localEid === null) {
-    return undefined;
-  }
-  const key = String(localEid);
-  return TRACKED_RECEIVE_LIBRARIES[key];
+  return isNullish(localEid) ? undefined : TRACKED_RECEIVE_LIBRARIES[String(localEid)];
 }

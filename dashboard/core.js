@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "./config.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
+import { isNullish } from "./utils/NumberUtils.js";
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -213,10 +214,7 @@ export function splitOAppId(oappId) {
 }
 
 export function normalizeKey(value) {
-  if (value === undefined || value === null) {
-    return null;
-  }
-  return String(value);
+  return isNullish(value) ? null : String(value);
 }
 
 export function clampInteger(rawValue, min, max, fallback) {

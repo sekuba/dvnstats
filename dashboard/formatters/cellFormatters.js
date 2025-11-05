@@ -1,10 +1,11 @@
 import { formatInteger, formatPercent, formatTimestampValue } from "./valueFormatters.js";
+import { isDefined, isNullish } from "../utils/NumberUtils.js";
 
 export function createFormattedCell(lines, copyValue, meta = {}) {
   const normalizedLines = Array.isArray(lines) ? lines : [lines];
   return {
     __formatted: true,
-    lines: normalizedLines.map((line) => (line === null || line === undefined ? "" : String(line))),
+    lines: normalizedLines.map((line) => (isNullish(line) ? "" : String(line))),
     copyValue,
     meta,
     highlight: meta.highlight || false,
@@ -33,8 +34,8 @@ export function formatRouteActivityLine(activity) {
  */
 export function formatUpdateInfo({ block, timestamp, eventId, txHash }) {
   const lines = [];
-  if (block !== undefined && block !== null) lines.push(`Block ${block}`);
-  if (timestamp !== undefined && timestamp !== null) {
+  if (isDefined(block)) lines.push(`Block ${block}`);
+  if (isDefined(timestamp)) {
     const ts = formatTimestampValue(timestamp);
     if (ts) lines.push(ts.primary);
   }
