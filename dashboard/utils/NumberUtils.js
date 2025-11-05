@@ -37,6 +37,19 @@ export function normalizeLabels(labels) {
     .sort();
 }
 
+/**
+ * Create label/address pairs from two parallel arrays
+ * @param {Array} labels - Array of labels
+ * @param {Array} addresses - Array of addresses
+ * @returns {Array} Array of {label, address} objects
+ */
+export function createLabelAddressPairs(labels, addresses) {
+  return ensureArray(labels).map((label, idx) => ({
+    label: label || "(unknown)",
+    address: ensureArray(addresses)[idx] || null,
+  }));
+}
+
 export function bigIntSafe(value) {
   try {
     return isDefined(value) ? BigInt(value) : null;

@@ -2,6 +2,7 @@ import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import {
   coerceToNumber,
+  createLabelAddressPairs,
   ensureArray,
   isDefined,
   isNullish,
@@ -143,17 +144,11 @@ export class NodeListView {
             }
           }
 
-          const requiredPairs = requiredLabels.map((label, idx) => ({
-            label: label || "(unknown)",
-            address: requiredAddresses[idx] || null,
-          }));
+          const requiredPairs = createLabelAddressPairs(requiredLabels, requiredAddresses);
 
           const optionalLabels = cfg.optionalDVNLabels || cfg.optionalDVNs || [];
           const optionalAddresses = cfg.optionalDVNs || [];
-          const optionalPairs = optionalLabels.map((label, idx) => ({
-            label: label || "(unknown)",
-            address: optionalAddresses[idx] || null,
-          }));
+          const optionalPairs = createLabelAddressPairs(optionalLabels, optionalAddresses);
           const optionalSummary =
             cfg.optionalDVNCount && cfg.optionalDVNCount > 0
               ? `${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount}`
