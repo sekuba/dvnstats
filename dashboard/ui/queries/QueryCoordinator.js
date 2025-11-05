@@ -1,5 +1,6 @@
 import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
+import { ensureArray } from "../../utils/NumberUtils.js";
 import { OAppFormatter } from "./formatters/OAppFormatter.js";
 import { SecurityConfigFormatter } from "./formatters/SecurityConfigFormatter.js";
 import { buildQueryRegistry } from "./QueryRegistry.js";
@@ -132,7 +133,7 @@ export class QueryCoordinator {
 
       if (typeof config.processResponse === "function") {
         const result = (await config.processResponse(payload, { ...baseMeta })) || {};
-        rows = Array.isArray(result.rows) ? result.rows : [];
+        rows = ensureArray(result.rows);
         if (result.meta && typeof result.meta === "object") {
           finalMeta = { ...baseMeta, ...result.meta };
         }
@@ -196,7 +197,7 @@ export class QueryCoordinator {
         if (result && typeof result.then === "function") {
           result = await result;
         }
-        rows = Array.isArray(result.rows) ? result.rows : [];
+        rows = ensureArray(result.rows);
         if (result?.meta && typeof result.meta === "object") {
           finalMeta = { ...baseMeta, ...result.meta };
         }

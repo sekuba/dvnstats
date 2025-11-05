@@ -4,7 +4,7 @@ import {
   calculateTotalRoutePackets,
   enrichRouteStatsWithShares,
 } from "../../utils/MetricsUtils.js";
-import { isDefined, isNullish } from "../../utils/NumberUtils.js";
+import { ensureArray, isDefined, isNullish } from "../../utils/NumberUtils.js";
 import { createGraphEdge } from "../factories/SecurityEntryFactory.js";
 
 const ZERO_ADDRESS = AddressUtils.constants.ZERO;
@@ -118,8 +118,8 @@ export function shouldIncludeSecurityEntry(entry) {
   }
 
   if (synthetic) {
-    const required = Array.isArray(entry.requiredDVNs) ? entry.requiredDVNs : [];
-    const optional = Array.isArray(entry.optionalDVNs) ? entry.optionalDVNs : [];
+    const required = ensureArray(entry.requiredDVNs);
+    const optional = ensureArray(entry.optionalDVNs);
     const hasBlockingDvn = [...required, ...optional].some((addr) => AddressUtils.isDead(addr));
 
     if (!entry.peerOappId) {

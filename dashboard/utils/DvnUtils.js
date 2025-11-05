@@ -1,3 +1,5 @@
+import { ensureArray } from "./NumberUtils.js";
+
 export function resolveDvnLabels(addresses, chainMetadata, options = {}) {
   if (!Array.isArray(addresses) || !addresses.length) {
     return [];
@@ -63,8 +65,8 @@ export function resolveConfigDvns(config, chainMetadata) {
   const localEid = config.localEid ?? config.eid ?? null;
   const context = isDefined(localEid) ? { localEid } : {};
 
-  const requiredDVNs = Array.isArray(config.requiredDVNs) ? config.requiredDVNs : [];
-  const optionalDVNs = Array.isArray(config.optionalDVNs) ? config.optionalDVNs : [];
+  const requiredDVNs = ensureArray(config.requiredDVNs);
+  const optionalDVNs = ensureArray(config.optionalDVNs);
 
   const requiredDVNLabels =
     requiredDVNs.length > 0 && chainMetadata?.resolveDvnNames

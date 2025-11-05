@@ -1,6 +1,6 @@
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { isDefined, isNullish } from "../utils/NumberUtils.js";
+import { ensureArray, isDefined, isNullish } from "../utils/NumberUtils.js";
 
 export class GraphAnalyzer {
   constructor({ getChainDisplayLabel }) {
@@ -419,8 +419,8 @@ export class GraphAnalyzer {
     if (!config) {
       return false;
     }
-    const requiredAddresses = Array.isArray(config.requiredDVNs) ? config.requiredDVNs : [];
-    const requiredLabels = Array.isArray(config.requiredDVNLabels) ? config.requiredDVNLabels : [];
+    const requiredAddresses = ensureArray(config.requiredDVNs);
+    const requiredLabels = ensureArray(config.requiredDVNLabels);
     return (
       requiredAddresses.some((addr) => this.isDeadAddress(addr)) ||
       requiredLabels.some((label) => this.isBlockingDvnLabel(label))
@@ -476,7 +476,7 @@ export class GraphAnalyzer {
   }
 
   getNodeSecurityMetrics(node) {
-    const configs = Array.isArray(node?.securityConfigs) ? node.securityConfigs : [];
+    const configs = ensureArray(node?.securityConfigs);
     const nonBlockedConfigs = configs.filter((cfg) => !this.configHasBlockingDvn(cfg));
 
     const minRequiredDVNs =

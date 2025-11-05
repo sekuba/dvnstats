@@ -2,6 +2,7 @@ import { APP_CONFIG } from "./config.js";
 import { ChainDirectory, HasuraClient } from "./core.js";
 import { AliasStore, QueryCoordinator, ResultsView, ToastQueue } from "./ui.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
+import { ensureArray } from "./utils/NumberUtils.js";
 
 class DashboardApp {
   constructor() {
@@ -389,7 +390,7 @@ class DashboardApp {
     const seen = new Set();
     const result = [];
 
-    (Array.isArray(input) ? input : []).forEach((raw) => {
+    ensureArray(input).forEach((raw) => {
       if (!raw) return;
       const trimmed = String(raw).trim();
       if (!trimmed || seen.has(trimmed)) return;

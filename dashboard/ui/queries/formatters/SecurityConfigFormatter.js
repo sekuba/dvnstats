@@ -8,7 +8,7 @@ import {
   formatUpdateInfo,
 } from "../../../formatters/cellFormatters.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../../utils/DvnUtils.js";
-import { bigIntSafe, coerceToNumber, isNullish } from "../../../utils/NumberUtils.js";
+import { bigIntSafe, coerceToNumber, ensureArray, isNullish } from "../../../utils/NumberUtils.js";
 
 export class SecurityConfigFormatter {
   constructor(chainMetadata, aliasStore, getChainDisplayLabel, resolveDvnLabels) {
@@ -172,7 +172,7 @@ export class SecurityConfigFormatter {
   }
 
   prepareRouteActivity(meta) {
-    const stats = Array.isArray(meta?.routeStats) ? meta.routeStats : [];
+    const stats = ensureArray(meta?.routeStats);
     const map = new Map();
     let summed = 0;
 
@@ -253,7 +253,7 @@ export class SecurityConfigFormatter {
       seenTypes.add("peer-zero-implicit");
     }
 
-    const requiredDvns = Array.isArray(row.effectiveRequiredDVNs) ? row.effectiveRequiredDVNs : [];
+    const requiredDvns = ensureArray(row.effectiveRequiredDVNs);
     const normalizedRequired = requiredDvns
       .map((addr) => String(addr || "").toLowerCase())
       .filter(Boolean);

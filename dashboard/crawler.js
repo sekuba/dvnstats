@@ -18,6 +18,7 @@ import { normalizeSecurityConfig } from "./security/SecurityConfigNormalizer.js"
 import { AddressUtils } from "./utils/AddressUtils.js";
 import { resolveDvnLabels } from "./utils/DvnUtils.js";
 import { createRouteStatsMap } from "./utils/MetricsUtils.js";
+import { ensureArray } from "./utils/NumberUtils.js";
 
 const sanitizePeerOAppId = (value) => {
   if (!value) {
@@ -129,7 +130,7 @@ export class SecurityGraphCrawler {
           routeStats: routeStatsRaw,
         });
 
-        const resolvedConfigs = Array.isArray(resolution?.rows) ? resolution.rows : [];
+        const resolvedConfigs = ensureArray(resolution?.rows);
         const securitySummary = resolution?.summary ?? null;
 
         const totalPacketsValue = Number(oapp?.totalPacketsReceived);

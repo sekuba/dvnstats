@@ -1,7 +1,7 @@
 import { APP_CONFIG } from "../config.js";
 import { normalizeKey } from "../core.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { isDefined, toString } from "../utils/NumberUtils.js";
+import { ensureArray, isDefined, toString } from "../utils/NumberUtils.js";
 
 const SYNTHETIC_ID_PREFIX = "synthetic:";
 
@@ -40,7 +40,7 @@ export function normalizeSecurityConfig({
     : toString(localEid);
 
   if (config) {
-    const fallbackSource = Array.isArray(config.fallbackFields) ? config.fallbackFields : [];
+    const fallbackSource = ensureArray(config.fallbackFields);
     const fallbackFields = orderFallbackFields(new Set(fallbackSource));
 
     return {
@@ -261,8 +261,12 @@ function normalizeConfig(input) {
     ? Number(input.optionalDVNThreshold)
     : null;
 
-  const requiredDVNs = Array.isArray(input.requiredDVNs) ? dedupeAddresses(input.requiredDVNs) : [];
-  const optionalDVNs = Array.isArray(input.optionalDVNs) ? dedupeAddresses(input.optionalDVNs) : [];
+  const requiredDVNs = ensureArray(input.requiredDVNs).length
+    ? dedupeAddresses(input.requiredDVNs)
+    : [];
+  const optionalDVNs = ensureArray(input.optionalDVNs).length
+    ? dedupeAddresses(input.optionalDVNs)
+    : [];
 
   const hasValues =
     confirmations !== null ||

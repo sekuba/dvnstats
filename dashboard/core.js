@@ -1,6 +1,6 @@
 import { APP_CONFIG } from "./config.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
-import { isDefined, isNullish } from "./utils/NumberUtils.js";
+import { ensureArray, isDefined, isNullish } from "./utils/NumberUtils.js";
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -81,7 +81,7 @@ export class ChainDirectory {
 
       const baseLabel =
         chain?.chainDetails?.shortName || chain?.chainDetails?.name || chain.chainKey || key;
-      const deployments = Array.isArray(chain.deployments) ? chain.deployments : [];
+      const deployments = ensureArray(chain.deployments);
 
       deployments.forEach((dep) => {
         if (isNullish(dep?.eid)) return;

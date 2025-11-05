@@ -16,6 +16,15 @@ export function isNullish(value) {
   return value === undefined || value === null;
 }
 
+/**
+ * Ensure value is an array
+ * @param {*} value - The value to check
+ * @returns {Array} The value if it's an array, otherwise an empty array
+ */
+export function ensureArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
 export function bigIntSafe(value) {
   try {
     return isDefined(value) ? BigInt(value) : null;

@@ -1,5 +1,5 @@
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { coerceToNumber, isDefined, isNullish } from "../utils/NumberUtils.js";
+import { coerceToNumber, ensureArray, isDefined, isNullish } from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
 
 export class NodeListView {
@@ -15,7 +15,7 @@ export class NodeListView {
   }
 
   renderNodeList(webData, analysis = {}) {
-    const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
+    const nodes = ensureArray(webData?.nodes);
     const container = document.createElement("section");
     container.className = "node-detail-board";
     container.style.marginTop = "2rem";
@@ -39,11 +39,9 @@ export class NodeListView {
     const blockedNodes =
       analysis?.blockedNodes instanceof Set
         ? analysis.blockedNodes
-        : new Set(Array.isArray(analysis?.blockedNodes) ? analysis.blockedNodes : []);
+        : new Set(ensureArray(analysis?.blockedNodes));
 
-    const edgeSecurityInfo = Array.isArray(analysis?.edgeSecurityInfo)
-      ? analysis.edgeSecurityInfo
-      : [];
+    const edgeSecurityInfo = ensureArray(analysis?.edgeSecurityInfo);
     const dominantCombination = analysis?.dominantCombination || null;
     const combinationFingerprint = dominantCombination?.fingerprint ?? null;
 
@@ -963,7 +961,7 @@ export class NodeListView {
       });
 
       const renderDvns = (detail, container) => {
-        const safePairs = Array.isArray(detail?.requiredPairs) ? detail.requiredPairs : [];
+        const safePairs = ensureArray(detail?.requiredPairs);
         if (safePairs.length) {
           const list = document.createElement("div");
           list.className = "dvn-pill-row";
@@ -1048,7 +1046,7 @@ export class NodeListView {
     const optionalCell = document.createElement("td");
     optionalCell.className = "optional-cell";
     const optionalChunks = metric.configDetails.filter((detail) => {
-      const pairs = Array.isArray(detail.optionalPairs) ? detail.optionalPairs : [];
+      const pairs = ensureArray(detail.optionalPairs);
       return (detail.optionalSummary && detail.optionalSummary !== "0") || pairs.length;
     });
     if (!optionalChunks.length) {
@@ -1075,7 +1073,7 @@ export class NodeListView {
         header.textContent = labelParts.join(" • ");
         block.appendChild(header);
 
-        const optionalPairs = Array.isArray(detail.optionalPairs) ? detail.optionalPairs : [];
+        const optionalPairs = ensureArray(detail.optionalPairs);
         if (optionalPairs.length) {
           const list = document.createElement("div");
           list.className = "dvn-pill-row";
