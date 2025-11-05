@@ -459,7 +459,7 @@ export class SecurityConfigFormatter {
   formatPeer(row, peerMap, highlight = false, routeActivity = null) {
     const ctx = this.derivePeerContext(row);
     const peerData = peerMap?.get(String(row.eid));
-    const isZeroPeer = isZeroAddress(row.peer);
+    const isZeroPeer = AddressUtils.isZero(row.peer);
 
     let peerState = row.peerStateHint || null;
     if (!peerState) {
