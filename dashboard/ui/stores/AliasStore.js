@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../../config.js";
+import { isDefined, isNullish } from "../../utils/NumberUtils.js";
 
 export class AliasStore {
   constructor(storageKey = APP_CONFIG.STORAGE_KEYS.OAPP_ALIASES) {
@@ -52,19 +53,13 @@ export class AliasStore {
   }
 
   applyAliasEntries(entries) {
-    if (!Array.isArray(entries)) {
-      return;
-    }
+    if (!Array.isArray(entries)) return;
 
     entries.forEach(([rawKey, rawValue]) => {
-      if (rawKey === undefined || rawKey === null) {
-        return;
-      }
+      if (isNullish(rawKey)) return;
 
       const key = String(rawKey);
-      if (!key) {
-        return;
-      }
+      if (!key) return;
 
       if (!rawValue) {
         this.map.delete(key);
@@ -78,17 +73,13 @@ export class AliasStore {
       if (typeof rawValue === "string") {
         aliasName = rawValue;
       } else if (typeof rawValue === "object") {
-        aliasName =
-          rawValue.name !== undefined && rawValue.name !== null
-            ? rawValue.name
-            : (rawValue.alias ?? null);
+        aliasName = isDefined(rawValue.name) ? rawValue.name : (rawValue.alias ?? null);
         addButton = rawValue.addButton === true;
       } else {
         return;
       }
 
-      const normalized =
-        aliasName === undefined || aliasName === null ? "" : String(aliasName).trim();
+      const normalized = isNullish(aliasName) ? "" : String(aliasName).trim();
       if (!normalized) {
         this.map.delete(key);
         this.buttonMap.delete(key);
@@ -119,7 +110,7 @@ export class AliasStore {
   set(oappId, alias, options = {}) {
     if (!oappId) return false;
     const id = String(oappId);
-    const trimmed = alias === null || alias === undefined ? "" : String(alias).trim();
+    const trimmed = isNullish(alias) ? "" : String(alias).trim();
 
     const hadAlias = this.map.has(id);
     const previousAlias = hadAlias ? this.map.get(id) : null;
@@ -162,18 +153,12 @@ export class AliasStore {
 
     let changed = false;
     for (const entry of entries) {
-      if (!entry || entry.oappId === undefined || entry.oappId === null) {
-        continue;
-      }
+      if (!entry || isNullish(entry.oappId)) continue;
       const didChange = this.set(entry.oappId, entry.alias, { persist: false });
-      if (didChange) {
-        changed = true;
-      }
+      if (didChange) changed = true;
     }
 
-    if (changed) {
-      this.persist();
-    }
+    if (changed) this.persist();
 
     return changed;
   }
