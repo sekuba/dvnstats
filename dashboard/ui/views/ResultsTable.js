@@ -6,6 +6,7 @@ import {
   stringifyScalar,
 } from "../../core.js";
 import { isNullish } from "../../utils/NumberUtils.js";
+import { DomBuilder } from "../../utils/dom/DomBuilder.js";
 
 export function buildResultsTable(rows, { chainMetadata }) {
   const columnSet = new Set();
@@ -14,24 +15,21 @@ export function buildResultsTable(rows, { chainMetadata }) {
   });
 
   const columns = Array.from(columnSet);
-  const table = document.createElement("table");
-  const thead = document.createElement("thead");
-  const headerRow = document.createElement("tr");
+  const table = DomBuilder.table();
 
+  const headerRow = DomBuilder.tr();
   columns.forEach((column) => {
-    const th = document.createElement("th");
-    th.textContent = column;
-    headerRow.appendChild(th);
+    headerRow.appendChild(DomBuilder.th({ textContent: column }));
   });
 
-  thead.appendChild(headerRow);
+  const thead = DomBuilder.thead({}, headerRow);
   table.appendChild(thead);
 
-  const tbody = document.createElement("tbody");
+  const tbody = DomBuilder.tbody();
   rows.forEach((row) => {
-    const tr = document.createElement("tr");
+    const tr = DomBuilder.tr();
     columns.forEach((column) => {
-      const td = document.createElement("td");
+      const td = DomBuilder.td();
       renderCell(td, column, row[column], chainMetadata);
       tr.appendChild(td);
     });
@@ -70,30 +68,25 @@ function renderCell(td, column, value, chainMetadata) {
     return;
   }
 
-  const container = document.createElement("div");
-  container.className = "copyable";
-  if (highlight) {
-    container.classList.add("cell-variant");
-  }
-
   const content =
     copyValue ??
     nodes
       .map((node) => node.textContent ?? "")
       .join(" ")
       .trim();
-  if (content) {
-    container.dataset.copyValue = content;
-  }
 
-  if (metaObject) {
-    if (metaObject.oappId) {
-      container.dataset.oappId = metaObject.oappId;
-    }
-    if (metaObject.localEid) {
-      container.dataset.localEid = metaObject.localEid;
-    }
-  }
+  const dataset = {};
+  if (content) dataset.copyValue = content;
+  if (metaObject?.oappId) dataset.oappId = metaObject.oappId;
+  if (metaObject?.localEid) dataset.localEid = metaObject.localEid;
+
+  const containerClasses = ["copyable"];
+  if (highlight) containerClasses.push("cell-variant");
+
+  const container = DomBuilder.div({
+    className: containerClasses.join(" "),
+    dataset,
+  });
 
   nodes.forEach((node) => container.append(node));
   td.appendChild(container);
@@ -105,10 +98,8 @@ function interpretValue(column, value, chainMetadata) {
   if (value && typeof value === "object" && value.__formatted) {
     const lines = Array.isArray(value.lines) ? value.lines : [value.lines ?? ""];
     lines.forEach((line) => {
-      const span = document.createElement("span");
       const content = isNullish(line) || line === "" ? " " : String(line);
-      span.textContent = content;
-      nodes.push(span);
+      nodes.push(DomBuilder.span({ textContent: content }));
     });
     const cleanedLines = lines
       .map((line) => (isNullish(line) ? "" : String(line)))
@@ -133,9 +124,7 @@ function interpretValue(column, value, chainMetadata) {
   }
 
   if (Array.isArray(value) || (typeof value === "object" && value)) {
-    const pre = document.createElement("pre");
-    pre.textContent = JSON.stringify(value, null, 2);
-    nodes.push(pre);
+    nodes.push(DomBuilder.pre({ textContent: JSON.stringify(value, null, 2) }));
     return {
       nodes,
       copyValue: JSON.stringify(value, null, 2),
@@ -147,10 +136,12 @@ function interpretValue(column, value, chainMetadata) {
     const chainInfo = chainMetadata?.getChainInfo?.(value);
     if (chainInfo) {
       nodes.push(document.createTextNode(chainInfo.primary));
-      const secondary = document.createElement("span");
-      secondary.className = "cell-secondary";
-      secondary.textContent = chainInfo.secondary;
-      nodes.push(secondary);
+      nodes.push(
+        DomBuilder.span({
+          className: "cell-secondary",
+          textContent: chainInfo.secondary,
+        }),
+      );
       return {
         nodes,
         copyValue: chainInfo.copyValue,
@@ -163,10 +154,12 @@ function interpretValue(column, value, chainMetadata) {
     const tsInfo = formatTimestampValue(value);
     if (tsInfo) {
       nodes.push(document.createTextNode(tsInfo.primary));
-      const secondary = document.createElement("span");
-      secondary.className = "cell-secondary";
-      secondary.textContent = tsInfo.secondary;
-      nodes.push(secondary);
+      nodes.push(
+        DomBuilder.span({
+          className: "cell-secondary",
+          textContent: tsInfo.secondary,
+        }),
+      );
       return {
         nodes,
         copyValue: tsInfo.copyValue,
@@ -176,9 +169,7 @@ function interpretValue(column, value, chainMetadata) {
   }
 
   if (typeof value === "string" && looksLikeHash(column, value)) {
-    const code = document.createElement("code");
-    code.textContent = value;
-    nodes.push(code);
+    nodes.push(DomBuilder.code({ textContent: value }));
     return {
       nodes,
       copyValue: value,
