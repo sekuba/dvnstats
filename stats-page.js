@@ -1,17 +1,14 @@
-/**
- * Stats Page - Loads precomputed statistics and renders interactive diagrams
- */
 
 const DATA_DIR = "./data";
 
-// State
+
 let statsData = null;
 let chainMetadata = null;
 let dvnResolver = null;
 let availableDatasets = [];
 let currentDataset = null;
 
-// Simple ChainDirectory for DVN resolution
+
 class DVNResolver {
   constructor() {
     this.dvnDirectory = new Map();
@@ -68,7 +65,7 @@ class DVNResolver {
   }
 }
 
-// Load chain metadata for EID -> name mapping and DVN resolution
+
 async function loadChainMetadata() {
   try {
     const response = await fetch("./layerzero.json");
@@ -83,14 +80,14 @@ async function loadChainMetadata() {
 function getChainName(eid, metadata) {
   if (!metadata) return `EID ${eid}`;
 
-  // layerzero.json is an object with chain keys as properties
-  // Each chain can have multiple EIDs in deployments array
+  
+  
   for (const [chainKey, chainData] of Object.entries(metadata)) {
     if (!chainData.deployments) continue;
 
     for (const deployment of chainData.deployments) {
       if (String(deployment.eid) === String(eid)) {
-        // Return the chain name from chainDetails, or fallback to chainKey
+        
         return (
           chainData.chainDetails?.name ||
           chainData.chainDetails?.shortName ||
@@ -123,7 +120,7 @@ function formatAddress(address) {
   return `${address.substring(0, 6)}…${address.substring(address.length - 4)}`;
 }
 
-// Render overview cards
+
 function renderOverview(stats) {
   document.getElementById("stat-total").textContent = formatNumber(stats.total);
   document.getElementById("stat-all-default").textContent = formatPercent(
@@ -140,7 +137,7 @@ function renderOverview(stats) {
     stats.dvnCombinations.length,
   );
 
-  // Update subtitle and footer
+  
   const subtitle = `${formatNumber(stats.total)} packets • ${stats.dvnCombinations.length} unique DVN combinations`;
   document.getElementById("stats-subtitle").textContent = subtitle;
 
@@ -150,7 +147,7 @@ function renderOverview(stats) {
   document.getElementById("time-range").textContent = timeRange;
 }
 
-// Render pie chart
+
 function renderPieChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
@@ -781,16 +778,16 @@ async function discoverDatasets() {
   return found;
 }
 
-// Render dataset selection buttons
+
 function renderDatasetButtons(datasets) {
   const header = document.querySelector(".stats-header");
 
-  // Remove existing button container if any
+  
   const existing = document.getElementById("dataset-selector");
   if (existing) existing.remove();
 
   if (datasets.length <= 1) {
-    // Don't show buttons if only one dataset
+    
     return;
   }
 
@@ -827,17 +824,17 @@ function renderDatasetButtons(datasets) {
   header.appendChild(container);
 }
 
-// Load and render statistics
+
 async function loadAndRender(datasetName = null) {
   try {
-    // Use provided dataset or default to first available
+    
     if (!datasetName && availableDatasets.length > 0) {
       datasetName = availableDatasets[0].name;
     }
 
     currentDataset = datasetName;
 
-    // Show loading state with dataset name
+    
     const loadingBanner = document.getElementById("loading-state");
     loadingBanner.classList.remove("hidden");
     document.getElementById("stats-content").classList.add("hidden");
@@ -846,21 +843,21 @@ async function loadAndRender(datasetName = null) {
     const datasetLabel = datasetName === "all" ? "All Time" : datasetName.toUpperCase();
     loadingBanner.querySelector("p").textContent = `Loading ${datasetLabel} statistics...`;
 
-    // Load chain metadata first (only once)
+    
     if (!chainMetadata) {
       chainMetadata = await loadChainMetadata();
 
-      // Initialize DVN resolver
+      
       if (chainMetadata) {
         dvnResolver = new DVNResolver();
         dvnResolver.hydrate(chainMetadata);
       }
     }
 
-    // Construct data path
+    
     const dataPath = `${DATA_DIR}/packet-stats-${datasetName}.json`;
 
-    // Load precomputed stats
+    
     const response = await fetch(dataPath);
     if (!response.ok) {
       throw new Error(`Failed to load statistics: ${response.status} ${response.statusText}`);
@@ -872,10 +869,10 @@ async function loadAndRender(datasetName = null) {
       throw new Error("No packet data available. Run the precomputation script first.");
     }
 
-    // Update button states
+    
     renderDatasetButtons(availableDatasets);
 
-    // Render all sections
+    
     renderOverview(statsData);
     renderDvnCountChart(statsData);
     renderOptionalDvnCountChart(statsData);
@@ -892,9 +889,9 @@ async function loadAndRender(datasetName = null) {
   }
 }
 
-// Initialize on page load
+
 document.addEventListener("DOMContentLoaded", async () => {
-  // Discover available datasets
+  
   availableDatasets = await discoverDatasets();
 
   if (availableDatasets.length === 0) {
@@ -902,9 +899,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // Render dataset buttons
+  
   renderDatasetButtons(availableDatasets);
 
-  // Load the first available dataset
+  
   await loadAndRender(availableDatasets[0].name);
 });
