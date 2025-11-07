@@ -2,6 +2,7 @@
 
 /**
  * Precompute packet statistics from all PacketDelivered records
+ * Uses incremental processing to handle millions of packets without memory issues
  * Saves results to dashboard/data/packet-stats.json
  */
 
@@ -9,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 
 const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'https://shinken.business/v1/graphql';
-const BATCH_SIZE = 10000;
+const BATCH_SIZE = 5000;
 const OUTPUT_PATH = path.join(__dirname, '../dashboard/data/packet-stats.json');
 
 async function fetchPacketBatch(offset, limit) {
@@ -20,10 +21,8 @@ async function fetchPacketBatch(offset, limit) {
         limit: $limit
         offset: $offset
       ) {
-        id
         localEid
         srcEid
-        receiver
         blockTimestamp
         usesDefaultLibrary
         usesDefaultConfig
@@ -31,7 +30,6 @@ async function fetchPacketBatch(offset, limit) {
         effectiveOptionalDVNs
         effectiveRequiredDVNCount
         effectiveOptionalDVNCount
-        libraryStatus
         isConfigTracked
       }
     }
@@ -56,38 +54,109 @@ async function fetchPacketBatch(offset, limit) {
   return data.data.PacketDelivered || [];
 }
 
-async function fetchAllPackets() {
-  const allPackets = [];
+/**
+ * Process packets incrementally to avoid memory overflow
+ */
+async function computeStatisticsIncremental() {
+  console.log('Computing statistics incrementally...');
+
+  // Initialize accumulators
+  let total = 0;
+  let allDefault = 0;
+  let defaultLibOnly = 0;
+  let defaultConfigOnly = 0;
+  let tracked = 0;
+
+  const dvnCombos = new Map();
+  const dvnCounts = new Map();
+  const optionalDvnCounts = new Map();
+  const chainCounts = new Map();
+  const srcChainCounts = new Map();
+
+  let earliest = Number.POSITIVE_INFINITY;
+  let latest = Number.NEGATIVE_INFINITY;
+
   let offset = 0;
   let hasMore = true;
-
-  console.log('Fetching packets from Hasura...');
+  let batchCount = 0;
 
   while (hasMore) {
     const batch = await fetchPacketBatch(offset, BATCH_SIZE);
 
     if (batch.length === 0) {
       hasMore = false;
-    } else {
-      allPackets.push(...batch);
-      offset += batch.length;
-      console.log(`  Fetched ${allPackets.length} packets...`);
+      break;
+    }
 
-      // Stop if we got less than batch size (last page)
-      if (batch.length < BATCH_SIZE) {
-        hasMore = false;
+    batchCount++;
+
+    // Process this batch
+    for (const packet of batch) {
+      total++;
+
+      // All-default configuration
+      if (packet.usesDefaultLibrary && packet.usesDefaultConfig) {
+        allDefault++;
+      }
+
+      if (packet.usesDefaultLibrary) {
+        defaultLibOnly++;
+      }
+
+      if (packet.usesDefaultConfig) {
+        defaultConfigOnly++;
+      }
+
+      if (packet.isConfigTracked) {
+        tracked++;
+      }
+
+      // DVN combinations (required DVNs only)
+      const requiredDVNs = Array.isArray(packet.effectiveRequiredDVNs)
+        ? packet.effectiveRequiredDVNs
+        : [];
+
+      if (requiredDVNs.length > 0) {
+        const sortedDvns = [...requiredDVNs].sort();
+        const comboKey = sortedDvns.join(',');
+        dvnCombos.set(comboKey, (dvnCombos.get(comboKey) || 0) + 1);
+      }
+
+      // DVN count buckets
+      const requiredCount = packet.effectiveRequiredDVNCount ?? requiredDVNs.length;
+      dvnCounts.set(requiredCount, (dvnCounts.get(requiredCount) || 0) + 1);
+
+      const optionalCount = packet.effectiveOptionalDVNCount ?? 0;
+      optionalDvnCounts.set(optionalCount, (optionalDvnCounts.get(optionalCount) || 0) + 1);
+
+      // Chain tracking
+      const localEid = String(packet.localEid);
+      chainCounts.set(localEid, (chainCounts.get(localEid) || 0) + 1);
+
+      const srcEid = String(packet.srcEid);
+      srcChainCounts.set(srcEid, (srcChainCounts.get(srcEid) || 0) + 1);
+
+      // Time range
+      const timestamp = Number(packet.blockTimestamp);
+      if (!Number.isNaN(timestamp)) {
+        if (timestamp < earliest) earliest = timestamp;
+        if (timestamp > latest) latest = timestamp;
       }
     }
+
+    offset += batch.length;
+    console.log(`  Processed batch ${batchCount}: ${total.toLocaleString()} packets total`);
+
+    // Stop if we got less than batch size (last page)
+    if (batch.length < BATCH_SIZE) {
+      hasMore = false;
+    }
+
+    // Allow garbage collection between batches
+    await new Promise(resolve => setImmediate(resolve));
   }
 
-  console.log(`Total packets fetched: ${allPackets.length}`);
-  return allPackets;
-}
-
-function computeStatistics(packets) {
-  console.log('Computing statistics...');
-
-  const total = packets.length;
+  console.log(`\nTotal packets processed: ${total.toLocaleString()}`);
 
   if (total === 0) {
     return {
@@ -106,79 +175,9 @@ function computeStatistics(packets) {
     };
   }
 
-  // Counters
-  let allDefault = 0;
-  let defaultLibOnly = 0;
-  let defaultConfigOnly = 0;
-  let tracked = 0;
-
-  // DVN combination tracking
-  const dvnCombos = new Map();
-
-  // DVN count buckets
-  const dvnCounts = new Map();
-  const optionalDvnCounts = new Map();
-
-  // Chain tracking
-  const chainCounts = new Map();
-  const srcChainCounts = new Map();
-
-  // Time range
-  let earliest = Number.POSITIVE_INFINITY;
-  let latest = Number.NEGATIVE_INFINITY;
-
-  for (const packet of packets) {
-    // All-default configuration
-    if (packet.usesDefaultLibrary && packet.usesDefaultConfig) {
-      allDefault++;
-    }
-
-    if (packet.usesDefaultLibrary) {
-      defaultLibOnly++;
-    }
-
-    if (packet.usesDefaultConfig) {
-      defaultConfigOnly++;
-    }
-
-    if (packet.isConfigTracked) {
-      tracked++;
-    }
-
-    // DVN combinations (required DVNs only)
-    const requiredDVNs = Array.isArray(packet.effectiveRequiredDVNs)
-      ? packet.effectiveRequiredDVNs
-      : [];
-
-    if (requiredDVNs.length > 0) {
-      const sortedDvns = [...requiredDVNs].sort();
-      const comboKey = sortedDvns.join(',');
-      dvnCombos.set(comboKey, (dvnCombos.get(comboKey) || 0) + 1);
-    }
-
-    // DVN count buckets
-    const requiredCount = packet.effectiveRequiredDVNCount ?? requiredDVNs.length;
-    dvnCounts.set(requiredCount, (dvnCounts.get(requiredCount) || 0) + 1);
-
-    const optionalCount = packet.effectiveOptionalDVNCount ?? 0;
-    optionalDvnCounts.set(optionalCount, (optionalDvnCounts.get(optionalCount) || 0) + 1);
-
-    // Chain tracking
-    const localEid = String(packet.localEid);
-    chainCounts.set(localEid, (chainCounts.get(localEid) || 0) + 1);
-
-    const srcEid = String(packet.srcEid);
-    srcChainCounts.set(srcEid, (srcChainCounts.get(srcEid) || 0) + 1);
-
-    // Time range
-    const timestamp = Number(packet.blockTimestamp);
-    if (!Number.isNaN(timestamp)) {
-      if (timestamp < earliest) earliest = timestamp;
-      if (timestamp > latest) latest = timestamp;
-    }
-  }
-
   // Convert to arrays and sort
+  console.log('Finalizing results...');
+
   const dvnCombinations = Array.from(dvnCombos.entries())
     .map(([combo, count]) => ({
       dvns: combo.split(','),
@@ -241,12 +240,11 @@ function computeStatistics(packets) {
 async function main() {
   try {
     console.log('=== Packet Statistics Precomputation ===\n');
+    console.log(`Endpoint: ${GRAPHQL_ENDPOINT}`);
+    console.log(`Batch size: ${BATCH_SIZE.toLocaleString()}\n`);
 
-    // Fetch all packets
-    const packets = await fetchAllPackets();
-
-    // Compute statistics
-    const stats = computeStatistics(packets);
+    // Compute statistics incrementally
+    const stats = await computeStatisticsIncremental();
 
     // Ensure output directory exists
     const outputDir = path.dirname(OUTPUT_PATH);
@@ -260,13 +258,18 @@ async function main() {
     console.log(`\nSummary:`);
     console.log(`  Total packets: ${stats.total.toLocaleString()}`);
     console.log(`  All-default: ${stats.allDefaultPercentage.toFixed(2)}%`);
-    console.log(`  Unique DVN combos: ${stats.dvnCombinations.length}`);
+    console.log(`  Unique DVN combos: ${stats.dvnCombinations.length.toLocaleString()}`);
     console.log(`  Chains: ${stats.chainBreakdown.length}`);
-    console.log(`  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split('T')[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split('T')[0]}`);
+
+    if (stats.timeRange.earliest && stats.timeRange.latest) {
+      const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);
+      console.log(`  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split('T')[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split('T')[0]} (${days.toLocaleString()} days)`);
+    }
 
     console.log('\n✓ Done!');
   } catch (error) {
-    console.error('Error:', error.message);
+    console.error('\n✗ Error:', error.message);
+    console.error(error.stack);
     process.exit(1);
   }
 }
