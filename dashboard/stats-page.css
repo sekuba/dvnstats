@@ -173,7 +173,9 @@
   background: var(--paper);
   padding: 1.5rem;
   box-shadow: 8px 8px 0 var(--ink);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .stat-card:hover {

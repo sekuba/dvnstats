@@ -8,9 +8,7 @@
   "dvnCombinations": [
     {
       "localEid": "30102",
-      "dvns": [
-        "0xfd6865c841c2d64565562fcc7e05e619a30615f0"
-      ],
+      "dvns": ["0xfd6865c841c2d64565562fcc7e05e619a30615f0"],
       "count": 121034,
       "percentage": 17.303672780819763
     },
@@ -97,9 +95,7 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0x9e059a54699a285714207b43b055483e78faac25"
-      ],
+      "dvns": ["0x9e059a54699a285714207b43b055483e78faac25"],
       "count": 14028,
       "percentage": 2.0055184639798704
     },
@@ -150,9 +146,7 @@
     },
     {
       "localEid": "30101",
-      "dvns": [
-        "0x589dedbd617e0cbcb916a9223f4d1300c294236b"
-      ],
+      "dvns": ["0x589dedbd617e0cbcb916a9223f4d1300c294236b"],
       "count": 8478,
       "percentage": 1.2120605601383905
     },
@@ -185,9 +179,7 @@
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0x2f55c492897526677c5b68fb199ea31e2c126416"
-      ],
+      "dvns": ["0x2f55c492897526677c5b68fb199ea31e2c126416"],
       "count": 6364,
       "percentage": 0.9098317297382305
     },
@@ -274,17 +266,13 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0xa7b5189bca84cd304d8553977c7c614329750d99"
-      ],
+      "dvns": ["0xa7b5189bca84cd304d8553977c7c614329750d99"],
       "count": 3199,
       "percentage": 0.45734627646646747
     },
     {
       "localEid": "30183",
-      "dvns": [
-        "0x129ee430cb2ff2708ccaddbdb408a88fe4ffd480"
-      ],
+      "dvns": ["0x129ee430cb2ff2708ccaddbdb408a88fe4ffd480"],
       "count": 3165,
       "percentage": 0.45248545327176287
     },
@@ -391,9 +379,7 @@
     },
     {
       "localEid": "30111",
-      "dvns": [
-        "0x6a02d83e8d433304bba74ef1c427913958187142"
-      ],
+      "dvns": ["0x6a02d83e8d433304bba74ef1c427913958187142"],
       "count": 1195,
       "percentage": 0.1708436387550574
     },
@@ -428,9 +414,7 @@
     },
     {
       "localEid": "30101",
-      "dvns": [
-        "0xc9ca319f6da263910fd9b037ec3d817a814ef3d8"
-      ],
+      "dvns": ["0xc9ca319f6da263910fd9b037ec3d817a814ef3d8"],
       "count": 984,
       "percentage": 0.14067794187027322
     },
@@ -474,9 +458,7 @@
     },
     {
       "localEid": "30367",
-      "dvns": [
-        "0xc097ab8cd7b053326dfe9fb3e3a31a0cce3b526f"
-      ],
+      "dvns": ["0xc097ab8cd7b053326dfe9fb3e3a31a0cce3b526f"],
       "count": 717,
       "percentage": 0.10250618325303444
     },
@@ -492,9 +474,7 @@
     },
     {
       "localEid": "30320",
-      "dvns": [
-        "0x6a4c9096f162f0ab3c0517b0a40dc1ce44785e16"
-      ],
+      "dvns": ["0x6a4c9096f162f0ab3c0517b0a40dc1ce44785e16"],
       "count": 605,
       "percentage": 0.0864940597881253
     },
@@ -529,9 +509,7 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0x133e9fb2d339d8428476a714b1113b024343811e"
-      ],
+      "dvns": ["0x133e9fb2d339d8428476a714b1113b024343811e"],
       "count": 422,
       "percentage": 0.060331393769568385
     },
@@ -546,9 +524,7 @@
     },
     {
       "localEid": "30260",
-      "dvns": [
-        "0xce8358bc28dd8296ce8caf1cd2b44787abd65887"
-      ],
+      "dvns": ["0xce8358bc28dd8296ce8caf1cd2b44787abd65887"],
       "count": 376,
       "percentage": 0.05375498591790928
     },
@@ -687,9 +663,7 @@
     },
     {
       "localEid": "30109",
-      "dvns": [
-        "0x23de2fe932d9043291f870324b74f820e11dc81a"
-      ],
+      "dvns": ["0x23de2fe932d9043291f870324b74f820e11dc81a"],
       "count": 261,
       "percentage": 0.03731396628876149
     },
@@ -715,9 +689,7 @@
     },
     {
       "localEid": "30101",
-      "dvns": [
-        "0xa59ba433ac34d2927232918ef5b2eaafcf130ba5"
-      ],
+      "dvns": ["0xa59ba433ac34d2927232918ef5b2eaafcf130ba5"],
       "count": 255,
       "percentage": 0.036456173960284215
     },
@@ -828,9 +800,7 @@
     },
     {
       "localEid": "30102",
-      "dvns": [
-        "0xa2ceb887f545400b8247dfb7e9ccada7ababbde8"
-      ],
+      "dvns": ["0xa2ceb887f545400b8247dfb7e9ccada7ababbde8"],
       "count": 183,
       "percentage": 0.026162666018556907
     },
@@ -947,9 +917,7 @@
     },
     {
       "localEid": "30367",
-      "dvns": [
-        "0x8e49ef1dfae17e547ca0e7526ffda81fbaca810a"
-      ],
+      "dvns": ["0x8e49ef1dfae17e547ca0e7526ffda81fbaca810a"],
       "count": 126,
       "percentage": 0.01801363889802279
     },
@@ -1001,9 +969,7 @@
     },
     {
       "localEid": "30340",
-      "dvns": [
-        "0x04584d612802a3a26b160e3f90341e6443ddb76a"
-      ],
+      "dvns": ["0x04584d612802a3a26b160e3f90341e6443ddb76a"],
       "count": 107,
       "percentage": 0.015297296524511417
     },
@@ -1075,9 +1041,7 @@
     },
     {
       "localEid": "30214",
-      "dvns": [
-        "0xbe0d08a85eebfcc6eda0a843521f7cbb1180d2e2"
-      ],
+      "dvns": ["0xbe0d08a85eebfcc6eda0a843521f7cbb1180d2e2"],
       "count": 87,
       "percentage": 0.012437988762920496
     },
@@ -1181,17 +1145,13 @@
     },
     {
       "localEid": "30195",
-      "dvns": [
-        "0xc1ec25a9e8a8de5aa346f635b33e5b74c4c081af"
-      ],
+      "dvns": ["0xc1ec25a9e8a8de5aa346f635b33e5b74c4c081af"],
       "count": 58,
       "percentage": 0.008291992508613665
     },
     {
       "localEid": "30243",
-      "dvns": [
-        "0xc097ab8cd7b053326dfe9fb3e3a31a0cce3b526f"
-      ],
+      "dvns": ["0xc097ab8cd7b053326dfe9fb3e3a31a0cce3b526f"],
       "count": 56,
       "percentage": 0.008006061732454573
     },
@@ -1216,9 +1176,7 @@
     },
     {
       "localEid": "30340",
-      "dvns": [
-        "0xfdfa2330713a8e2eac6e4f15918f11937ffa4dbe"
-      ],
+      "dvns": ["0xfdfa2330713a8e2eac6e4f15918f11937ffa4dbe"],
       "count": 55,
       "percentage": 0.007863096344375027
     },
@@ -1281,9 +1239,7 @@
     },
     {
       "localEid": "30111",
-      "dvns": [
-        "0xf24dc834039a1e39f6b99a51df05df9c91e35b2d"
-      ],
+      "dvns": ["0xf24dc834039a1e39f6b99a51df05df9c91e35b2d"],
       "count": 43,
       "percentage": 0.006147511687420475
     },
@@ -1474,9 +1430,7 @@
     },
     {
       "localEid": "30320",
-      "dvns": [
-        "0x282b3386571f7f794450d5789911a9804fa346b4"
-      ],
+      "dvns": ["0x282b3386571f7f794450d5789911a9804fa346b4"],
       "count": 22,
       "percentage": 0.00314523853775001
     },
@@ -1511,9 +1465,7 @@
     },
     {
       "localEid": "30102",
-      "dvns": [
-        "0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"
-      ],
+      "dvns": ["0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"],
       "count": 19,
       "percentage": 0.002716342373511373
     },
@@ -1529,9 +1481,7 @@
     },
     {
       "localEid": "30339",
-      "dvns": [
-        "0x174f2ba26f8adeafa82663bcf908288d5dbca649"
-      ],
+      "dvns": ["0x174f2ba26f8adeafa82663bcf908288d5dbca649"],
       "count": 17,
       "percentage": 0.0024304115973522813
     },
@@ -1584,9 +1534,7 @@
     },
     {
       "localEid": "30165",
-      "dvns": [
-        "0x620a9df73d2f1015ea75aea1067227f9013f5c51"
-      ],
+      "dvns": ["0x620a9df73d2f1015ea75aea1067227f9013f5c51"],
       "count": 14,
       "percentage": 0.002001515433113643
     },
@@ -1602,9 +1550,7 @@
     },
     {
       "localEid": "30109",
-      "dvns": [
-        "0xf6cb110b0334825797b9b733060229c68e5d8bef"
-      ],
+      "dvns": ["0xf6cb110b0334825797b9b733060229c68e5d8bef"],
       "count": 13,
       "percentage": 0.0018585500450340974
     },
@@ -1630,17 +1576,13 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0xf80285efb7518d5c79f4e98e3baa59da5ee79621"
-      ],
+      "dvns": ["0xf80285efb7518d5c79f4e98e3baa59da5ee79621"],
       "count": 12,
       "percentage": 0.0017155846569545516
     },
     {
       "localEid": "30111",
-      "dvns": [
-        "0x94ec5934daa761d7597b76fd0fecf8385de143be"
-      ],
+      "dvns": ["0x94ec5934daa761d7597b76fd0fecf8385de143be"],
       "count": 12,
       "percentage": 0.0017155846569545516
     },
@@ -1655,9 +1597,7 @@
     },
     {
       "localEid": "30101",
-      "dvns": [
-        "0x6c70db9ce65fa37499c1f1a150a6440fc9c7273a"
-      ],
+      "dvns": ["0x6c70db9ce65fa37499c1f1a150a6440fc9c7273a"],
       "count": 12,
       "percentage": 0.0017155846569545516
     },
@@ -1681,9 +1621,7 @@
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0xcb1b1d524d013a32e976a5963bd541c388ec0517"
-      ],
+      "dvns": ["0xcb1b1d524d013a32e976a5963bd541c388ec0517"],
       "count": 11,
       "percentage": 0.001572619268875005
     },
@@ -1737,9 +1675,7 @@
     },
     {
       "localEid": "30102",
-      "dvns": [
-        "0xac8de74ce0a44a5e73bbc709fe800406f58431e0"
-      ],
+      "dvns": ["0xac8de74ce0a44a5e73bbc709fe800406f58431e0"],
       "count": 10,
       "percentage": 0.0014296538807954595
     },
@@ -1792,9 +1728,7 @@
     },
     {
       "localEid": "30109",
-      "dvns": [
-        "0x06b85533967179ed5bc9c754b84ae7d02f7ed830"
-      ],
+      "dvns": ["0x06b85533967179ed5bc9c754b84ae7d02f7ed830"],
       "count": 8,
       "percentage": 0.0011437231046363676
     },
@@ -1867,9 +1801,7 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"
-      ],
+      "dvns": ["0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"],
       "count": 6,
       "percentage": 0.0008577923284772758
     },
@@ -1885,9 +1817,7 @@
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0xa7b5189bca84cd304d8553977c7c614329750d99"
-      ],
+      "dvns": ["0xa7b5189bca84cd304d8553977c7c614329750d99"],
       "count": 6,
       "percentage": 0.0008577923284772758
     },
@@ -1960,9 +1890,7 @@
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"
-      ],
+      "dvns": ["0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"],
       "count": 4,
       "percentage": 0.0005718615523181838
     },
@@ -2045,9 +1973,7 @@
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0x40a341b4d69d7b2981cb5029f14701a5d3886964"
-      ],
+      "dvns": ["0x40a341b4d69d7b2981cb5029f14701a5d3886964"],
       "count": 3,
       "percentage": 0.0004288961642386379
     },
@@ -2101,17 +2027,13 @@
     },
     {
       "localEid": "30109",
-      "dvns": [
-        "0x8ddf05f9a5c488b4973897e278b58895bf87cb24"
-      ],
+      "dvns": ["0x8ddf05f9a5c488b4973897e278b58895bf87cb24"],
       "count": 2,
       "percentage": 0.0002859307761590919
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0xeae839784e5f6c79bbaf34b6023a2f62e134ab39"
-      ],
+      "dvns": ["0xeae839784e5f6c79bbaf34b6023a2f62e134ab39"],
       "count": 2,
       "percentage": 0.0002859307761590919
     },
@@ -2127,9 +2049,7 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0x8ddf05f9a5c488b4973897e278b58895bf87cb24"
-      ],
+      "dvns": ["0x8ddf05f9a5c488b4973897e278b58895bf87cb24"],
       "count": 2,
       "percentage": 0.0002859307761590919
     },
@@ -2153,17 +2073,13 @@
     },
     {
       "localEid": "30109",
-      "dvns": [
-        "0xa6f5ddbf0bd4d03334523465439d301080574742"
-      ],
+      "dvns": ["0xa6f5ddbf0bd4d03334523465439d301080574742"],
       "count": 2,
       "percentage": 0.0002859307761590919
     },
     {
       "localEid": "30111",
-      "dvns": [
-        "0x03d2414476a742aba715bcc337583c820525e22a"
-      ],
+      "dvns": ["0x03d2414476a742aba715bcc337583c820525e22a"],
       "count": 2,
       "percentage": 0.0002859307761590919
     },
@@ -2197,17 +2113,13 @@
     },
     {
       "localEid": "30101",
-      "dvns": [
-        "0x380275805876ff19055ea900cdb2b46a94ecf20d"
-      ],
+      "dvns": ["0x380275805876ff19055ea900cdb2b46a94ecf20d"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0x77aaf86b4466a67869667babe02c6ebe7e7791d6"
-      ],
+      "dvns": ["0x77aaf86b4466a67869667babe02c6ebe7e7791d6"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
@@ -2223,9 +2135,7 @@
     },
     {
       "localEid": "30102",
-      "dvns": [
-        "0xd56e4eab23cb81f43168f9f45211eb027b9ac7cc"
-      ],
+      "dvns": ["0xd56e4eab23cb81f43168f9f45211eb027b9ac7cc"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
@@ -2279,17 +2189,13 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0x6f51f7b3dd783f836bca25cac8c246bddd4d0702"
-      ],
+      "dvns": ["0x6f51f7b3dd783f836bca25cac8c246bddd4d0702"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
     {
       "localEid": "30102",
-      "dvns": [
-        "0x8ddf05f9a5c488b4973897e278b58895bf87cb24"
-      ],
+      "dvns": ["0x8ddf05f9a5c488b4973897e278b58895bf87cb24"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
@@ -2314,9 +2220,7 @@
     },
     {
       "localEid": "30110",
-      "dvns": [
-        "0xabea0b6b9237b589e676dc16f6d74bf7612591f4"
-      ],
+      "dvns": ["0xabea0b6b9237b589e676dc16f6d74bf7612591f4"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
@@ -2331,9 +2235,7 @@
     },
     {
       "localEid": "30101",
-      "dvns": [
-        "0x8ddf05f9a5c488b4973897e278b58895bf87cb24"
-      ],
+      "dvns": ["0x8ddf05f9a5c488b4973897e278b58895bf87cb24"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
@@ -2376,9 +2278,7 @@
     },
     {
       "localEid": "30184",
-      "dvns": [
-        "0xeae72c81f3fce1313eeee26717f42af91e178516"
-      ],
+      "dvns": ["0xeae72c81f3fce1313eeee26717f42af91e178516"],
       "count": 1,
       "percentage": 0.00014296538807954595
     },
@@ -2393,9 +2293,7 @@
     },
     {
       "localEid": "30102",
-      "dvns": [
-        "0x9a11775c271e6a6b4f2d9837eee2a63acadeb9c6"
-      ],
+      "dvns": ["0x9a11775c271e6a6b4f2d9837eee2a63acadeb9c6"],
       "count": 1,
       "percentage": 0.00014296538807954595
     }

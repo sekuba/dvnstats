@@ -55,9 +55,7 @@
       "percentage": 3.412794391948675
     },
     {
-      "dvns": [
-        "0xfd6865c841c2d64565562fcc7e05e619a30615f0"
-      ],
+      "dvns": ["0xfd6865c841c2d64565562fcc7e05e619a30615f0"],
       "count": 4724,
       "percentage": 3.227635777290398
     },
@@ -118,9 +116,7 @@
       "percentage": 1.8850650104877666
     },
     {
-      "dvns": [
-        "0x9e059a54699a285714207b43b055483e78faac25"
-      ],
+      "dvns": ["0x9e059a54699a285714207b43b055483e78faac25"],
       "count": 2512,
       "percentage": 1.716304206721736
     },
@@ -149,9 +145,7 @@
       "percentage": 1.445740326999679
     },
     {
-      "dvns": [
-        "0x589dedbd617e0cbcb916a9223f4d1300c294236b"
-      ],
+      "dvns": ["0x589dedbd617e0cbcb916a9223f4d1300c294236b"],
       "count": 1865,
       "percentage": 1.2742465547516073
     },
@@ -188,9 +182,7 @@
       "percentage": 0.9941172853424067
     },
     {
-      "dvns": [
-        "0x2f55c492897526677c5b68fb199ea31e2c126416"
-      ],
+      "dvns": ["0x2f55c492897526677c5b68fb199ea31e2c126416"],
       "count": 1281,
       "percentage": 0.8752331563736242
     },
@@ -342,9 +334,7 @@
       "percentage": 0.25416606882981124
     },
     {
-      "dvns": [
-        "0x6a02d83e8d433304bba74ef1c427913958187142"
-      ],
+      "dvns": ["0x6a02d83e8d433304bba74ef1c427913958187142"],
       "count": 298,
       "percentage": 0.20360615191205308
     },
@@ -358,9 +348,7 @@
       "percentage": 0.18789158314031743
     },
     {
-      "dvns": [
-        "0xc9ca319f6da263910fd9b037ec3d817a814ef3d8"
-      ],
+      "dvns": ["0xc9ca319f6da263910fd9b037ec3d817a814ef3d8"],
       "count": 229,
       "percentage": 0.15646244559684613
     },
@@ -416,9 +404,7 @@
       "percentage": 0.09018795990735237
     },
     {
-      "dvns": [
-        "0xc097ab8cd7b053326dfe9fb3e3a31a0cce3b526f"
-      ],
+      "dvns": ["0xc097ab8cd7b053326dfe9fb3e3a31a0cce3b526f"],
       "count": 125,
       "percentage": 0.08540526506378066
     },
@@ -439,9 +425,7 @@
       "percentage": 0.08198905446122942
     },
     {
-      "dvns": [
-        "0x6a4c9096f162f0ab3c0517b0a40dc1ce44785e16"
-      ],
+      "dvns": ["0x6a4c9096f162f0ab3c0517b0a40dc1ce44785e16"],
       "count": 112,
       "percentage": 0.07652311749714746
     },
@@ -490,9 +474,7 @@
       "percentage": 0.06354151720745281
     },
     {
-      "dvns": [
-        "0x133e9fb2d339d8428476a714b1113b024343811e"
-      ],
+      "dvns": ["0x133e9fb2d339d8428476a714b1113b024343811e"],
       "count": 92,
       "percentage": 0.06285827508694256
     },
@@ -533,9 +515,7 @@
       "percentage": 0.05807558024337084
     },
     {
-      "dvns": [
-        "0xce8358bc28dd8296ce8caf1cd2b44787abd65887"
-      ],
+      "dvns": ["0xce8358bc28dd8296ce8caf1cd2b44787abd65887"],
       "count": 85,
       "percentage": 0.05807558024337084
     },
@@ -599,9 +579,7 @@
       "percentage": 0.045093979953676186
     },
     {
-      "dvns": [
-        "0xa59ba433ac34d2927232918ef5b2eaafcf130ba5"
-      ],
+      "dvns": ["0xa59ba433ac34d2927232918ef5b2eaafcf130ba5"],
       "count": 62,
       "percentage": 0.0423610114716352
     },
@@ -657,9 +635,7 @@
       "percentage": 0.034162106025512264
     },
     {
-      "dvns": [
-        "0x23de2fe932d9043291f870324b74f820e11dc81a"
-      ],
+      "dvns": ["0x23de2fe932d9043291f870324b74f820e11dc81a"],
       "count": 50,
       "percentage": 0.034162106025512264
     },
@@ -833,9 +809,7 @@
       "percentage": 0.01981402149479711
     },
     {
-      "dvns": [
-        "0xa2ceb887f545400b8247dfb7e9ccada7ababbde8"
-      ],
+      "dvns": ["0xa2ceb887f545400b8247dfb7e9ccada7ababbde8"],
       "count": 27,
       "percentage": 0.01844753725377662
     },
@@ -858,9 +832,7 @@
       "percentage": 0.01844753725377662
     },
     {
-      "dvns": [
-        "0x129ee430cb2ff2708ccaddbdb408a88fe4ffd480"
-      ],
+      "dvns": ["0x129ee430cb2ff2708ccaddbdb408a88fe4ffd480"],
       "count": 26,
       "percentage": 0.017764295133266376
     },
@@ -938,16 +910,12 @@
       "percentage": 0.011615116048674169
     },
     {
-      "dvns": [
-        "0xfdfa2330713a8e2eac6e4f15918f11937ffa4dbe"
-      ],
+      "dvns": ["0xfdfa2330713a8e2eac6e4f15918f11937ffa4dbe"],
       "count": 17,
       "percentage": 0.011615116048674169
     },
     {
-      "dvns": [
-        "0x8e49ef1dfae17e547ca0e7526ffda81fbaca810a"
-      ],
+      "dvns": ["0x8e49ef1dfae17e547ca0e7526ffda81fbaca810a"],
       "count": 17,
       "percentage": 0.011615116048674169
     },
@@ -987,9 +955,7 @@
       "percentage": 0.008882147566633188
     },
     {
-      "dvns": [
-        "0x04584d612802a3a26b160e3f90341e6443ddb76a"
-      ],
+      "dvns": ["0x04584d612802a3a26b160e3f90341e6443ddb76a"],
       "count": 13,
       "percentage": 0.008882147566633188
     },
@@ -1019,9 +985,7 @@
       "percentage": 0.008198905446122942
     },
     {
-      "dvns": [
-        "0xf24dc834039a1e39f6b99a51df05df9c91e35b2d"
-      ],
+      "dvns": ["0xf24dc834039a1e39f6b99a51df05df9c91e35b2d"],
       "count": 12,
       "percentage": 0.008198905446122942
     },
@@ -1068,16 +1032,12 @@
       "percentage": 0.0068324212051024515
     },
     {
-      "dvns": [
-        "0xc1ec25a9e8a8de5aa346f635b33e5b74c4c081af"
-      ],
+      "dvns": ["0xc1ec25a9e8a8de5aa346f635b33e5b74c4c081af"],
       "count": 9,
       "percentage": 0.006149179084592208
     },
     {
-      "dvns": [
-        "0xbe0d08a85eebfcc6eda0a843521f7cbb1180d2e2"
-      ],
+      "dvns": ["0xbe0d08a85eebfcc6eda0a843521f7cbb1180d2e2"],
       "count": 9,
       "percentage": 0.006149179084592208
     },
@@ -1183,16 +1143,12 @@
       "percentage": 0.0047826948435717165
     },
     {
-      "dvns": [
-        "0x282b3386571f7f794450d5789911a9804fa346b4"
-      ],
+      "dvns": ["0x282b3386571f7f794450d5789911a9804fa346b4"],
       "count": 7,
       "percentage": 0.0047826948435717165
     },
     {
-      "dvns": [
-        "0xa7b5189bca84cd304d8553977c7c614329750d99"
-      ],
+      "dvns": ["0xa7b5189bca84cd304d8553977c7c614329750d99"],
       "count": 7,
       "percentage": 0.0047826948435717165
     },
@@ -1353,9 +1309,7 @@
       "percentage": 0.0020497263615307354
     },
     {
-      "dvns": [
-        "0x620a9df73d2f1015ea75aea1067227f9013f5c51"
-      ],
+      "dvns": ["0x620a9df73d2f1015ea75aea1067227f9013f5c51"],
       "count": 3,
       "percentage": 0.0020497263615307354
     },
@@ -1369,9 +1323,7 @@
       "percentage": 0.0020497263615307354
     },
     {
-      "dvns": [
-        "0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"
-      ],
+      "dvns": ["0xa3858e2a9860c935fc9586a617e9b2a674c3e4c8"],
       "count": 3,
       "percentage": 0.0020497263615307354
     },
@@ -1462,9 +1414,7 @@
       "percentage": 0.0013664842410204903
     },
     {
-      "dvns": [
-        "0x174f2ba26f8adeafa82663bcf908288d5dbca649"
-      ],
+      "dvns": ["0x174f2ba26f8adeafa82663bcf908288d5dbca649"],
       "count": 2,
       "percentage": 0.0013664842410204903
     },
@@ -1529,9 +1479,7 @@
       "percentage": 0.0006832421205102451
     },
     {
-      "dvns": [
-        "0x380275805876ff19055ea900cdb2b46a94ecf20d"
-      ],
+      "dvns": ["0x380275805876ff19055ea900cdb2b46a94ecf20d"],
       "count": 1,
       "percentage": 0.0006832421205102451
     },
@@ -1544,9 +1492,7 @@
       "percentage": 0.0006832421205102451
     },
     {
-      "dvns": [
-        "0x77aaf86b4466a67869667babe02c6ebe7e7791d6"
-      ],
+      "dvns": ["0x77aaf86b4466a67869667babe02c6ebe7e7791d6"],
       "count": 1,
       "percentage": 0.0006832421205102451
     },
@@ -1612,9 +1558,7 @@
       "percentage": 0.0006832421205102451
     },
     {
-      "dvns": [
-        "0xd56e4eab23cb81f43168f9f45211eb027b9ac7cc"
-      ],
+      "dvns": ["0xd56e4eab23cb81f43168f9f45211eb027b9ac7cc"],
       "count": 1,
       "percentage": 0.0006832421205102451
     },

@@ -20,19 +20,19 @@
  *   24h, 48h        - Hours
  */
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'https://shinken.business/v1/graphql';
+const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || "https://shinken.business/v1/graphql";
 const BATCH_SIZE = 100000;
-const OUTPUT_DIR = path.join(__dirname, '../dashboard/data');
+const OUTPUT_DIR = path.join(__dirname, "../dashboard/data");
 
 /**
  * Generate output filename based on lookback parameter
  * Examples: packet-stats-30d.json, packet-stats-1y.json, packet-stats-all.json
  */
 function getOutputFilename(lookbackParam) {
-  const suffix = lookbackParam || 'all';
+  const suffix = lookbackParam || "all";
   return path.join(OUTPUT_DIR, `packet-stats-${suffix}.json`);
 }
 
@@ -45,7 +45,7 @@ function parseLookback(lookbackStr) {
 
   const match = lookbackStr.match(/^(\d+)([hdmy])$/);
   if (!match) {
-    throw new Error('Invalid lookback format. Use: 30d, 6m, 1y, 24h');
+    throw new Error("Invalid lookback format. Use: 30d, 6m, 1y, 24h");
   }
 
   const value = Number.parseInt(match[1], 10);
@@ -53,19 +53,18 @@ function parseLookback(lookbackStr) {
 
   const now = Math.floor(Date.now() / 1000);
   const multipliers = {
-    h: 3600,        // hours
-    d: 86400,       // days
-    m: 2592000,     // months (30 days)
-    y: 31536000,    // years (365 days)
+    h: 3600, // hours
+    d: 86400, // days
+    m: 2592000, // months (30 days)
+    y: 31536000, // years (365 days)
   };
 
-  return now - (value * multipliers[unit]);
+  return now - value * multipliers[unit];
 }
 
 async function fetchPacketBatch(offset, limit, minTimestamp = null) {
-  const whereClause = minTimestamp !== null
-    ? `where: { blockTimestamp: { _gte: ${minTimestamp} } }`
-    : '';
+  const whereClause =
+    minTimestamp !== null ? `where: { blockTimestamp: { _gte: ${minTimestamp} } }` : "";
 
   const query = `
     query FetchPackets($offset: Int!, $limit: Int!) {
@@ -90,9 +89,9 @@ async function fetchPacketBatch(offset, limit, minTimestamp = null) {
   `;
 
   const response = await fetch(GRAPHQL_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, variables: { offset, limit } })
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query, variables: { offset, limit } }),
   });
 
   if (!response.ok) {
@@ -134,10 +133,10 @@ async function fetchTimeRange(minTimestamp = null) {
     // If lookback is specified, we already know the time range
     earliestTimestamp = minTimestamp;
     latestTimestamp = Math.floor(Date.now() / 1000);
-    console.log('Using lookback time range (no scan needed)');
+    console.log("Using lookback time range (no scan needed)");
   } else {
     // For all-time: fetch earliest and latest packets with targeted queries
-    console.log('Fetching time range with targeted queries...');
+    console.log("Fetching time range with targeted queries...");
 
     // Fetch earliest packet
     const earliestQuery = `
@@ -152,9 +151,9 @@ async function fetchTimeRange(minTimestamp = null) {
     `;
 
     const earliestResponse = await fetch(GRAPHQL_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: earliestQuery })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: earliestQuery }),
     });
 
     const earliestData = await earliestResponse.json();
@@ -175,9 +174,9 @@ async function fetchTimeRange(minTimestamp = null) {
     `;
 
     const latestResponse = await fetch(GRAPHQL_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: latestQuery })
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: latestQuery }),
     });
 
     const latestData = await latestResponse.json();
@@ -197,21 +196,20 @@ async function fetchTimeRange(minTimestamp = null) {
  * Includes all 4 types: DefaultReceiveLibrary, DefaultUlnConfig, OAppReceiveLibrary, OAppUlnConfig
  */
 async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
-  console.log('\nFetching config change events...');
+  console.log("\nFetching config change events...");
 
   const versionTypes = [
-    'DefaultReceiveLibraryVersion',
-    'DefaultUlnConfigVersion',
-    'OAppReceiveLibraryVersion',
-    'OAppUlnConfigVersion'
+    "DefaultReceiveLibraryVersion",
+    "DefaultUlnConfigVersion",
+    "OAppReceiveLibraryVersion",
+    "OAppUlnConfigVersion",
   ];
 
   let totalConfigChanges = 0;
 
   for (const versionType of versionTypes) {
-    const whereClause = minTimestamp !== null
-      ? `where: { blockTimestamp: { _gte: ${minTimestamp} } }`
-      : '';
+    const whereClause =
+      minTimestamp !== null ? `where: { blockTimestamp: { _gte: ${minTimestamp} } }` : "";
 
     let offset = 0;
     let hasMore = true;
@@ -232,9 +230,9 @@ async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
       `;
 
       const response = await fetch(GRAPHQL_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, variables: { offset, limit: BATCH_SIZE } })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables: { offset, limit: BATCH_SIZE } }),
       });
 
       if (!response.ok) {
@@ -273,7 +271,7 @@ async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
         hasMore = false;
       }
 
-      await new Promise(resolve => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
     }
 
     console.log(`  ${versionType}: ${typeCount.toLocaleString()} changes`);
@@ -288,7 +286,7 @@ async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
  * Process packets incrementally to avoid memory overflow
  */
 async function computeStatisticsIncremental(minTimestamp = null) {
-  console.log('Computing statistics incrementally...');
+  console.log("Computing statistics incrementally...");
 
   // Initialize accumulators
   let total = 0;
@@ -306,7 +304,9 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   // Determine time range efficiently
   const { earliestTimestamp, latestTimestamp } = await fetchTimeRange(minTimestamp);
 
-  console.log(`Time range: ${new Date(earliestTimestamp * 1000).toISOString()} to ${new Date(latestTimestamp * 1000).toISOString()}`);
+  console.log(
+    `Time range: ${new Date(earliestTimestamp * 1000).toISOString()} to ${new Date(latestTimestamp * 1000).toISOString()}`,
+  );
 
   // Create hourly buckets
   const hourlyBuckets = createHourlyBuckets(earliestTimestamp, latestTimestamp);
@@ -316,7 +316,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   const totalConfigChanges = await fetchConfigChanges(hourlyBuckets, minTimestamp);
 
   // Process all packets in a single pass
-  console.log('\nProcessing packets...');
+  console.log("\nProcessing packets...");
   let offset = 0;
   let hasMore = true;
   let batchCount = 0;
@@ -360,13 +360,13 @@ async function computeStatisticsIncremental(minTimestamp = null) {
       if (requiredDVNs.length > 0) {
         const localEid = String(packet.localEid);
         const sortedDvns = [...requiredDVNs].sort();
-        const comboKey = `${localEid}:${sortedDvns.join(',')}`;
+        const comboKey = `${localEid}:${sortedDvns.join(",")}`;
 
         if (!dvnCombos.has(comboKey)) {
           dvnCombos.set(comboKey, {
             localEid,
             dvns: sortedDvns,
-            count: 0
+            count: 0,
           });
         }
         dvnCombos.get(comboKey).count++;
@@ -404,7 +404,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
       hasMore = false;
     }
 
-    await new Promise(resolve => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
   }
 
   console.log(`\nTotal packets processed: ${total.toLocaleString()}`);
@@ -428,10 +428,10 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   }
 
   // Convert to arrays and sort
-  console.log('Finalizing results...');
+  console.log("Finalizing results...");
 
   const dvnCombinations = Array.from(dvnCombos.values())
-    .map(combo => ({
+    .map((combo) => ({
       localEid: combo.localEid,
       dvns: combo.dvns,
       count: combo.count,
@@ -513,7 +513,7 @@ async function runPrecomputation(lookbackParam = null) {
     minTimestamp = parseLookback(lookbackParam);
     console.log(`Lookback: ${lookbackParam} (from ${new Date(minTimestamp * 1000).toISOString()})`);
   } else {
-    console.log('Lookback: All time');
+    console.log("Lookback: All time");
   }
 
   console.log(`Endpoint: ${GRAPHQL_ENDPOINT}`);
@@ -523,7 +523,7 @@ async function runPrecomputation(lookbackParam = null) {
   const stats = await computeStatisticsIncremental(minTimestamp);
 
   // Add lookback metadata to stats
-  stats.lookback = lookbackParam || 'all';
+  stats.lookback = lookbackParam || "all";
 
   // Ensure output directory exists
   if (!fs.existsSync(OUTPUT_DIR)) {
@@ -546,15 +546,17 @@ async function runPrecomputation(lookbackParam = null) {
 
   if (stats.timeRange.earliest && stats.timeRange.latest) {
     const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);
-    console.log(`  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split('T')[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split('T')[0]} (${days.toLocaleString()} days)`);
+    console.log(
+      `  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split("T")[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split("T")[0]} (${days.toLocaleString()} days)`,
+    );
   }
 
-  console.log('\n✓ Done!');
+  console.log("\n✓ Done!");
 }
 
 async function main() {
   try {
-    console.log('=== Packet Statistics Precomputation ===\n');
+    console.log("=== Packet Statistics Precomputation ===\n");
 
     // Parse command line arguments
     const args = process.argv.slice(2);
@@ -562,42 +564,42 @@ async function main() {
     let batchMode = false;
 
     for (const arg of args) {
-      if (arg.startsWith('--lookback=')) {
-        lookbackParam = arg.split('=')[1];
-      } else if (arg === '--batch') {
+      if (arg.startsWith("--lookback=")) {
+        lookbackParam = arg.split("=")[1];
+      } else if (arg === "--batch") {
         batchMode = true;
       }
     }
 
     if (batchMode) {
       // Batch mode: generate all supported time ranges
-      const timeRanges = ['30d', '90d', '1y', null]; // null = all time
+      const timeRanges = ["30d", "90d", "1y", null]; // null = all time
       console.log(`Batch mode: generating ${timeRanges.length} datasets\n`);
 
       for (let i = 0; i < timeRanges.length; i++) {
         const range = timeRanges[i];
-        console.log(`\n${'='.repeat(60)}`);
-        console.log(`Dataset ${i + 1}/${timeRanges.length}: ${range || 'all'}`);
-        console.log('='.repeat(60) + '\n');
+        console.log(`\n${"=".repeat(60)}`);
+        console.log(`Dataset ${i + 1}/${timeRanges.length}: ${range || "all"}`);
+        console.log("=".repeat(60) + "\n");
 
         await runPrecomputation(range);
 
         // Small delay between runs to avoid hammering the API
         if (i < timeRanges.length - 1) {
-          console.log('\nWaiting 2 seconds before next dataset...');
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          console.log("\nWaiting 2 seconds before next dataset...");
+          await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       }
 
-      console.log(`\n${'='.repeat(60)}`);
+      console.log(`\n${"=".repeat(60)}`);
       console.log(`✓ Batch complete! Generated ${timeRanges.length} datasets`);
-      console.log('='.repeat(60));
+      console.log("=".repeat(60));
     } else {
       // Single mode
       await runPrecomputation(lookbackParam);
     }
   } catch (error) {
-    console.error('\n✗ Error:', error.message);
+    console.error("\n✗ Error:", error.message);
     console.error(error.stack);
     process.exit(1);
   }

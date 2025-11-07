@@ -2,7 +2,7 @@
  * Stats Page - Loads precomputed statistics and renders interactive diagrams
  */
 
-const DATA_DIR = './data';
+const DATA_DIR = "./data";
 
 // State
 let statsData = null;
@@ -18,10 +18,10 @@ class DVNResolver {
   }
 
   hydrate(data) {
-    if (!data || typeof data !== 'object') return;
+    if (!data || typeof data !== "object") return;
 
     Object.entries(data).forEach(([key, chain]) => {
-      if (!chain || typeof chain !== 'object') return;
+      if (!chain || typeof chain !== "object") return;
 
       const deployments = Array.isArray(chain.deployments) ? chain.deployments : [];
 
@@ -30,7 +30,7 @@ class DVNResolver {
 
         const eid = String(dep.eid);
 
-        if (chain.dvns && typeof chain.dvns === 'object') {
+        if (chain.dvns && typeof chain.dvns === "object") {
           Object.entries(chain.dvns).forEach(([addr, info]) => {
             if (!addr) return;
             const normalized = String(addr).toLowerCase();
@@ -71,11 +71,11 @@ class DVNResolver {
 // Load chain metadata for EID -> name mapping and DVN resolution
 async function loadChainMetadata() {
   try {
-    const response = await fetch('./layerzero.json');
+    const response = await fetch("./layerzero.json");
     if (!response.ok) return null;
     return await response.json();
   } catch (error) {
-    console.warn('Could not load chain metadata:', error);
+    console.warn("Could not load chain metadata:", error);
     return null;
   }
 }
@@ -91,9 +91,11 @@ function getChainName(eid, metadata) {
     for (const deployment of chainData.deployments) {
       if (String(deployment.eid) === String(eid)) {
         // Return the chain name from chainDetails, or fallback to chainKey
-        return chainData.chainDetails?.name ||
-               chainData.chainDetails?.shortName ||
-               chainKey.replace('-mainnet', '').replace('-', ' ');
+        return (
+          chainData.chainDetails?.name ||
+          chainData.chainDetails?.shortName ||
+          chainKey.replace("-mainnet", "").replace("-", " ")
+        );
       }
     }
   }
@@ -111,9 +113,9 @@ function formatPercent(percent) {
 }
 
 function formatDate(timestamp) {
-  if (!timestamp) return '—';
+  if (!timestamp) return "—";
   const date = new Date(Number(timestamp) * 1000);
-  return date.toISOString().split('T')[0];
+  return date.toISOString().split("T")[0];
 }
 
 function formatAddress(address) {
@@ -123,27 +125,35 @@ function formatAddress(address) {
 
 // Render overview cards
 function renderOverview(stats) {
-  document.getElementById('stat-total').textContent = formatNumber(stats.total);
-  document.getElementById('stat-all-default').textContent = formatPercent(stats.allDefaultPercentage);
-  document.getElementById('stat-default-lib').textContent = formatPercent(stats.defaultLibPercentage);
-  document.getElementById('stat-default-config').textContent = formatPercent(stats.defaultConfigPercentage);
-  document.getElementById('stat-tracked').textContent = formatPercent(stats.trackedPercentage);
-  document.getElementById('stat-dvn-combos').textContent = formatNumber(stats.dvnCombinations.length);
+  document.getElementById("stat-total").textContent = formatNumber(stats.total);
+  document.getElementById("stat-all-default").textContent = formatPercent(
+    stats.allDefaultPercentage,
+  );
+  document.getElementById("stat-default-lib").textContent = formatPercent(
+    stats.defaultLibPercentage,
+  );
+  document.getElementById("stat-default-config").textContent = formatPercent(
+    stats.defaultConfigPercentage,
+  );
+  document.getElementById("stat-tracked").textContent = formatPercent(stats.trackedPercentage);
+  document.getElementById("stat-dvn-combos").textContent = formatNumber(
+    stats.dvnCombinations.length,
+  );
 
   // Update subtitle and footer
   const subtitle = `${formatNumber(stats.total)} packets • ${stats.dvnCombinations.length} unique DVN combinations`;
-  document.getElementById('stats-subtitle').textContent = subtitle;
+  document.getElementById("stats-subtitle").textContent = subtitle;
 
-  document.getElementById('computed-at').textContent = new Date(stats.computedAt).toLocaleString();
+  document.getElementById("computed-at").textContent = new Date(stats.computedAt).toLocaleString();
 
   const timeRange = `${formatDate(stats.timeRange.earliest)} → ${formatDate(stats.timeRange.latest)}`;
-  document.getElementById('time-range').textContent = timeRange;
+  document.getElementById("time-range").textContent = timeRange;
 }
 
 // Render pie chart
 function renderPieChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
-  container.innerHTML = '';
+  container.innerHTML = "";
 
   if (!data || data.length === 0) {
     container.innerHTML = '<p class="chart-empty">No data available</p>';
@@ -153,26 +163,26 @@ function renderPieChart(containerId, data, options = {}) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
 
   // Create pie chart
-  const pieChart = document.createElement('div');
-  pieChart.className = 'pie-chart-container';
+  const pieChart = document.createElement("div");
+  pieChart.className = "pie-chart-container";
 
   // SVG for pie
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', '0 0 200 200');
-  svg.setAttribute('class', 'pie-svg');
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", "0 0 200 200");
+  svg.setAttribute("class", "pie-svg");
 
   let currentAngle = 0;
   const colors = [
-    '#1b9c85', // green
-    '#78bdff', // blue
-    '#ff1df5', // magenta
-    '#f2f200', // yellow
-    '#ff6b6b', // red
-    '#4ecdc4', // teal
-    '#95e1d3', // mint
-    '#f38181', // salmon
-    '#aa96da', // purple
-    '#fcbad3', // pink
+    "#1b9c85", // green
+    "#78bdff", // blue
+    "#ff1df5", // magenta
+    "#f2f200", // yellow
+    "#ff6b6b", // red
+    "#4ecdc4", // teal
+    "#95e1d3", // mint
+    "#f38181", // salmon
+    "#aa96da", // purple
+    "#fcbad3", // pink
   ];
 
   data.forEach((item, index) => {
@@ -181,7 +191,7 @@ function renderPieChart(containerId, data, options = {}) {
 
     if (percentage < 0.5) return; // Skip tiny slices
 
-    const slice = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
     const startAngle = currentAngle;
     const endAngle = currentAngle + angle;
 
@@ -196,16 +206,16 @@ function renderPieChart(containerId, data, options = {}) {
       `M 100 100`,
       `L ${x1} ${y1}`,
       `A 80 80 0 ${largeArc} 1 ${x2} ${y2}`,
-      `Z`
-    ].join(' ');
+      `Z`,
+    ].join(" ");
 
-    slice.setAttribute('d', pathData);
-    slice.setAttribute('fill', colors[index % colors.length]);
-    slice.setAttribute('stroke', '#0d0d0d');
-    slice.setAttribute('stroke-width', '2');
-    slice.setAttribute('class', 'pie-slice');
+    slice.setAttribute("d", pathData);
+    slice.setAttribute("fill", colors[index % colors.length]);
+    slice.setAttribute("stroke", "#0d0d0d");
+    slice.setAttribute("stroke-width", "2");
+    slice.setAttribute("class", "pie-slice");
 
-    const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = `${item.label}: ${formatNumber(item.value)} (${formatPercent(percentage)})`;
     slice.appendChild(title);
 
@@ -216,26 +226,26 @@ function renderPieChart(containerId, data, options = {}) {
   pieChart.appendChild(svg);
 
   // Legend
-  const legend = document.createElement('div');
-  legend.className = 'pie-legend';
+  const legend = document.createElement("div");
+  legend.className = "pie-legend";
 
   data.forEach((item, index) => {
     const percentage = (item.value / total) * 100;
     if (percentage < 0.5) return; // Skip tiny slices
 
-    const legendItem = document.createElement('div');
-    legendItem.className = 'pie-legend-item';
+    const legendItem = document.createElement("div");
+    legendItem.className = "pie-legend-item";
 
-    const colorBox = document.createElement('div');
-    colorBox.className = 'pie-legend-color';
+    const colorBox = document.createElement("div");
+    colorBox.className = "pie-legend-color";
     colorBox.style.backgroundColor = colors[index % colors.length];
 
-    const label = document.createElement('div');
-    label.className = 'pie-legend-label';
+    const label = document.createElement("div");
+    label.className = "pie-legend-label";
     label.textContent = item.label;
 
-    const value = document.createElement('div');
-    value.className = 'pie-legend-value';
+    const value = document.createElement("div");
+    value.className = "pie-legend-value";
     value.innerHTML = `<strong>${formatNumber(item.value)}</strong> <span>(${formatPercent(percentage)})</span>`;
 
     legendItem.appendChild(colorBox);
@@ -252,33 +262,33 @@ function renderPieChart(containerId, data, options = {}) {
 // Render horizontal bar chart
 function renderBarChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
-  container.innerHTML = '';
+  container.innerHTML = "";
 
   if (!data || data.length === 0) {
     container.innerHTML = '<p class="chart-empty">No data available</p>';
     return;
   }
 
-  const maxValue = Math.max(...data.map(d => d.value));
+  const maxValue = Math.max(...data.map((d) => d.value));
 
-  data.forEach(item => {
-    const row = document.createElement('div');
-    row.className = 'bar-row';
+  data.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "bar-row";
 
-    const label = document.createElement('div');
-    label.className = 'bar-label';
+    const label = document.createElement("div");
+    label.className = "bar-label";
     label.textContent = item.label;
 
-    const barContainer = document.createElement('div');
-    barContainer.className = 'bar-container-horizontal';
+    const barContainer = document.createElement("div");
+    barContainer.className = "bar-container-horizontal";
 
-    const bar = document.createElement('div');
-    bar.className = `bar-fill-horizontal ${options.barClass || ''}`;
+    const bar = document.createElement("div");
+    bar.className = `bar-fill-horizontal ${options.barClass || ""}`;
     const percentage = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
     bar.style.width = `${percentage}%`;
 
-    const valueLabel = document.createElement('div');
-    valueLabel.className = 'bar-value';
+    const valueLabel = document.createElement("div");
+    valueLabel.className = "bar-value";
     valueLabel.innerHTML = `<strong>${formatNumber(item.value)}</strong> <span class="bar-percent">(${formatPercent(item.percentage)})</span>`;
 
     barContainer.appendChild(bar);
@@ -287,11 +297,11 @@ function renderBarChart(containerId, data, options = {}) {
     row.appendChild(valueLabel);
 
     // Interactive hover
-    row.addEventListener('mouseenter', () => {
-      bar.style.transform = 'scaleY(1.2)';
+    row.addEventListener("mouseenter", () => {
+      bar.style.transform = "scaleY(1.2)";
     });
-    row.addEventListener('mouseleave', () => {
-      bar.style.transform = 'scaleY(1)';
+    row.addEventListener("mouseleave", () => {
+      bar.style.transform = "scaleY(1)";
     });
 
     container.appendChild(row);
@@ -302,13 +312,15 @@ function renderBarChart(containerId, data, options = {}) {
 function renderDvnCountChart(stats) {
   const buckets = new Map();
 
-  stats.dvnCountBuckets.forEach(bucket => {
+  stats.dvnCountBuckets.forEach((bucket) => {
     const count = bucket.requiredDvnCount;
     if (count === 0 || count > 4) {
-      buckets.set('Other (0 or >4 DVNs)',
-        (buckets.get('Other (0 or >4 DVNs)') || 0) + bucket.packetCount);
+      buckets.set(
+        "Other (0 or >4 DVNs)",
+        (buckets.get("Other (0 or >4 DVNs)") || 0) + bucket.packetCount,
+      );
     } else {
-      buckets.set(`${count} DVN${count === 1 ? '' : 's'}`, bucket.packetCount);
+      buckets.set(`${count} DVN${count === 1 ? "" : "s"}`, bucket.packetCount);
     }
   });
 
@@ -316,35 +328,35 @@ function renderDvnCountChart(stats) {
     .map(([label, value]) => ({
       label,
       value,
-      percentage: (value / stats.total) * 100
+      percentage: (value / stats.total) * 100,
     }))
     .sort((a, b) => {
       // Sort: 1, 2, 3, 4, Other
-      if (a.label.startsWith('Other')) return 1;
-      if (b.label.startsWith('Other')) return -1;
+      if (a.label.startsWith("Other")) return 1;
+      if (b.label.startsWith("Other")) return -1;
       return a.label.localeCompare(b.label, undefined, { numeric: true });
     });
 
-  renderPieChart('dvn-count-chart', data);
+  renderPieChart("dvn-count-chart", data);
 }
 
 // Render optional DVN count pie chart (exclude 0)
 function renderOptionalDvnCountChart(stats) {
   const data = stats.optionalDvnCountBuckets
-    .filter(bucket => bucket.optionalDvnCount > 0) // Exclude 0
-    .map(bucket => ({
-      label: `${bucket.optionalDvnCount} DVN${bucket.optionalDvnCount === 1 ? '' : 's'}`,
+    .filter((bucket) => bucket.optionalDvnCount > 0) // Exclude 0
+    .map((bucket) => ({
+      label: `${bucket.optionalDvnCount} DVN${bucket.optionalDvnCount === 1 ? "" : "s"}`,
       value: bucket.packetCount,
       percentage: bucket.percentage,
     }));
 
-  renderPieChart('optional-dvn-count-chart', data);
+  renderPieChart("optional-dvn-count-chart", data);
 }
 
 // Render top DVN combinations with resolved names (deduplicated by resolved names)
 function renderDvnComboChart(stats) {
-  const container = document.getElementById('dvn-combo-chart');
-  container.innerHTML = '';
+  const container = document.getElementById("dvn-combo-chart");
+  container.innerHTML = "";
 
   if (!stats.dvnCombinations || stats.dvnCombinations.length === 0) {
     container.innerHTML = '<p class="chart-empty">No DVN combinations found</p>';
@@ -354,14 +366,14 @@ function renderDvnComboChart(stats) {
   // Deduplicate by resolved names
   const mergedCombos = new Map();
 
-  stats.dvnCombinations.forEach(combo => {
+  stats.dvnCombinations.forEach((combo) => {
     // Resolve all DVN addresses to names using the correct localEid
-    const resolvedDvns = combo.dvns.map(dvn => {
+    const resolvedDvns = combo.dvns.map((dvn) => {
       const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
       return {
         address: dvn,
         name: resolved,
-        isResolved: resolved !== dvn && !resolved.startsWith('0x')
+        isResolved: resolved !== dvn && !resolved.startsWith("0x"),
       };
     });
 
@@ -373,7 +385,7 @@ function renderDvnComboChart(stats) {
     });
 
     // Create key from sorted resolved names
-    const comboKey = sorted.map(d => d.isResolved ? d.name : d.address).join('|||');
+    const comboKey = sorted.map((d) => (d.isResolved ? d.name : d.address)).join("|||");
 
     if (mergedCombos.has(comboKey)) {
       // Merge with existing
@@ -384,16 +396,16 @@ function renderDvnComboChart(stats) {
       mergedCombos.set(comboKey, {
         dvns: sorted,
         count: combo.count,
-        comboKey
+        comboKey,
       });
     }
   });
 
   // Convert to array and recalculate percentages
   const deduplicatedCombos = Array.from(mergedCombos.values())
-    .map(combo => ({
+    .map((combo) => ({
       ...combo,
-      percentage: (combo.count / stats.total) * 100
+      percentage: (combo.count / stats.total) * 100,
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 20); // Top 20
@@ -406,36 +418,36 @@ function renderDvnComboChart(stats) {
   const maxValue = deduplicatedCombos[0]?.count || 0;
 
   deduplicatedCombos.forEach((combo, index) => {
-    const row = document.createElement('div');
-    row.className = 'combo-row';
+    const row = document.createElement("div");
+    row.className = "combo-row";
 
-    const rank = document.createElement('div');
-    rank.className = 'combo-rank';
+    const rank = document.createElement("div");
+    rank.className = "combo-rank";
     rank.textContent = `#${index + 1}`;
 
-    const dvnList = document.createElement('div');
-    dvnList.className = 'combo-dvn-list';
+    const dvnList = document.createElement("div");
+    dvnList.className = "combo-dvn-list";
 
     // Render resolved DVN names
-    combo.dvns.forEach(dvn => {
-      const badge = document.createElement('span');
-      badge.className = 'dvn-badge-small';
+    combo.dvns.forEach((dvn) => {
+      const badge = document.createElement("span");
+      badge.className = "dvn-badge-small";
 
       badge.textContent = dvn.isResolved ? dvn.name : formatAddress(dvn.address);
       badge.title = dvn.isResolved ? `${dvn.name} - ${dvn.address}` : dvn.address;
       dvnList.appendChild(badge);
     });
 
-    const barContainer = document.createElement('div');
-    barContainer.className = 'combo-bar-container';
+    const barContainer = document.createElement("div");
+    barContainer.className = "combo-bar-container";
 
-    const bar = document.createElement('div');
-    bar.className = 'combo-bar-fill';
+    const bar = document.createElement("div");
+    bar.className = "combo-bar-fill";
     const percentage = maxValue > 0 ? (combo.count / maxValue) * 100 : 0;
     bar.style.width = `${percentage}%`;
 
-    const value = document.createElement('div');
-    value.className = 'combo-value';
+    const value = document.createElement("div");
+    value.className = "combo-value";
     value.innerHTML = `<strong>${formatNumber(combo.count)}</strong> <span class="combo-percent">(${formatPercent(combo.percentage)})</span>`;
 
     barContainer.appendChild(bar);
@@ -445,13 +457,13 @@ function renderDvnComboChart(stats) {
     row.appendChild(value);
 
     // Interactive hover
-    row.addEventListener('mouseenter', () => {
-      bar.style.opacity = '1';
-      bar.style.transform = 'scaleY(1.15)';
+    row.addEventListener("mouseenter", () => {
+      bar.style.opacity = "1";
+      bar.style.transform = "scaleY(1.15)";
     });
-    row.addEventListener('mouseleave', () => {
-      bar.style.opacity = '0.85';
-      bar.style.transform = 'scaleY(1)';
+    row.addEventListener("mouseleave", () => {
+      bar.style.opacity = "0.85";
+      bar.style.transform = "scaleY(1)";
     });
 
     container.appendChild(row);
@@ -460,30 +472,30 @@ function renderDvnComboChart(stats) {
 
 // Render chain breakdown
 function renderChainChart(stats) {
-  const data = stats.chainBreakdown.slice(0, 20).map(item => ({
+  const data = stats.chainBreakdown.slice(0, 20).map((item) => ({
     label: getChainName(item.localEid, chainMetadata),
     value: item.packetCount,
     percentage: item.percentage,
   }));
 
-  renderBarChart('chain-chart', data, { barClass: 'bar-fill--accent' });
+  renderBarChart("chain-chart", data, { barClass: "bar-fill--accent" });
 }
 
 // Render source chain breakdown
 function renderSrcChainChart(stats) {
-  const data = stats.srcChainBreakdown.slice(0, 20).map(item => ({
+  const data = stats.srcChainBreakdown.slice(0, 20).map((item) => ({
     label: getChainName(item.srcEid, chainMetadata),
     value: item.packetCount,
     percentage: item.percentage,
   }));
 
-  renderBarChart('src-chain-chart', data, { barClass: 'bar-fill--magenta' });
+  renderBarChart("src-chain-chart", data, { barClass: "bar-fill--magenta" });
 }
 
 // Render time-series line chart
 function renderTimeSeriesChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
-  container.innerHTML = '';
+  container.innerHTML = "";
 
   if (!data || data.length === 0) {
     container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
@@ -491,18 +503,18 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   }
 
   // Filter out zero values for better visualization
-  const filteredData = data.filter(d => d.value > 0);
+  const filteredData = data.filter((d) => d.value > 0);
 
   if (filteredData.length === 0) {
     container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
     return;
   }
 
-  const { color = '#1b9c85', label = 'Value', showPoints = false } = options;
+  const { color = "#1b9c85", label = "Value", showPoints = false } = options;
 
   // Create chart container
-  const chartContainer = document.createElement('div');
-  chartContainer.className = 'time-series-container';
+  const chartContainer = document.createElement("div");
+  chartContainer.className = "time-series-container";
 
   // Calculate dimensions and scales
   const width = 1200;
@@ -511,10 +523,10 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  const minTimestamp = Math.min(...filteredData.map(d => d.timestamp));
-  const maxTimestamp = Math.max(...filteredData.map(d => d.timestamp));
+  const minTimestamp = Math.min(...filteredData.map((d) => d.timestamp));
+  const maxTimestamp = Math.max(...filteredData.map((d) => d.timestamp));
   const minValue = 0;
-  const maxValue = Math.max(...filteredData.map(d => d.value));
+  const maxValue = Math.max(...filteredData.map((d) => d.value));
 
   // Scale functions
   const scaleX = (timestamp) => {
@@ -526,71 +538,73 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   };
 
   // Create SVG
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.setAttribute('class', 'time-series-svg');
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("class", "time-series-svg");
 
   // Background grid (optional)
-  const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-  gridGroup.setAttribute('class', 'grid');
+  const gridGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  gridGroup.setAttribute("class", "grid");
 
   // Horizontal grid lines (5 lines)
   for (let i = 0; i <= 5; i++) {
-    const y = padding.top + (chartHeight * i / 5);
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', padding.left);
-    line.setAttribute('y1', y);
-    line.setAttribute('x2', width - padding.right);
-    line.setAttribute('y2', y);
-    line.setAttribute('stroke', '#0d0d0d');
-    line.setAttribute('stroke-width', '1');
-    line.setAttribute('stroke-opacity', '0.1');
+    const y = padding.top + (chartHeight * i) / 5;
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", padding.left);
+    line.setAttribute("y1", y);
+    line.setAttribute("x2", width - padding.right);
+    line.setAttribute("y2", y);
+    line.setAttribute("stroke", "#0d0d0d");
+    line.setAttribute("stroke-width", "1");
+    line.setAttribute("stroke-opacity", "0.1");
     gridGroup.appendChild(line);
   }
   svg.appendChild(gridGroup);
 
   // Build path for line chart
-  const pathData = filteredData.map((d, i) => {
-    const x = scaleX(d.timestamp);
-    const y = scaleY(d.value);
-    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
-  }).join(' ');
+  const pathData = filteredData
+    .map((d, i) => {
+      const x = scaleX(d.timestamp);
+      const y = scaleY(d.value);
+      return `${i === 0 ? "M" : "L"} ${x} ${y}`;
+    })
+    .join(" ");
 
   // Area fill under line
-  const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const areaPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
   const areaData = [
     `M ${scaleX(filteredData[0].timestamp)} ${height - padding.bottom}`,
-    ...filteredData.map(d => `L ${scaleX(d.timestamp)} ${scaleY(d.value)}`),
+    ...filteredData.map((d) => `L ${scaleX(d.timestamp)} ${scaleY(d.value)}`),
     `L ${scaleX(filteredData[filteredData.length - 1].timestamp)} ${height - padding.bottom}`,
-    'Z'
-  ].join(' ');
-  areaPath.setAttribute('d', areaData);
-  areaPath.setAttribute('fill', color);
-  areaPath.setAttribute('fill-opacity', '0.15');
+    "Z",
+  ].join(" ");
+  areaPath.setAttribute("d", areaData);
+  areaPath.setAttribute("fill", color);
+  areaPath.setAttribute("fill-opacity", "0.15");
   svg.appendChild(areaPath);
 
   // Line
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  line.setAttribute('d', pathData);
-  line.setAttribute('fill', 'none');
-  line.setAttribute('stroke', color);
-  line.setAttribute('stroke-width', '3');
-  line.setAttribute('stroke-linejoin', 'round');
-  line.setAttribute('stroke-linecap', 'round');
+  const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  line.setAttribute("d", pathData);
+  line.setAttribute("fill", "none");
+  line.setAttribute("stroke", color);
+  line.setAttribute("stroke-width", "3");
+  line.setAttribute("stroke-linejoin", "round");
+  line.setAttribute("stroke-linecap", "round");
   svg.appendChild(line);
 
   // Points (optional)
   if (showPoints && filteredData.length < 200) {
-    filteredData.forEach(d => {
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', scaleX(d.timestamp));
-      circle.setAttribute('cy', scaleY(d.value));
-      circle.setAttribute('r', '4');
-      circle.setAttribute('fill', color);
-      circle.setAttribute('stroke', '#0d0d0d');
-      circle.setAttribute('stroke-width', '2');
+    filteredData.forEach((d) => {
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", scaleX(d.timestamp));
+      circle.setAttribute("cy", scaleY(d.value));
+      circle.setAttribute("r", "4");
+      circle.setAttribute("fill", color);
+      circle.setAttribute("stroke", "#0d0d0d");
+      circle.setAttribute("stroke-width", "2");
 
-      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
       title.textContent = `${formatDate(d.timestamp)}: ${formatNumber(d.value)}`;
       circle.appendChild(title);
 
@@ -599,35 +613,35 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   }
 
   // Y-axis
-  const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  yAxis.setAttribute('x1', padding.left);
-  yAxis.setAttribute('y1', padding.top);
-  yAxis.setAttribute('x2', padding.left);
-  yAxis.setAttribute('y2', height - padding.bottom);
-  yAxis.setAttribute('stroke', '#0d0d0d');
-  yAxis.setAttribute('stroke-width', '3');
+  const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  yAxis.setAttribute("x1", padding.left);
+  yAxis.setAttribute("y1", padding.top);
+  yAxis.setAttribute("x2", padding.left);
+  yAxis.setAttribute("y2", height - padding.bottom);
+  yAxis.setAttribute("stroke", "#0d0d0d");
+  yAxis.setAttribute("stroke-width", "3");
   svg.appendChild(yAxis);
 
   // X-axis
-  const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-  xAxis.setAttribute('x1', padding.left);
-  xAxis.setAttribute('y1', height - padding.bottom);
-  xAxis.setAttribute('x2', width - padding.right);
-  xAxis.setAttribute('y2', height - padding.bottom);
-  xAxis.setAttribute('stroke', '#0d0d0d');
-  xAxis.setAttribute('stroke-width', '3');
+  const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  xAxis.setAttribute("x1", padding.left);
+  xAxis.setAttribute("y1", height - padding.bottom);
+  xAxis.setAttribute("x2", width - padding.right);
+  xAxis.setAttribute("y2", height - padding.bottom);
+  xAxis.setAttribute("stroke", "#0d0d0d");
+  xAxis.setAttribute("stroke-width", "3");
   svg.appendChild(xAxis);
 
   // Y-axis labels (5 ticks)
   for (let i = 0; i <= 5; i++) {
-    const value = minValue + ((maxValue - minValue) * i / 5);
-    const y = height - padding.bottom - (chartHeight * i / 5);
+    const value = minValue + ((maxValue - minValue) * i) / 5;
+    const y = height - padding.bottom - (chartHeight * i) / 5;
 
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', padding.left - 10);
-    text.setAttribute('y', y + 4);
-    text.setAttribute('text-anchor', 'end');
-    text.setAttribute('class', 'axis-label');
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", padding.left - 10);
+    text.setAttribute("y", y + 4);
+    text.setAttribute("text-anchor", "end");
+    text.setAttribute("class", "axis-label");
     text.textContent = formatNumber(Math.round(value));
     svg.appendChild(text);
   }
@@ -635,15 +649,15 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   // X-axis labels (show ~6 time points)
   const numXLabels = Math.min(6, filteredData.length);
   for (let i = 0; i < numXLabels; i++) {
-    const index = Math.floor(i * (filteredData.length - 1) / (numXLabels - 1));
+    const index = Math.floor((i * (filteredData.length - 1)) / (numXLabels - 1));
     const d = filteredData[index];
     const x = scaleX(d.timestamp);
 
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', x);
-    text.setAttribute('y', height - padding.bottom + 25);
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('class', 'axis-label');
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", x);
+    text.setAttribute("y", height - padding.bottom + 25);
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("class", "axis-label");
     text.textContent = formatDate(d.timestamp);
     svg.appendChild(text);
   }
@@ -651,12 +665,15 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   chartContainer.appendChild(svg);
 
   // Summary stats
-  const summary = document.createElement('div');
-  summary.className = 'time-series-summary';
+  const summary = document.createElement("div");
+  summary.className = "time-series-summary";
 
   const totalValue = filteredData.reduce((sum, d) => sum + d.value, 0);
   const avgValue = totalValue / filteredData.length;
-  const maxPoint = filteredData.reduce((max, d) => d.value > max.value ? d : max, filteredData[0]);
+  const maxPoint = filteredData.reduce(
+    (max, d) => (d.value > max.value ? d : max),
+    filteredData[0],
+  );
 
   summary.innerHTML = `
     <div class="summary-item">
@@ -684,19 +701,19 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
 // Render hourly packet volume time series
 function renderPacketTimeSeries(stats) {
   if (!stats.timeSeries || !stats.timeSeries.hourly) {
-    document.getElementById('time-series-packets-chart').innerHTML =
+    document.getElementById("time-series-packets-chart").innerHTML =
       '<p class="chart-empty">No time-series data available</p>';
     return;
   }
 
-  const data = stats.timeSeries.hourly.map(d => ({
+  const data = stats.timeSeries.hourly.map((d) => ({
     timestamp: d.timestamp,
     value: d.packets,
   }));
 
-  renderTimeSeriesChart('time-series-packets-chart', data, {
-    color: '#1b9c85',
-    label: 'Packets',
+  renderTimeSeriesChart("time-series-packets-chart", data, {
+    color: "#1b9c85",
+    label: "Packets",
     showPoints: false,
   });
 }
@@ -704,54 +721,55 @@ function renderPacketTimeSeries(stats) {
 // Render config changes time series
 function renderConfigChangesTimeSeries(stats) {
   if (!stats.timeSeries || !stats.timeSeries.hourly) {
-    document.getElementById('time-series-config-chart').innerHTML =
+    document.getElementById("time-series-config-chart").innerHTML =
       '<p class="chart-empty">No time-series data available</p>';
     return;
   }
 
   // Update total config changes label
   if (stats.timeSeries.totalConfigChanges !== undefined) {
-    document.getElementById('total-config-changes').textContent =
-      formatNumber(stats.timeSeries.totalConfigChanges);
+    document.getElementById("total-config-changes").textContent = formatNumber(
+      stats.timeSeries.totalConfigChanges,
+    );
   }
 
-  const data = stats.timeSeries.hourly.map(d => ({
+  const data = stats.timeSeries.hourly.map((d) => ({
     timestamp: d.timestamp,
     value: d.configChanges,
   }));
 
-  renderTimeSeriesChart('time-series-config-chart', data, {
-    color: '#ff1df5',
-    label: 'Config Changes',
+  renderTimeSeriesChart("time-series-config-chart", data, {
+    color: "#ff1df5",
+    label: "Config Changes",
     showPoints: false,
   });
 }
 
 // Show error
 function showError(message) {
-  document.getElementById('loading-state').classList.add('hidden');
-  document.getElementById('stats-content').classList.add('hidden');
-  const errorState = document.getElementById('error-state');
-  errorState.classList.remove('hidden');
-  document.getElementById('error-message').textContent = message;
+  document.getElementById("loading-state").classList.add("hidden");
+  document.getElementById("stats-content").classList.add("hidden");
+  const errorState = document.getElementById("error-state");
+  errorState.classList.remove("hidden");
+  document.getElementById("error-message").textContent = message;
 }
 
 // Show content
 function showContent() {
-  document.getElementById('loading-state').classList.add('hidden');
-  document.getElementById('error-state').classList.add('hidden');
-  document.getElementById('stats-content').classList.remove('hidden');
+  document.getElementById("loading-state").classList.add("hidden");
+  document.getElementById("error-state").classList.add("hidden");
+  document.getElementById("stats-content").classList.remove("hidden");
 }
 
 // Discover available datasets by trying common lookback patterns
 async function discoverDatasets() {
-  const patterns = ['30d', '90d', '1y', 'all'];
+  const patterns = ["30d", "90d", "1y", "all"];
   const found = [];
 
   for (const pattern of patterns) {
     try {
       const filename = `packet-stats-${pattern}.json`;
-      const response = await fetch(`${DATA_DIR}/${filename}`, { method: 'HEAD' });
+      const response = await fetch(`${DATA_DIR}/${filename}`, { method: "HEAD" });
       if (response.ok) {
         found.push({ name: pattern, filename });
       }
@@ -765,10 +783,10 @@ async function discoverDatasets() {
 
 // Render dataset selection buttons
 function renderDatasetButtons(datasets) {
-  const header = document.querySelector('.stats-header');
+  const header = document.querySelector(".stats-header");
 
   // Remove existing button container if any
-  const existing = document.getElementById('dataset-selector');
+  const existing = document.getElementById("dataset-selector");
   if (existing) existing.remove();
 
   if (datasets.length <= 1) {
@@ -776,29 +794,29 @@ function renderDatasetButtons(datasets) {
     return;
   }
 
-  const container = document.createElement('div');
-  container.id = 'dataset-selector';
-  container.className = 'dataset-selector';
+  const container = document.createElement("div");
+  container.id = "dataset-selector";
+  container.className = "dataset-selector";
 
-  const label = document.createElement('span');
-  label.className = 'dataset-label';
-  label.textContent = 'Time Range:';
+  const label = document.createElement("span");
+  label.className = "dataset-label";
+  label.textContent = "Time Range:";
   container.appendChild(label);
 
-  const buttonGroup = document.createElement('div');
-  buttonGroup.className = 'dataset-buttons';
+  const buttonGroup = document.createElement("div");
+  buttonGroup.className = "dataset-buttons";
 
-  datasets.forEach(dataset => {
-    const button = document.createElement('button');
-    button.className = 'dataset-button';
-    button.textContent = dataset.name === 'all' ? 'All Time' : dataset.name.toUpperCase();
+  datasets.forEach((dataset) => {
+    const button = document.createElement("button");
+    button.className = "dataset-button";
+    button.textContent = dataset.name === "all" ? "All Time" : dataset.name.toUpperCase();
     button.dataset.name = dataset.name;
 
     if (currentDataset === dataset.name) {
-      button.classList.add('active');
+      button.classList.add("active");
     }
 
-    button.addEventListener('click', () => {
+    button.addEventListener("click", () => {
       loadAndRender(dataset.name);
     });
 
@@ -820,13 +838,13 @@ async function loadAndRender(datasetName = null) {
     currentDataset = datasetName;
 
     // Show loading state with dataset name
-    const loadingBanner = document.getElementById('loading-state');
-    loadingBanner.classList.remove('hidden');
-    document.getElementById('stats-content').classList.add('hidden');
-    document.getElementById('error-state').classList.add('hidden');
+    const loadingBanner = document.getElementById("loading-state");
+    loadingBanner.classList.remove("hidden");
+    document.getElementById("stats-content").classList.add("hidden");
+    document.getElementById("error-state").classList.add("hidden");
 
-    const datasetLabel = datasetName === 'all' ? 'All Time' : datasetName.toUpperCase();
-    loadingBanner.querySelector('p').textContent = `Loading ${datasetLabel} statistics...`;
+    const datasetLabel = datasetName === "all" ? "All Time" : datasetName.toUpperCase();
+    loadingBanner.querySelector("p").textContent = `Loading ${datasetLabel} statistics...`;
 
     // Load chain metadata first (only once)
     if (!chainMetadata) {
@@ -851,7 +869,7 @@ async function loadAndRender(datasetName = null) {
     statsData = await response.json();
 
     if (!statsData || statsData.total === 0) {
-      throw new Error('No packet data available. Run the precomputation script first.');
+      throw new Error("No packet data available. Run the precomputation script first.");
     }
 
     // Update button states
@@ -869,18 +887,18 @@ async function loadAndRender(datasetName = null) {
 
     showContent();
   } catch (error) {
-    console.error('Failed to load statistics:', error);
+    console.error("Failed to load statistics:", error);
     showError(error.message);
   }
 }
 
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener("DOMContentLoaded", async () => {
   // Discover available datasets
   availableDatasets = await discoverDatasets();
 
   if (availableDatasets.length === 0) {
-    showError('No precomputed statistics found. Run the precomputation script first.');
+    showError("No precomputed statistics found. Run the precomputation script first.");
     return;
   }
 
