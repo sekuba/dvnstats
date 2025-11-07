@@ -344,15 +344,24 @@ async function computeStatisticsIncremental(minTimestamp = null) {
         tracked++;
       }
 
-      // DVN combinations (required DVNs only)
+      // DVN combinations (required DVNs only) - store with localEid for correct resolution
       const requiredDVNs = Array.isArray(packet.effectiveRequiredDVNs)
         ? packet.effectiveRequiredDVNs
         : [];
 
       if (requiredDVNs.length > 0) {
+        const localEid = String(packet.localEid);
         const sortedDvns = [...requiredDVNs].sort();
-        const comboKey = sortedDvns.join(',');
-        dvnCombos.set(comboKey, (dvnCombos.get(comboKey) || 0) + 1);
+        const comboKey = `${localEid}:${sortedDvns.join(',')}`;
+
+        if (!dvnCombos.has(comboKey)) {
+          dvnCombos.set(comboKey, {
+            localEid,
+            dvns: sortedDvns,
+            count: 0
+          });
+        }
+        dvnCombos.get(comboKey).count++;
       }
 
       // DVN count buckets
@@ -413,11 +422,12 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   // Convert to arrays and sort
   console.log('Finalizing results...');
 
-  const dvnCombinations = Array.from(dvnCombos.entries())
-    .map(([combo, count]) => ({
-      dvns: combo.split(','),
-      count,
-      percentage: (count / total) * 100,
+  const dvnCombinations = Array.from(dvnCombos.values())
+    .map(combo => ({
+      localEid: combo.localEid,
+      dvns: combo.dvns,
+      count: combo.count,
+      percentage: (combo.count / total) * 100,
     }))
     .sort((a, b) => b.count - a.count);
 
