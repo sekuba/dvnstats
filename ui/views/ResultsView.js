@@ -65,11 +65,6 @@ export class ResultsView {
       return;
     }
 
-    if (metaSnapshot.renderMode === "statistics") {
-      this.renderStatistics(metaSnapshot);
-      return;
-    }
-
     const summaryPanel = renderSummaryPanels(metaSnapshot, {
       aliasStore: this.aliasStore,
       getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
@@ -141,30 +136,6 @@ export class ResultsView {
 
     const graphContainer = renderer.render(webData, { centerNodeId });
     this.resultsBody.appendChild(graphContainer);
-  }
-
-  async renderStatistics(meta) {
-    this.resultsBody.classList.remove("empty");
-    this.resultsBody.innerHTML = "";
-
-    const { StatisticsView } = await import("./StatisticsView.js");
-    const statistics = meta.statistics;
-
-    if (!statistics) {
-      this.renderError({ error: "Statistics data missing" });
-      return;
-    }
-
-    StatisticsView.render(
-      this.resultsBody,
-      statistics,
-      meta,
-      this.aliasStore,
-      (addresses, localEid) => {
-        // DVN label resolution (currently unused but available for future enhancement)
-        return addresses;
-      },
-    );
   }
 
   getChainDisplayLabel(chainId) {
