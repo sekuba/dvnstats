@@ -10,6 +10,7 @@ export class ResultsView {
     resultsMeta,
     resultsBody,
     copyJsonButton,
+    downloadSvgButton,
     chainMetadata,
     aliasStore,
     toastQueue,
@@ -18,6 +19,7 @@ export class ResultsView {
     this.resultsMeta = resultsMeta;
     this.resultsBody = resultsBody;
     this.copyJsonButton = copyJsonButton;
+    this.downloadSvgButton = downloadSvgButton;
     this.chainMetadata = chainMetadata;
     this.aliasStore = aliasStore;
     this.toastQueue = toastQueue;
@@ -38,6 +40,12 @@ export class ResultsView {
         this.copyJsonButton.textContent =
           metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
       }
+    }
+
+    if (this.downloadSvgButton) {
+      const isGraphMode = metaSnapshot.renderMode === "graph";
+      this.downloadSvgButton.hidden = !isGraphMode;
+      this.downloadSvgButton.disabled = !isGraphMode;
     }
 
     const variableHints = this.buildVariableSummary(metaSnapshot.variables);
@@ -254,6 +262,109 @@ export class ResultsView {
       console.error("Clipboard copy failed", error);
       this.flashButtonFeedback(this.copyJsonButton, "Copy failed");
     }
+  }
+
+  async handleDownloadSvg() {
+    const isGraphMode = this.lastRender?.meta?.renderMode === "graph";
+    const webData = this.lastRender?.meta?.webData;
+
+    if (!isGraphMode || !webData) {
+      this.toastQueue.show("No graph to export", "error");
+      return;
+    }
+
+    try {
+      const svgElement = this.resultsBody.querySelector("svg");
+      if (!svgElement) {
+        this.toastQueue.show("Could not find SVG element", "error");
+        return;
+      }
+
+      const clonedSvg = svgElement.cloneNode(true);
+
+      // Set explicit dimensions for the exported SVG
+      const bbox = svgElement.getBoundingClientRect();
+      clonedSvg.setAttribute("width", svgElement.getAttribute("viewBox")?.split(" ")[2] || bbox.width);
+      clonedSvg.setAttribute("height", svgElement.getAttribute("viewBox")?.split(" ")[3] || bbox.height);
+
+      // Remove background and border for clean export
+      clonedSvg.style.background = "none";
+      clonedSvg.style.border = "none";
+
+      // Inline critical styles from CSS variables
+      this.inlineStyles(clonedSvg);
+
+      // Serialize the SVG to string
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(clonedSvg);
+
+      // Add XML declaration and create proper SVG file
+      const fullSvgString = '<?xml version="1.0" encoding="UTF-8"?>\n' + svgString;
+
+      // Create blob and download
+      const blob = new Blob([fullSvgString], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `web-of-security-${webData.seed || "graph"}-${Date.now()}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      this.flashButtonFeedback(this.downloadSvgButton, "Downloaded!");
+      this.toastQueue.show("SVG exported successfully", "success");
+    } catch (error) {
+      console.error("SVG export failed", error);
+      this.toastQueue.show("SVG export failed", "error");
+    }
+  }
+
+  inlineStyles(svgElement) {
+    // Get computed styles and inline critical CSS variables
+    const computedStyle = window.getComputedStyle(document.documentElement);
+    const cssVars = {
+      "--paper": computedStyle.getPropertyValue("--paper").trim() || "#fff",
+      "--ink": computedStyle.getPropertyValue("--ink").trim() || "#000",
+      "--magenta": computedStyle.getPropertyValue("--magenta").trim() || "#ff00ff",
+      "--green": computedStyle.getPropertyValue("--green").trim() || "#00ff00",
+      "--yellow": computedStyle.getPropertyValue("--yellow").trim() || "#ffff00",
+      "--red": computedStyle.getPropertyValue("--red").trim() || "#ff0000",
+    };
+
+    // Replace CSS variables in all elements
+    const replaceVarsInStyle = (element) => {
+      // Replace in inline styles
+      if (element.style) {
+        ["border", "background", "fill", "stroke"].forEach((prop) => {
+          const value = element.style[prop];
+          if (value) {
+            let replaced = value;
+            Object.entries(cssVars).forEach(([varName, varValue]) => {
+              replaced = replaced.replace(new RegExp(`var\\(${varName}\\)`, "g"), varValue);
+            });
+            element.style[prop] = replaced;
+          }
+        });
+      }
+
+      // Replace in attributes
+      ["fill", "stroke", "style"].forEach((attr) => {
+        const value = element.getAttribute(attr);
+        if (value) {
+          let replaced = value;
+          Object.entries(cssVars).forEach(([varName, varValue]) => {
+            replaced = replaced.replace(new RegExp(`var\\(${varName}\\)`, "g"), varValue);
+          });
+          element.setAttribute(attr, replaced);
+        }
+      });
+
+      // Recursively process children
+      Array.from(element.children).forEach((child) => replaceVarsInStyle(child));
+    };
+
+    replaceVarsInStyle(svgElement);
   }
 
   flashButtonFeedback(button, label) {
