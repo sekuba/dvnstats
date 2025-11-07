@@ -3,13 +3,21 @@
 /**
  * Precompute packet statistics from all PacketDelivered records
  * Uses incremental processing to handle millions of packets without memory issues
- * Saves results to dashboard/data/packet-stats.json
+ *
+ * Output files: dashboard/data/packet-stats-{lookback}.json
  *
  * Usage:
- *   npm run stats:precompute                 # All time
- *   npm run stats:precompute -- --lookback=1y   # Last 1 year
- *   npm run stats:precompute -- --lookback=30d  # Last 30 days
- *   npm run stats:precompute -- --lookback=6m   # Last 6 months
+ *   npm run stats:precompute                    # All time (packet-stats-all.json)
+ *   npm run stats:precompute -- --lookback=30d  # Last 30 days (packet-stats-30d.json)
+ *   npm run stats:precompute -- --lookback=90d  # Last 90 days (packet-stats-90d.json)
+ *   npm run stats:precompute -- --lookback=1y   # Last 1 year (packet-stats-1y.json)
+ *   npm run stats:precompute -- --batch         # Generate all supported time ranges
+ *
+ * Supported lookback formats:
+ *   30d, 90d, 180d  - Days
+ *   1m, 3m, 6m      - Months (30 days each)
+ *   1y, 2y          - Years (365 days each)
+ *   24h, 48h        - Hours
  */
 
 const fs = require('fs');
@@ -495,6 +503,55 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   };
 }
 
+/**
+ * Run single precomputation for a specific lookback period
+ */
+async function runPrecomputation(lookbackParam = null) {
+  let minTimestamp = null;
+
+  if (lookbackParam) {
+    minTimestamp = parseLookback(lookbackParam);
+    console.log(`Lookback: ${lookbackParam} (from ${new Date(minTimestamp * 1000).toISOString()})`);
+  } else {
+    console.log('Lookback: All time');
+  }
+
+  console.log(`Endpoint: ${GRAPHQL_ENDPOINT}`);
+  console.log(`Batch size: ${BATCH_SIZE.toLocaleString()}\n`);
+
+  // Compute statistics incrementally
+  const stats = await computeStatisticsIncremental(minTimestamp);
+
+  // Add lookback metadata to stats
+  stats.lookback = lookbackParam || 'all';
+
+  // Ensure output directory exists
+  if (!fs.existsSync(OUTPUT_DIR)) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+  }
+
+  // Generate output filename based on lookback
+  const outputPath = getOutputFilename(lookbackParam);
+
+  // Save to file
+  fs.writeFileSync(outputPath, JSON.stringify(stats, null, 2));
+  console.log(`\nStatistics saved to: ${outputPath}`);
+  console.log(`\nSummary:`);
+  console.log(`  Total packets: ${stats.total.toLocaleString()}`);
+  console.log(`  All-default: ${stats.allDefaultPercentage.toFixed(2)}%`);
+  console.log(`  Unique DVN combos: ${stats.dvnCombinations.length.toLocaleString()}`);
+  console.log(`  Chains: ${stats.chainBreakdown.length}`);
+  console.log(`  Config changes: ${stats.timeSeries.totalConfigChanges.toLocaleString()}`);
+  console.log(`  Hourly data points: ${stats.timeSeries.hourly.length.toLocaleString()}`);
+
+  if (stats.timeRange.earliest && stats.timeRange.latest) {
+    const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);
+    console.log(`  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split('T')[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split('T')[0]} (${days.toLocaleString()} days)`);
+  }
+
+  console.log('\n✓ Done!');
+}
+
 async function main() {
   try {
     console.log('=== Packet Statistics Precomputation ===\n');
@@ -502,55 +559,43 @@ async function main() {
     // Parse command line arguments
     const args = process.argv.slice(2);
     let lookbackParam = null;
-    let minTimestamp = null;
+    let batchMode = false;
 
     for (const arg of args) {
       if (arg.startsWith('--lookback=')) {
         lookbackParam = arg.split('=')[1];
+      } else if (arg === '--batch') {
+        batchMode = true;
       }
     }
 
-    if (lookbackParam) {
-      minTimestamp = parseLookback(lookbackParam);
-      console.log(`Lookback: ${lookbackParam} (from ${new Date(minTimestamp * 1000).toISOString()})`);
+    if (batchMode) {
+      // Batch mode: generate all supported time ranges
+      const timeRanges = ['30d', '90d', '1y', null]; // null = all time
+      console.log(`Batch mode: generating ${timeRanges.length} datasets\n`);
+
+      for (let i = 0; i < timeRanges.length; i++) {
+        const range = timeRanges[i];
+        console.log(`\n${'='.repeat(60)}`);
+        console.log(`Dataset ${i + 1}/${timeRanges.length}: ${range || 'all'}`);
+        console.log('='.repeat(60) + '\n');
+
+        await runPrecomputation(range);
+
+        // Small delay between runs to avoid hammering the API
+        if (i < timeRanges.length - 1) {
+          console.log('\nWaiting 2 seconds before next dataset...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+
+      console.log(`\n${'='.repeat(60)}`);
+      console.log(`✓ Batch complete! Generated ${timeRanges.length} datasets`);
+      console.log('='.repeat(60));
     } else {
-      console.log('Lookback: All time');
+      // Single mode
+      await runPrecomputation(lookbackParam);
     }
-
-    console.log(`Endpoint: ${GRAPHQL_ENDPOINT}`);
-    console.log(`Batch size: ${BATCH_SIZE.toLocaleString()}\n`);
-
-    // Compute statistics incrementally
-    const stats = await computeStatisticsIncremental(minTimestamp);
-
-    // Add lookback metadata to stats
-    stats.lookback = lookbackParam || 'all';
-
-    // Ensure output directory exists
-    if (!fs.existsSync(OUTPUT_DIR)) {
-      fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-    }
-
-    // Generate output filename based on lookback
-    const outputPath = getOutputFilename(lookbackParam);
-
-    // Save to file
-    fs.writeFileSync(outputPath, JSON.stringify(stats, null, 2));
-    console.log(`\nStatistics saved to: ${outputPath}`);
-    console.log(`\nSummary:`);
-    console.log(`  Total packets: ${stats.total.toLocaleString()}`);
-    console.log(`  All-default: ${stats.allDefaultPercentage.toFixed(2)}%`);
-    console.log(`  Unique DVN combos: ${stats.dvnCombinations.length.toLocaleString()}`);
-    console.log(`  Chains: ${stats.chainBreakdown.length}`);
-    console.log(`  Config changes: ${stats.timeSeries.totalConfigChanges.toLocaleString()}`);
-    console.log(`  Hourly data points: ${stats.timeSeries.hourly.length.toLocaleString()}`);
-
-    if (stats.timeRange.earliest && stats.timeRange.latest) {
-      const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);
-      console.log(`  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split('T')[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split('T')[0]} (${days.toLocaleString()} days)`);
-    }
-
-    console.log('\n✓ Done!');
   } catch (error) {
     console.error('\n✗ Error:', error.message);
     console.error(error.stack);
