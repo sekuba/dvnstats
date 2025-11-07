@@ -16,6 +16,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
+  flex-wrap: wrap;
 }
 
 .stats-header h1 {
@@ -60,6 +61,70 @@
 .nav-link:active {
   transform: translate(2px, 2px);
   box-shadow: 3px 3px 0 var(--ink);
+}
+
+/* Dataset Selector */
+.dataset-selector {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.dataset-label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.dataset-buttons {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.dataset-button {
+  font: inherit;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.5rem 1rem;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease,
+    background-color 0.1s ease;
+  box-shadow: 4px 4px 0 var(--ink);
+  font-weight: 600;
+}
+
+.dataset-button:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 var(--ink);
+  background: rgba(27, 156, 133, 0.1);
+}
+
+.dataset-button:active {
+  transform: translate(1px, 1px);
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.dataset-button.active {
+  background: var(--accent);
+  font-weight: 700;
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.dataset-button.active:hover {
+  background: var(--accent);
+  transform: none;
+  box-shadow: 3px 3px 0 var(--ink);
+  cursor: default;
 }
 
 /* Main Content */

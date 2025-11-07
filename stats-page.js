@@ -2,12 +2,14 @@
  * Stats Page - Loads precomputed statistics and renders interactive diagrams
  */
 
-const DATA_PATH = './data/packet-stats.json';
+const DATA_DIR = './data';
 
 // State
 let statsData = null;
 let chainMetadata = null;
 let dvnResolver = null;
+let availableDatasets = [];
+let currentDataset = null;
 
 // Simple ChainDirectory for DVN resolution
 class DVNResolver {
@@ -741,20 +743,103 @@ function showContent() {
   document.getElementById('stats-content').classList.remove('hidden');
 }
 
-// Load and render statistics
-async function loadAndRender() {
-  try {
-    // Load chain metadata first
-    chainMetadata = await loadChainMetadata();
+// Discover available datasets by trying common lookback patterns
+async function discoverDatasets() {
+  const patterns = ['30d', '90d', '1y', 'all'];
+  const found = [];
 
-    // Initialize DVN resolver
-    if (chainMetadata) {
-      dvnResolver = new DVNResolver();
-      dvnResolver.hydrate(chainMetadata);
+  for (const pattern of patterns) {
+    try {
+      const filename = `packet-stats-${pattern}.json`;
+      const response = await fetch(`${DATA_DIR}/${filename}`, { method: 'HEAD' });
+      if (response.ok) {
+        found.push({ name: pattern, filename });
+      }
+    } catch (error) {
+      // File doesn't exist, skip
+    }
+  }
+
+  return found;
+}
+
+// Render dataset selection buttons
+function renderDatasetButtons(datasets) {
+  const header = document.querySelector('.stats-header');
+
+  // Remove existing button container if any
+  const existing = document.getElementById('dataset-selector');
+  if (existing) existing.remove();
+
+  if (datasets.length <= 1) {
+    // Don't show buttons if only one dataset
+    return;
+  }
+
+  const container = document.createElement('div');
+  container.id = 'dataset-selector';
+  container.className = 'dataset-selector';
+
+  const label = document.createElement('span');
+  label.className = 'dataset-label';
+  label.textContent = 'Time Range:';
+  container.appendChild(label);
+
+  const buttonGroup = document.createElement('div');
+  buttonGroup.className = 'dataset-buttons';
+
+  datasets.forEach(dataset => {
+    const button = document.createElement('button');
+    button.className = 'dataset-button';
+    button.textContent = dataset.name === 'all' ? 'All Time' : dataset.name.toUpperCase();
+    button.dataset.name = dataset.name;
+
+    if (currentDataset === dataset.name) {
+      button.classList.add('active');
     }
 
+    button.addEventListener('click', () => {
+      loadAndRender(dataset.name);
+    });
+
+    buttonGroup.appendChild(button);
+  });
+
+  container.appendChild(buttonGroup);
+  header.appendChild(container);
+}
+
+// Load and render statistics
+async function loadAndRender(datasetName = null) {
+  try {
+    // Show loading state
+    document.getElementById('loading-state').classList.remove('hidden');
+    document.getElementById('stats-content').classList.add('hidden');
+    document.getElementById('error-state').classList.add('hidden');
+
+    // Use provided dataset or default to first available
+    if (!datasetName && availableDatasets.length > 0) {
+      datasetName = availableDatasets[0].name;
+    }
+
+    currentDataset = datasetName;
+
+    // Load chain metadata first (only once)
+    if (!chainMetadata) {
+      chainMetadata = await loadChainMetadata();
+
+      // Initialize DVN resolver
+      if (chainMetadata) {
+        dvnResolver = new DVNResolver();
+        dvnResolver.hydrate(chainMetadata);
+      }
+    }
+
+    // Construct data path
+    const dataPath = `${DATA_DIR}/packet-stats-${datasetName}.json`;
+
     // Load precomputed stats
-    const response = await fetch(DATA_PATH);
+    const response = await fetch(dataPath);
     if (!response.ok) {
       throw new Error(`Failed to load statistics: ${response.status} ${response.statusText}`);
     }
@@ -764,6 +849,9 @@ async function loadAndRender() {
     if (!statsData || statsData.total === 0) {
       throw new Error('No packet data available. Run the precomputation script first.');
     }
+
+    // Update button states
+    renderDatasetButtons(availableDatasets);
 
     // Render all sections
     renderOverview(statsData);
@@ -783,6 +871,18 @@ async function loadAndRender() {
 }
 
 // Initialize on page load
-document.addEventListener('DOMContentLoaded', () => {
-  loadAndRender();
+document.addEventListener('DOMContentLoaded', async () => {
+  // Discover available datasets
+  availableDatasets = await discoverDatasets();
+
+  if (availableDatasets.length === 0) {
+    showError('No precomputed statistics found. Run the precomputation script first.');
+    return;
+  }
+
+  // Render dataset buttons
+  renderDatasetButtons(availableDatasets);
+
+  // Load the first available dataset
+  await loadAndRender(availableDatasets[0].name);
 });
