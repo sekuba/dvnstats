@@ -501,15 +501,15 @@
 /* Pie Chart Styles */
 .pie-chart-container {
   display: grid;
-  grid-template-columns: 400px 1fr;
-  gap: 2.5rem;
+  grid-template-columns: 450px 1fr;
+  gap: 1.5rem;
   align-items: center;
-  padding: 1rem;
+  padding: 0.5rem;
 }
 
 .pie-svg {
   width: 100%;
-  max-width: 400px;
+  max-width: 450px;
   height: auto;
 }
 

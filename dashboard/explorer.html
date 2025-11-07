@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html
+  lang="en"
+  data-graphql-endpoint="https://shinken.business/v1/graphql"
+>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LayerZero Security Config Explorer</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="page-header">
+      <div>
+        <h1>LayerZero Security Config Explorer</h1>
+        <p>
+           surf the www of layerzero security configurations
+        </p>
+      </div>
+      <nav style="display: flex; gap: 1rem; align-items: center;">
+        <a href="./index.html" style="font: inherit; text-transform: uppercase; letter-spacing: 0.08em; padding: 0.6rem 1.1rem; border: 3px solid var(--magenta); background: var(--paper); text-decoration: none; color: var(--magenta); box-shadow: 5px 5px 0 var(--magenta); transition: transform 0.1s ease, box-shadow 0.1s ease;" onmouseover="this.style.transform='translate(-2px,-2px)'; this.style.boxShadow='7px 7px 0 var(--magenta)';" onmouseout="this.style.transform='translate(0,0)'; this.style.boxShadow='5px 5px 0 var(--magenta)';">View Statistics</a>
+        <button id="download-aliases" type="button">Download aliases</button>
+      </nav>
+    </header>
+
+    <main>
+      <section id="query-panels" aria-label="Query presets">
+        <article class="query-card" data-query-key="top-oapps">
+          <header class="card-header">
+            <div>
+              <h2>All-time Top OApps</h2>
+              <p>Ordered by total packets received.</p>
+            </div>
+            <button class="run-query" type="button">Run</button>
+          </header>
+          <form class="card-body">
+            <label>
+              Result limit
+              <input
+                name="limit"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="∞"
+                value="100"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Minimum packet count
+              <input
+                name="minPackets"
+                type="number"
+                min="0"
+                step="1"
+                value="1000"
+                inputmode="numeric"
+              />
+            </label>
+          </form>
+          <details class="card-query">
+            <summary>GraphQL query</summary>
+            <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
+        <article class="query-card" data-query-key="web-of-security">
+          <header class="card-header">
+            <div>
+              <h2>Web of Security</h2>
+              <p>Visualize the security graph for a cluster of OApps.</p>
+            </div>
+            <button class="run-query" type="button">Crawl</button>
+          </header>
+          <form class="card-body">
+            <fieldset>
+              <legend>Crawl New Web</legend>
+              <label>
+                Seed OApp ID
+                <input
+                  name="seedOAppId"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="localEid_address"
+                />
+              </label>
+              <div class="param-grid">
+                <label>
+                  Depth
+                  <input
+                    name="depth"
+                    type="number"
+                    min="1"
+                    max="20"
+                    value="10"
+                  />
+                </label>
+              </div>
+            </fieldset>
+            <fieldset class="field-separator">
+              <legend>Or Load From File</legend>
+              <label>
+                Web data file
+                <input
+                  name="webFile"
+                  type="file"
+                  accept=".json"
+                />
+              </label>
+            </fieldset>
+          </form>
+          <details class="card-query">
+            <summary>About</summary>
+            <p>
+              Visualize the web of security of an OApp cluster.
+              Each node represents an OApp, edges show the configured routes between them.
+              Color/size indicates required DVNs and other security configs.
+            </p>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
+        <article class="query-card" data-query-key="oapp-security-config">
+          <header class="card-header">
+            <div>
+              <h2>OApp Security Config</h2>
+              <p>
+                Fetch the latest security settings for a given OApp.
+              </p>
+            </div>
+            <button class="run-query" type="button">Run</button>
+          </header>
+          <form class="card-body">
+            <label>
+              OApp ID
+              <input
+                name="oappId"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="localEid_address"
+              />
+            </label>
+            <p class="field-hint">
+              Provide either the merged `oappId` or choose an EID and address below.
+            </p>
+            <label>
+              EID
+              <input
+                name="localEid"
+                type="text"
+                inputmode="numeric"
+                autocomplete="off"
+                placeholder="Select local EID"
+                list="oapp-chain-options"
+                data-chain-input
+              />
+              <datalist id="oapp-chain-options" data-chain-datalist></datalist>
+            </label>
+            <p class="field-hint" data-chain-label>Endpoint not selected.</p>
+            <label>
+              OApp address
+              <input
+                name="oappAddress"
+                type="text"
+                inputmode="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="0xabc…"
+              />
+            </label>
+          </form>
+          <details class="card-query">
+            <summary>GraphQL query</summary>
+            <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
+        <article class="query-card" data-query-key="popular-oapps-window">
+          <header class="card-header">
+            <div>
+              <h2>Hot OApps</h2>
+              <p>Rank OApps by packets delivered within a recent time window (expensive query).</p>
+            </div>
+            <button class="run-query" type="button">Walk</button>
+          </header>
+          <form class="card-body">
+            <label>
+              Lookback value
+              <input
+                name="windowValue"
+                type="number"
+                min="1"
+                step="1"
+                value="1"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Time unit
+              <select name="windowUnit">
+                <option value="days">Days</option>
+                <option value="hours" selected>Hours</option>
+                <option value="minutes">Minutes</option>
+              </select>
+            </label>
+            <label>
+              Top results
+              <input
+                name="resultLimit"
+                type="number"
+                min="1"
+                step="1"
+                value="20"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Packet sample limit
+              <input
+                name="fetchLimit"
+                type="number"
+                min="0"
+                step="100"
+                value="1000"
+                placeholder="∞"
+                inputmode="numeric"
+              />
+            </label>
+            <p class="field-hint">
+              Sample limit bounds the packets scanned from Hasura; increase if results look truncated.
+            </p>
+          </form>
+          <details class="card-query">
+            <summary>GraphQL query</summary>
+            <pre class="graphql" data-query-code></pre>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
+
+      </section>
+
+      <section id="quick-crawl-section" aria-label="Quick crawl buttons">
+        <div id="quick-crawl-buttons" class="quick-crawl-buttons"></div>
+      </section>
+
+      <section id="results" aria-live="polite">
+        <header class="results-header">
+          <div>
+            <h2 id="results-title">Awaiting query</h2>
+            <p id="results-meta">Run a query to see data.</p>
+          </div>
+          <button id="copy-json" type="button" disabled>Copy JSON</button>
+        </header>
+        <div id="results-body" class="table-container empty">
+          <div class="placeholder">
+            <p class="placeholder-title">No data yet</p>
+            <p>Trigger a preset above to load indexer data.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <template id="error-template">
+      <div class="error-banner">
+        <strong>Error:</strong>
+        <span data-error-message></span>
+      </div>
+    </template>
+
+    <div id="alias-editor" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="alias-editor-title">
+      <div class="modal-content">
+        <h3 id="alias-editor-title">Set OApp Name</h3>
+        <form id="alias-editor-form">
+          <label>
+            OApp ID
+            <input name="oappId" type="text" readonly />
+          </label>
+          <label>
+            Alias
+            <input
+              name="alias"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Enter a friendly name"
+            />
+          </label>
+          <p class="modal-hint">
+            Aliases are stored locally and can be exported. To add quick-crawl buttons, manually set <code>addButton: true</code> in the JSON.
+          </p>
+          <div class="modal-actions">
+            <button type="submit">Save</button>
+            <button type="button" data-action="clear">Clear</button>
+            <button type="button" data-action="export">Export JSON</button>
+            <button type="button" data-action="cancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
