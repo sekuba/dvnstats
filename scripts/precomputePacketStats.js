@@ -108,6 +108,75 @@ function createHourlyBuckets(earliest, latest) {
 }
 
 /**
+ * Fetch earliest and latest packet timestamps efficiently
+ */
+async function fetchTimeRange(minTimestamp = null) {
+  let earliestTimestamp;
+  let latestTimestamp;
+
+  if (minTimestamp !== null) {
+    // If lookback is specified, we already know the time range
+    earliestTimestamp = minTimestamp;
+    latestTimestamp = Math.floor(Date.now() / 1000);
+    console.log('Using lookback time range (no scan needed)');
+  } else {
+    // For all-time: fetch earliest and latest packets with targeted queries
+    console.log('Fetching time range with targeted queries...');
+
+    // Fetch earliest packet
+    const earliestQuery = `
+      query FetchEarliest {
+        PacketDelivered(
+          order_by: { blockTimestamp: asc }
+          limit: 1
+        ) {
+          blockTimestamp
+        }
+      }
+    `;
+
+    const earliestResponse = await fetch(GRAPHQL_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: earliestQuery })
+    });
+
+    const earliestData = await earliestResponse.json();
+    if (earliestData.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(earliestData.errors)}`);
+    }
+
+    // Fetch latest packet
+    const latestQuery = `
+      query FetchLatest {
+        PacketDelivered(
+          order_by: { blockTimestamp: desc }
+          limit: 1
+        ) {
+          blockTimestamp
+        }
+      }
+    `;
+
+    const latestResponse = await fetch(GRAPHQL_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: latestQuery })
+    });
+
+    const latestData = await latestResponse.json();
+    if (latestData.errors) {
+      throw new Error(`GraphQL errors: ${JSON.stringify(latestData.errors)}`);
+    }
+
+    earliestTimestamp = Number(earliestData.data.PacketDelivered[0]?.blockTimestamp);
+    latestTimestamp = Number(latestData.data.PacketDelivered[0]?.blockTimestamp);
+  }
+
+  return { earliestTimestamp, latestTimestamp };
+}
+
+/**
  * Process packets incrementally to avoid memory overflow
  */
 async function computeStatisticsIncremental(minTimestamp = null) {
@@ -128,45 +197,9 @@ async function computeStatisticsIncremental(minTimestamp = null) {
 
   // Time-series tracking
   const seenConfigs = new Set(); // Track unique securityConfigIds
-  let earliestTimestamp = Number.POSITIVE_INFINITY;
-  let latestTimestamp = Number.NEGATIVE_INFINITY;
 
-  let offset = 0;
-  let hasMore = true;
-  let batchCount = 0;
-
-  // First pass: determine time range
-  console.log('First pass: determining time range...');
-  while (hasMore) {
-    const batch = await fetchPacketBatch(offset, BATCH_SIZE, minTimestamp);
-
-    if (batch.length === 0) {
-      hasMore = false;
-      break;
-    }
-
-    batchCount++;
-
-    for (const packet of batch) {
-      const timestamp = Number(packet.blockTimestamp);
-      if (!Number.isNaN(timestamp)) {
-        if (timestamp < earliestTimestamp) earliestTimestamp = timestamp;
-        if (timestamp > latestTimestamp) latestTimestamp = timestamp;
-      }
-    }
-
-    offset += batch.length;
-
-    if (batch.length < BATCH_SIZE) {
-      hasMore = false;
-    }
-
-    if (batchCount % 10 === 0) {
-      console.log(`  Scanned ${offset.toLocaleString()} packets...`);
-    }
-
-    await new Promise(resolve => setImmediate(resolve));
-  }
+  // Determine time range efficiently
+  const { earliestTimestamp, latestTimestamp } = await fetchTimeRange(minTimestamp);
 
   console.log(`Time range: ${new Date(earliestTimestamp * 1000).toISOString()} to ${new Date(latestTimestamp * 1000).toISOString()}`);
 
@@ -174,11 +207,11 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   const hourlyBuckets = createHourlyBuckets(earliestTimestamp, latestTimestamp);
   console.log(`Created ${hourlyBuckets.size.toLocaleString()} hourly buckets`);
 
-  // Second pass: compute statistics
-  console.log('\nSecond pass: computing statistics...');
-  offset = 0;
-  hasMore = true;
-  batchCount = 0;
+  // Process all packets in a single pass
+  console.log('\nProcessing packets...');
+  let offset = 0;
+  let hasMore = true;
+  let batchCount = 0;
 
   while (hasMore) {
     const batch = await fetchPacketBatch(offset, BATCH_SIZE, minTimestamp);
