@@ -68,7 +68,6 @@ async function fetchPacketBatch(offset, limit, minTimestamp = null) {
         effectiveRequiredDVNCount
         effectiveOptionalDVNCount
         isConfigTracked
-        securityConfigId
       }
     }
   `;
@@ -177,6 +176,98 @@ async function fetchTimeRange(minTimestamp = null) {
 }
 
 /**
+ * Fetch all config change events (Version entities) and populate hourly buckets
+ * Includes all 4 types: DefaultReceiveLibrary, DefaultUlnConfig, OAppReceiveLibrary, OAppUlnConfig
+ */
+async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
+  console.log('\nFetching config change events...');
+
+  const versionTypes = [
+    'DefaultReceiveLibraryVersion',
+    'DefaultUlnConfigVersion',
+    'OAppReceiveLibraryVersion',
+    'OAppUlnConfigVersion'
+  ];
+
+  let totalConfigChanges = 0;
+
+  for (const versionType of versionTypes) {
+    const whereClause = minTimestamp !== null
+      ? `where: { blockTimestamp: { _gte: ${minTimestamp} } }`
+      : '';
+
+    let offset = 0;
+    let hasMore = true;
+    let typeCount = 0;
+
+    while (hasMore) {
+      const query = `
+        query FetchVersions($offset: Int!, $limit: Int!) {
+          ${versionType}(
+            order_by: { blockTimestamp: desc }
+            limit: $limit
+            offset: $offset
+            ${whereClause}
+          ) {
+            blockTimestamp
+          }
+        }
+      `;
+
+      const response = await fetch(GRAPHQL_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, variables: { offset, limit: BATCH_SIZE } })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      if (data.errors) {
+        throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
+      }
+
+      const versions = data.data[versionType] || [];
+
+      if (versions.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // Add to hourly buckets
+      for (const version of versions) {
+        const timestamp = Number(version.blockTimestamp);
+        if (!Number.isNaN(timestamp)) {
+          const hourBucket = Math.floor(timestamp / 3600) * 3600;
+          const bucket = hourlyBuckets.get(hourBucket);
+          if (bucket) {
+            bucket.configChanges++;
+            typeCount++;
+          }
+        }
+      }
+
+      offset += versions.length;
+
+      if (versions.length < BATCH_SIZE) {
+        hasMore = false;
+      }
+
+      await new Promise(resolve => setImmediate(resolve));
+    }
+
+    console.log(`  ${versionType}: ${typeCount.toLocaleString()} changes`);
+    totalConfigChanges += typeCount;
+  }
+
+  console.log(`Total config changes: ${totalConfigChanges.toLocaleString()}`);
+  return totalConfigChanges;
+}
+
+/**
  * Process packets incrementally to avoid memory overflow
  */
 async function computeStatisticsIncremental(minTimestamp = null) {
@@ -195,9 +286,6 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   const chainCounts = new Map();
   const srcChainCounts = new Map();
 
-  // Time-series tracking
-  const seenConfigs = new Set(); // Track unique securityConfigIds
-
   // Determine time range efficiently
   const { earliestTimestamp, latestTimestamp } = await fetchTimeRange(minTimestamp);
 
@@ -206,6 +294,9 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   // Create hourly buckets
   const hourlyBuckets = createHourlyBuckets(earliestTimestamp, latestTimestamp);
   console.log(`Created ${hourlyBuckets.size.toLocaleString()} hourly buckets`);
+
+  // Fetch actual config changes (Version events) and populate buckets
+  const totalConfigChanges = await fetchConfigChanges(hourlyBuckets, minTimestamp);
 
   // Process all packets in a single pass
   console.log('\nProcessing packets...');
@@ -269,19 +360,13 @@ async function computeStatisticsIncremental(minTimestamp = null) {
       const srcEid = String(packet.srcEid);
       srcChainCounts.set(srcEid, (srcChainCounts.get(srcEid) || 0) + 1);
 
-      // Time-series tracking
+      // Time-series tracking (packet counts only)
       const timestamp = Number(packet.blockTimestamp);
       if (!Number.isNaN(timestamp)) {
         const hourBucket = Math.floor(timestamp / 3600) * 3600;
         const bucket = hourlyBuckets.get(hourBucket);
         if (bucket) {
           bucket.packets++;
-
-          // Track config changes (first time seeing this securityConfigId)
-          if (packet.securityConfigId && !seenConfigs.has(packet.securityConfigId)) {
-            bucket.configChanges++;
-            seenConfigs.add(packet.securityConfigId);
-          }
         }
       }
     }
@@ -386,7 +471,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
     },
     timeSeries: {
       hourly: hourlyData,
-      totalConfigChanges: seenConfigs.size,
+      totalConfigChanges,
     },
   };
 }
