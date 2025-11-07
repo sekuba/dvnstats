@@ -23,9 +23,19 @@ async function loadChainMetadata() {
 function getChainName(eid, metadata) {
   if (!metadata) return `EID ${eid}`;
 
-  const chain = metadata.find(c => String(c.lzEndpointId) === String(eid));
-  if (chain) {
-    return chain.name || `EID ${eid}`;
+  // layerzero.json is an object with chain keys as properties
+  // Each chain can have multiple EIDs in deployments array
+  for (const [chainKey, chainData] of Object.entries(metadata)) {
+    if (!chainData.deployments) continue;
+
+    for (const deployment of chainData.deployments) {
+      if (String(deployment.eid) === String(eid)) {
+        // Return the chain name from chainDetails, or fallback to chainKey
+        return chainData.chainDetails?.name ||
+               chainData.chainDetails?.shortName ||
+               chainKey.replace('-mainnet', '').replace('-', ' ');
+      }
+    }
   }
 
   return `EID ${eid}`;
