@@ -25,7 +25,8 @@
       "!.venv/**",
       "!dashboard/layerzero.json",
       "!dashboard/.next/**",
-      "!dashboard/out/**"
+      "!dashboard/out/**",
+      "!dashboard/data/**"
     ]
   }
 }

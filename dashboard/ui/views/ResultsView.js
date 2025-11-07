@@ -284,8 +284,14 @@ export class ResultsView {
 
       // Set explicit dimensions for the exported SVG
       const bbox = svgElement.getBoundingClientRect();
-      clonedSvg.setAttribute("width", svgElement.getAttribute("viewBox")?.split(" ")[2] || bbox.width);
-      clonedSvg.setAttribute("height", svgElement.getAttribute("viewBox")?.split(" ")[3] || bbox.height);
+      clonedSvg.setAttribute(
+        "width",
+        svgElement.getAttribute("viewBox")?.split(" ")[2] || bbox.width,
+      );
+      clonedSvg.setAttribute(
+        "height",
+        svgElement.getAttribute("viewBox")?.split(" ")[3] || bbox.height,
+      );
 
       // Remove background and border for clean export
       clonedSvg.style.background = "none";

@@ -1,13 +1,10 @@
-
 const DATA_DIR = "./data";
-
 
 let statsData = null;
 let chainMetadata = null;
 let dvnResolver = null;
 let availableDatasets = [];
 let currentDataset = null;
-
 
 class DVNResolver {
   constructor() {
@@ -65,7 +62,6 @@ class DVNResolver {
   }
 }
 
-
 async function loadChainMetadata() {
   try {
     const response = await fetch("./layerzero.json");
@@ -80,14 +76,11 @@ async function loadChainMetadata() {
 function getChainName(eid, metadata) {
   if (!metadata) return `EID ${eid}`;
 
-  
-  
   for (const [chainKey, chainData] of Object.entries(metadata)) {
     if (!chainData.deployments) continue;
 
     for (const deployment of chainData.deployments) {
       if (String(deployment.eid) === String(eid)) {
-        
         return (
           chainData.chainDetails?.name ||
           chainData.chainDetails?.shortName ||
@@ -120,7 +113,6 @@ function formatAddress(address) {
   return `${address.substring(0, 6)}…${address.substring(address.length - 4)}`;
 }
 
-
 function renderOverview(stats) {
   document.getElementById("stat-total").textContent = formatNumber(stats.total);
   document.getElementById("stat-all-default").textContent = formatPercent(
@@ -137,7 +129,6 @@ function renderOverview(stats) {
     stats.dvnCombinations.length,
   );
 
-  
   const subtitle = `${formatNumber(stats.total)} packets • ${stats.dvnCombinations.length} unique DVN combinations`;
   document.getElementById("stats-subtitle").textContent = subtitle;
 
@@ -146,7 +137,6 @@ function renderOverview(stats) {
   const timeRange = `${formatDate(stats.timeRange.earliest)} → ${formatDate(stats.timeRange.latest)}`;
   document.getElementById("time-range").textContent = timeRange;
 }
-
 
 function renderPieChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
@@ -778,16 +768,13 @@ async function discoverDatasets() {
   return found;
 }
 
-
 function renderDatasetButtons(datasets) {
   const header = document.querySelector(".stats-header");
 
-  
   const existing = document.getElementById("dataset-selector");
   if (existing) existing.remove();
 
   if (datasets.length <= 1) {
-    
     return;
   }
 
@@ -824,17 +811,14 @@ function renderDatasetButtons(datasets) {
   header.appendChild(container);
 }
 
-
 async function loadAndRender(datasetName = null) {
   try {
-    
     if (!datasetName && availableDatasets.length > 0) {
       datasetName = availableDatasets[0].name;
     }
 
     currentDataset = datasetName;
 
-    
     const loadingBanner = document.getElementById("loading-state");
     loadingBanner.classList.remove("hidden");
     document.getElementById("stats-content").classList.add("hidden");
@@ -843,21 +827,17 @@ async function loadAndRender(datasetName = null) {
     const datasetLabel = datasetName === "all" ? "All Time" : datasetName.toUpperCase();
     loadingBanner.querySelector("p").textContent = `Loading ${datasetLabel} statistics...`;
 
-    
     if (!chainMetadata) {
       chainMetadata = await loadChainMetadata();
 
-      
       if (chainMetadata) {
         dvnResolver = new DVNResolver();
         dvnResolver.hydrate(chainMetadata);
       }
     }
 
-    
     const dataPath = `${DATA_DIR}/packet-stats-${datasetName}.json`;
 
-    
     const response = await fetch(dataPath);
     if (!response.ok) {
       throw new Error(`Failed to load statistics: ${response.status} ${response.statusText}`);
@@ -869,10 +849,8 @@ async function loadAndRender(datasetName = null) {
       throw new Error("No packet data available. Run the precomputation script first.");
     }
 
-    
     renderDatasetButtons(availableDatasets);
 
-    
     renderOverview(statsData);
     renderDvnCountChart(statsData);
     renderOptionalDvnCountChart(statsData);
@@ -889,9 +867,7 @@ async function loadAndRender(datasetName = null) {
   }
 }
 
-
 document.addEventListener("DOMContentLoaded", async () => {
-  
   availableDatasets = await discoverDatasets();
 
   if (availableDatasets.length === 0) {
@@ -899,9 +875,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  
   renderDatasetButtons(availableDatasets);
 
-  
   await loadAndRender(availableDatasets[0].name);
 });
