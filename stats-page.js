@@ -355,9 +355,9 @@ function renderDvnComboChart(stats) {
   const mergedCombos = new Map();
 
   stats.dvnCombinations.forEach(combo => {
-    // Resolve all DVN addresses to names
+    // Resolve all DVN addresses to names using the correct localEid
     const resolvedDvns = combo.dvns.map(dvn => {
-      const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn) : dvn;
+      const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
       return {
         address: dvn,
         name: resolved,
