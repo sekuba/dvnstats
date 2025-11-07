@@ -15,6 +15,7 @@ class DashboardApp {
       meta: document.getElementById("results-meta"),
       body: document.getElementById("results-body"),
       copyButton: document.getElementById("copy-json"),
+      downloadSvgButton: document.getElementById("download-svg"),
       aliasDownloadButton: document.getElementById("download-aliases"),
       aliasModal: document.getElementById("alias-editor"),
       aliasForm: document.getElementById("alias-editor-form"),
@@ -33,6 +34,7 @@ class DashboardApp {
       this.dom.meta,
       this.dom.body,
       this.dom.copyButton,
+      this.dom.downloadSvgButton,
       this.chainDirectory,
       this.aliasStore,
       this.toastQueue,
@@ -164,6 +166,10 @@ class DashboardApp {
   registerGlobalHandlers() {
     this.dom.copyButton?.addEventListener("click", () => {
       this.resultsView.handleCopyJson();
+    });
+
+    this.dom.downloadSvgButton?.addEventListener("click", () => {
+      this.resultsView.handleDownloadSvg();
     });
 
     this.dom.aliasDownloadButton?.addEventListener("click", () => {
