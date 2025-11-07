@@ -16,8 +16,17 @@ const fs = require('fs');
 const path = require('path');
 
 const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'https://shinken.business/v1/graphql';
-const BATCH_SIZE = 5000;
-const OUTPUT_PATH = path.join(__dirname, '../dashboard/data/packet-stats.json');
+const BATCH_SIZE = 100000;
+const OUTPUT_DIR = path.join(__dirname, '../dashboard/data');
+
+/**
+ * Generate output filename based on lookback parameter
+ * Examples: packet-stats-30d.json, packet-stats-1y.json, packet-stats-all.json
+ */
+function getOutputFilename(lookbackParam) {
+  const suffix = lookbackParam || 'all';
+  return path.join(OUTPUT_DIR, `packet-stats-${suffix}.json`);
+}
 
 /**
  * Parse lookback parameter (e.g., "1y", "30d", "6m")
@@ -504,15 +513,20 @@ async function main() {
     // Compute statistics incrementally
     const stats = await computeStatisticsIncremental(minTimestamp);
 
+    // Add lookback metadata to stats
+    stats.lookback = lookbackParam || 'all';
+
     // Ensure output directory exists
-    const outputDir = path.dirname(OUTPUT_PATH);
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+    if (!fs.existsSync(OUTPUT_DIR)) {
+      fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     }
 
+    // Generate output filename based on lookback
+    const outputPath = getOutputFilename(lookbackParam);
+
     // Save to file
-    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(stats, null, 2));
-    console.log(`\nStatistics saved to: ${OUTPUT_PATH}`);
+    fs.writeFileSync(outputPath, JSON.stringify(stats, null, 2));
+    console.log(`\nStatistics saved to: ${outputPath}`);
     console.log(`\nSummary:`);
     console.log(`  Total packets: ${stats.total.toLocaleString()}`);
     console.log(`  All-default: ${stats.allDefaultPercentage.toFixed(2)}%`);
