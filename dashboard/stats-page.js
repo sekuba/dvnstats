@@ -685,6 +685,31 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
   container.appendChild(chartContainer);
 }
 
+// Merge datapoints to reduce total count to below maxDatapoints
+function mergeDatapoints(data, maxDatapoints = 600) {
+  if (data.length <= maxDatapoints) {
+    return data;
+  }
+
+  // Calculate how many points to merge into one
+  const mergeFactor = Math.ceil(data.length / maxDatapoints);
+  const mergedData = [];
+
+  for (let i = 0; i < data.length; i += mergeFactor) {
+    const group = data.slice(i, i + mergeFactor);
+
+    // Use the first timestamp in the group
+    const timestamp = group[0].timestamp;
+
+    // Sum the values in the group
+    const value = group.reduce((sum, point) => sum + point.value, 0);
+
+    mergedData.push({ timestamp, value });
+  }
+
+  return mergedData;
+}
+
 // Render hourly packet volume time series
 function renderPacketTimeSeries(stats) {
   if (!stats.timeSeries || !stats.timeSeries.hourly) {
@@ -698,7 +723,10 @@ function renderPacketTimeSeries(stats) {
     value: d.packets,
   }));
 
-  renderTimeSeriesChart("time-series-packets-chart", data, {
+  // Merge datapoints if we have more than 600
+  const mergedData = mergeDatapoints(data, 600);
+
+  renderTimeSeriesChart("time-series-packets-chart", mergedData, {
     color: "#1b9c85",
     label: "Packets",
     showPoints: false,
@@ -725,7 +753,10 @@ function renderConfigChangesTimeSeries(stats) {
     value: d.configChanges,
   }));
 
-  renderTimeSeriesChart("time-series-config-chart", data, {
+  // Merge datapoints if we have more than 600
+  const mergedData = mergeDatapoints(data, 600);
+
+  renderTimeSeriesChart("time-series-config-chart", mergedData, {
     color: "#ff1df5",
     label: "Config Changes",
     showPoints: false,
