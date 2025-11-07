@@ -287,6 +287,9 @@ export class ResultsView {
       clonedSvg.setAttribute("width", svgElement.getAttribute("viewBox")?.split(" ")[2] || bbox.width);
       clonedSvg.setAttribute("height", svgElement.getAttribute("viewBox")?.split(" ")[3] || bbox.height);
 
+      // Remove background for transparent export
+      clonedSvg.style.background = "none";
+
       // Inline critical styles from CSS variables
       this.inlineStyles(clonedSvg);
 
