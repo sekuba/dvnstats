@@ -497,7 +497,7 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
     return;
   }
 
-  const { color = "#1b9c85", label = "Value", showPoints = false } = options;
+  const { color = "#1b9c85", label = "Value", showPoints = false, timeInterval = "hourly" } = options;
 
   // Create chart container
   const chartContainer = document.createElement("div");
@@ -677,7 +677,7 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
     </div>
     <div class="summary-item">
       <span class="summary-label">Data Points:</span>
-      <span class="summary-value">${formatNumber(filteredData.length)} hours</span>
+      <span class="summary-value">${formatNumber(filteredData.length)} (${timeInterval})</span>
     </div>
   `;
 
@@ -688,7 +688,7 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
 // Merge datapoints to reduce total count to below maxDatapoints
 function mergeDatapoints(data, maxDatapoints = 600) {
   if (data.length <= maxDatapoints) {
-    return data;
+    return { data, mergeFactor: 1 };
   }
 
   // Calculate how many points to merge into one
@@ -707,7 +707,24 @@ function mergeDatapoints(data, maxDatapoints = 600) {
     mergedData.push({ timestamp, value });
   }
 
-  return mergedData;
+  return { data: mergedData, mergeFactor };
+}
+
+// Get human-readable time interval description
+function getTimeIntervalLabel(mergeFactor) {
+  if (mergeFactor === 1) {
+    return "hourly";
+  } else if (mergeFactor < 24) {
+    return `every ${mergeFactor} hours`;
+  } else if (mergeFactor === 24) {
+    return "daily";
+  } else if (mergeFactor < 168) {
+    const days = Math.round(mergeFactor / 24);
+    return `every ${days} days`;
+  } else {
+    const weeks = Math.round(mergeFactor / 168);
+    return weeks === 1 ? "weekly" : `every ${weeks} weeks`;
+  }
 }
 
 // Render hourly packet volume time series
@@ -724,12 +741,19 @@ function renderPacketTimeSeries(stats) {
   }));
 
   // Merge datapoints if we have more than 600
-  const mergedData = mergeDatapoints(data, 600);
+  const { data: mergedData, mergeFactor } = mergeDatapoints(data, 600);
+  const timeInterval = getTimeIntervalLabel(mergeFactor);
+
+  // Update subtitle with actual time interval
+  const intervalCapitalized = timeInterval.charAt(0).toUpperCase() + timeInterval.slice(1);
+  document.getElementById("time-series-packets-subtitle").textContent =
+    `${intervalCapitalized} packet count across entire time range`;
 
   renderTimeSeriesChart("time-series-packets-chart", mergedData, {
     color: "#1b9c85",
     label: "Packets",
     showPoints: false,
+    timeInterval: timeInterval,
   });
 }
 
@@ -754,12 +778,22 @@ function renderConfigChangesTimeSeries(stats) {
   }));
 
   // Merge datapoints if we have more than 600
-  const mergedData = mergeDatapoints(data, 600);
+  const { data: mergedData, mergeFactor } = mergeDatapoints(data, 600);
+  const timeInterval = getTimeIntervalLabel(mergeFactor);
+
+  // Update subtitle with actual time interval
+  const intervalCapitalized = timeInterval.charAt(0).toUpperCase() + timeInterval.slice(1);
+  const totalConfigChanges = stats.timeSeries.totalConfigChanges !== undefined
+    ? formatNumber(stats.timeSeries.totalConfigChanges)
+    : document.getElementById("total-config-changes").textContent;
+  document.getElementById("time-series-config-subtitle").innerHTML =
+    `${intervalCapitalized} config changes • <span id="total-config-changes">${totalConfigChanges}</span> total config changes`;
 
   renderTimeSeriesChart("time-series-config-chart", mergedData, {
     color: "#ff1df5",
     label: "Config Changes",
     showPoints: false,
+    timeInterval: timeInterval,
   });
 }
 
