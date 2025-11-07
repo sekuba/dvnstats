@@ -10,6 +10,7 @@ export class ResultsView {
     resultsMeta,
     resultsBody,
     copyJsonButton,
+    downloadSvgButton,
     chainMetadata,
     aliasStore,
     toastQueue,
@@ -18,6 +19,7 @@ export class ResultsView {
     this.resultsMeta = resultsMeta;
     this.resultsBody = resultsBody;
     this.copyJsonButton = copyJsonButton;
+    this.downloadSvgButton = downloadSvgButton;
     this.chainMetadata = chainMetadata;
     this.aliasStore = aliasStore;
     this.toastQueue = toastQueue;
@@ -38,6 +40,12 @@ export class ResultsView {
         this.copyJsonButton.textContent =
           metaSnapshot.renderMode === "graph" ? "Download JSON" : "Copy JSON";
       }
+    }
+
+    if (this.downloadSvgButton) {
+      const isGraphMode = metaSnapshot.renderMode === "graph";
+      this.downloadSvgButton.hidden = !isGraphMode;
+      this.downloadSvgButton.disabled = !isGraphMode;
     }
 
     const variableHints = this.buildVariableSummary(metaSnapshot.variables);
@@ -144,6 +152,10 @@ export class ResultsView {
 
   renderError(meta) {
     this.copyJsonButton.disabled = true;
+    if (this.downloadSvgButton) {
+      this.downloadSvgButton.disabled = true;
+      this.downloadSvgButton.hidden = true;
+    }
     this.resultsBody.classList.remove("empty");
     this.resultsBody.innerHTML = "";
 
@@ -253,6 +265,52 @@ export class ResultsView {
     } catch (error) {
       console.error("Clipboard copy failed", error);
       this.flashButtonFeedback(this.copyJsonButton, "Copy failed");
+    }
+  }
+
+  handleDownloadSvg() {
+    const isGraphMode = this.lastRender?.meta?.renderMode === "graph";
+    const webData = this.lastRender?.meta?.webData;
+
+    if (!isGraphMode || !webData) {
+      return;
+    }
+
+    const svgElement = this.resultsBody.querySelector("svg");
+    if (!svgElement) {
+      console.error("No SVG element found in the results body");
+      this.flashButtonFeedback(this.downloadSvgButton, "No SVG found");
+      return;
+    }
+
+    try {
+      // Clone the SVG to avoid modifying the original
+      const svgClone = svgElement.cloneNode(true);
+
+      // Add XML namespace if not present
+      if (!svgClone.getAttribute("xmlns")) {
+        svgClone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      }
+
+      // Serialize the SVG to string
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svgClone);
+
+      // Create a blob and download
+      const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(svgBlob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `web-of-security-${webData.seed || "data"}-${Date.now()}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      this.flashButtonFeedback(this.downloadSvgButton, "Downloaded!");
+    } catch (error) {
+      console.error("SVG export failed", error);
+      this.flashButtonFeedback(this.downloadSvgButton, "Export failed");
     }
   }
 
