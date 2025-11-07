@@ -180,7 +180,7 @@ export class NodeRenderer {
               },
             });
             if (!result) {
-              // updateVisibility already handled status via onFail, but ensure we surface something
+              
               if (status.style.display === "none") {
                 setStatus("Unable to resolve a connecting path.", "error");
               }
