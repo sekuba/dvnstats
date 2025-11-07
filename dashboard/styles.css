@@ -991,3 +991,193 @@ td.meter-cell > * {
   transform: translate(2px, 2px);
   box-shadow: 3px 3px 0 var(--magenta);
 }
+
+/* Statistics View Styles */
+
+.statistics-overview {
+  margin-bottom: 2rem;
+}
+
+.statistics-panel {
+  border: 4px solid var(--ink);
+  background: var(--paper);
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 8px 8px 0 var(--ink);
+}
+
+.panel-title {
+  margin: 0 0 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 1.1rem;
+  border-bottom: 3px solid var(--ink);
+  padding-bottom: 0.75rem;
+}
+
+.panel-subtitle {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8rem;
+  color: #555;
+  letter-spacing: 0.05em;
+}
+
+.statistics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.statistics-table thead {
+  background: var(--accent);
+}
+
+.statistics-table th,
+.statistics-table td {
+  border: 2px solid var(--ink);
+  padding: 0.75rem 0.6rem;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.statistics-table th {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.statistics-table tbody tr:nth-child(even) {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.statistics-table tbody tr:hover {
+  background: rgba(242, 242, 0, 0.15);
+}
+
+.dvn-count-cell {
+  font-weight: 700;
+  font-size: 1.1rem;
+  text-align: center;
+  min-width: 80px;
+}
+
+.rank-cell {
+  font-weight: 700;
+  color: var(--ink);
+  opacity: 0.7;
+  text-align: center;
+  min-width: 60px;
+}
+
+.percentage-cell {
+  font-weight: 600;
+  text-align: right;
+  min-width: 80px;
+}
+
+.bar-cell {
+  min-width: 200px;
+  padding: 0.5rem 0.6rem;
+}
+
+.bar-container {
+  width: 100%;
+  height: 24px;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--success) 0%, rgba(27, 156, 133, 0.6) 100%);
+  transition: width 0.4s ease;
+  border-right: 2px solid var(--ink);
+}
+
+.bar-fill--optional {
+  background: linear-gradient(90deg, #78bdff 0%, rgba(120, 189, 255, 0.5) 100%);
+}
+
+.bar-fill--combo {
+  background: linear-gradient(90deg, var(--magenta) 0%, rgba(255, 29, 245, 0.5) 100%);
+}
+
+.dvn-list-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.dvn-badge {
+  display: inline-block;
+  padding: 0.2rem 0.5rem;
+  border: 2px solid var(--ink);
+  background: var(--paper);
+  font-size: 0.7rem;
+  font-family: monospace;
+  letter-spacing: -0.02em;
+  cursor: help;
+  transition: background-color 0.15s ease;
+}
+
+.dvn-badge:hover {
+  background: var(--accent);
+}
+
+.metric-highlight {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--magenta);
+}
+
+.statistics-table--wide {
+  min-width: 900px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .statistics-table--wide {
+    font-size: 0.75rem;
+  }
+
+  .bar-cell {
+    min-width: 150px;
+  }
+
+  .dvn-badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.4rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .statistics-panel {
+    padding: 1rem;
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+
+  .panel-title {
+    font-size: 0.95rem;
+  }
+
+  .statistics-table {
+    font-size: 0.75rem;
+  }
+
+  .statistics-table th,
+  .statistics-table td {
+    padding: 0.5rem 0.4rem;
+  }
+
+  .bar-cell {
+    min-width: 120px;
+  }
+
+  .bar-container {
+    height: 20px;
+  }
+}

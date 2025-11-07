@@ -23,6 +23,66 @@
 
     <main>
       <section id="query-panels" aria-label="Query presets">
+        <article class="query-card" data-query-key="packet-statistics">
+          <header class="card-header">
+            <div>
+              <h2>Packet Statistics</h2>
+              <p>Pre-computed analytics from PacketDelivered data</p>
+            </div>
+            <button class="run-query" type="button">Analyze</button>
+          </header>
+          <form class="card-body">
+            <label>
+              Time window value
+              <input
+                name="timeWindow"
+                type="number"
+                min="0"
+                step="1"
+                value="0"
+                inputmode="numeric"
+              />
+            </label>
+            <label>
+              Time unit
+              <select name="timeUnit">
+                <option value="all" selected>All time</option>
+                <option value="days">Days</option>
+                <option value="months">Months</option>
+                <option value="years">Years</option>
+              </select>
+            </label>
+            <label>
+              Sample limit
+              <input
+                name="sampleLimit"
+                type="number"
+                min="0"
+                step="1000"
+                placeholder="∞"
+                inputmode="numeric"
+              />
+            </label>
+            <p class="field-hint">
+              Leave sample limit empty to analyze all packets in the time window.
+              For large datasets, set a limit to speed up computation.
+            </p>
+          </form>
+          <details class="card-query">
+            <summary>About</summary>
+            <p>
+              Analyzes PacketDelivered records to compute:
+              • Percentage of packets using default configurations
+              • Most common required DVN combinations
+              • Distribution of packets by required DVN count
+              • Distribution by optional DVN count
+            </p>
+          </details>
+          <footer class="card-footer">
+            <span class="status-tag" data-status>Idle</span>
+          </footer>
+        </article>
+
         <article class="query-card" data-query-key="top-oapps">
           <header class="card-header">
             <div>
