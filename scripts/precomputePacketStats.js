@@ -68,7 +68,7 @@ async function fetchPacketBatch(offset, limit, minTimestamp = null) {
         effectiveRequiredDVNCount
         effectiveOptionalDVNCount
         isConfigTracked
-        configId
+        securityConfigId
       }
     }
   `;
@@ -127,7 +127,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   const srcChainCounts = new Map();
 
   // Time-series tracking
-  const seenConfigs = new Set(); // Track unique configIds
+  const seenConfigs = new Set(); // Track unique securityConfigIds
   let earliestTimestamp = Number.POSITIVE_INFINITY;
   let latestTimestamp = Number.NEGATIVE_INFINITY;
 
@@ -244,10 +244,10 @@ async function computeStatisticsIncremental(minTimestamp = null) {
         if (bucket) {
           bucket.packets++;
 
-          // Track config changes (first time seeing this configId)
-          if (packet.configId && !seenConfigs.has(packet.configId)) {
+          // Track config changes (first time seeing this securityConfigId)
+          if (packet.securityConfigId && !seenConfigs.has(packet.securityConfigId)) {
             bucket.configChanges++;
-            seenConfigs.add(packet.configId);
+            seenConfigs.add(packet.securityConfigId);
           }
         }
       }
