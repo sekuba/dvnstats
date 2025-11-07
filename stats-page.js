@@ -812,17 +812,21 @@ function renderDatasetButtons(datasets) {
 // Load and render statistics
 async function loadAndRender(datasetName = null) {
   try {
-    // Show loading state
-    document.getElementById('loading-state').classList.remove('hidden');
-    document.getElementById('stats-content').classList.add('hidden');
-    document.getElementById('error-state').classList.add('hidden');
-
     // Use provided dataset or default to first available
     if (!datasetName && availableDatasets.length > 0) {
       datasetName = availableDatasets[0].name;
     }
 
     currentDataset = datasetName;
+
+    // Show loading state with dataset name
+    const loadingBanner = document.getElementById('loading-state');
+    loadingBanner.classList.remove('hidden');
+    document.getElementById('stats-content').classList.add('hidden');
+    document.getElementById('error-state').classList.add('hidden');
+
+    const datasetLabel = datasetName === 'all' ? 'All Time' : datasetName.toUpperCase();
+    loadingBanner.querySelector('p').textContent = `Loading ${datasetLabel} statistics...`;
 
     // Load chain metadata first (only once)
     if (!chainMetadata) {
