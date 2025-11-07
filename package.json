@@ -12,6 +12,7 @@
     "test": "pnpm mocha",
     "format": "biome format --write .",
     "format:check": "biome check .",
+    "stats:precompute": "node scripts/precomputePacketStats.js",
     "stats:packets": "node scripts/packetSecuritySummary.js"
   },
   "devDependencies": {
