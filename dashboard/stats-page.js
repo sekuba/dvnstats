@@ -478,6 +478,253 @@ function renderSrcChainChart(stats) {
   renderBarChart('src-chain-chart', data, { barClass: 'bar-fill--magenta' });
 }
 
+// Render time-series line chart
+function renderTimeSeriesChart(containerId, data, options = {}) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '';
+
+  if (!data || data.length === 0) {
+    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
+    return;
+  }
+
+  // Filter out zero values for better visualization
+  const filteredData = data.filter(d => d.value > 0);
+
+  if (filteredData.length === 0) {
+    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
+    return;
+  }
+
+  const { color = '#1b9c85', label = 'Value', showPoints = false } = options;
+
+  // Create chart container
+  const chartContainer = document.createElement('div');
+  chartContainer.className = 'time-series-container';
+
+  // Calculate dimensions and scales
+  const width = 1200;
+  const height = 300;
+  const padding = { top: 20, right: 40, bottom: 60, left: 80 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const minTimestamp = Math.min(...filteredData.map(d => d.timestamp));
+  const maxTimestamp = Math.max(...filteredData.map(d => d.timestamp));
+  const minValue = 0;
+  const maxValue = Math.max(...filteredData.map(d => d.value));
+
+  // Scale functions
+  const scaleX = (timestamp) => {
+    return padding.left + ((timestamp - minTimestamp) / (maxTimestamp - minTimestamp)) * chartWidth;
+  };
+
+  const scaleY = (value) => {
+    return height - padding.bottom - ((value - minValue) / (maxValue - minValue)) * chartHeight;
+  };
+
+  // Create SVG
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  svg.setAttribute('class', 'time-series-svg');
+
+  // Background grid (optional)
+  const gridGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  gridGroup.setAttribute('class', 'grid');
+
+  // Horizontal grid lines (5 lines)
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + (chartHeight * i / 5);
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', padding.left);
+    line.setAttribute('y1', y);
+    line.setAttribute('x2', width - padding.right);
+    line.setAttribute('y2', y);
+    line.setAttribute('stroke', '#0d0d0d');
+    line.setAttribute('stroke-width', '1');
+    line.setAttribute('stroke-opacity', '0.1');
+    gridGroup.appendChild(line);
+  }
+  svg.appendChild(gridGroup);
+
+  // Build path for line chart
+  const pathData = filteredData.map((d, i) => {
+    const x = scaleX(d.timestamp);
+    const y = scaleY(d.value);
+    return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+
+  // Area fill under line
+  const areaPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  const areaData = [
+    `M ${scaleX(filteredData[0].timestamp)} ${height - padding.bottom}`,
+    ...filteredData.map(d => `L ${scaleX(d.timestamp)} ${scaleY(d.value)}`),
+    `L ${scaleX(filteredData[filteredData.length - 1].timestamp)} ${height - padding.bottom}`,
+    'Z'
+  ].join(' ');
+  areaPath.setAttribute('d', areaData);
+  areaPath.setAttribute('fill', color);
+  areaPath.setAttribute('fill-opacity', '0.15');
+  svg.appendChild(areaPath);
+
+  // Line
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  line.setAttribute('d', pathData);
+  line.setAttribute('fill', 'none');
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', '3');
+  line.setAttribute('stroke-linejoin', 'round');
+  line.setAttribute('stroke-linecap', 'round');
+  svg.appendChild(line);
+
+  // Points (optional)
+  if (showPoints && filteredData.length < 200) {
+    filteredData.forEach(d => {
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', scaleX(d.timestamp));
+      circle.setAttribute('cy', scaleY(d.value));
+      circle.setAttribute('r', '4');
+      circle.setAttribute('fill', color);
+      circle.setAttribute('stroke', '#0d0d0d');
+      circle.setAttribute('stroke-width', '2');
+
+      const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      title.textContent = `${formatDate(d.timestamp)}: ${formatNumber(d.value)}`;
+      circle.appendChild(title);
+
+      svg.appendChild(circle);
+    });
+  }
+
+  // Y-axis
+  const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  yAxis.setAttribute('x1', padding.left);
+  yAxis.setAttribute('y1', padding.top);
+  yAxis.setAttribute('x2', padding.left);
+  yAxis.setAttribute('y2', height - padding.bottom);
+  yAxis.setAttribute('stroke', '#0d0d0d');
+  yAxis.setAttribute('stroke-width', '3');
+  svg.appendChild(yAxis);
+
+  // X-axis
+  const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  xAxis.setAttribute('x1', padding.left);
+  xAxis.setAttribute('y1', height - padding.bottom);
+  xAxis.setAttribute('x2', width - padding.right);
+  xAxis.setAttribute('y2', height - padding.bottom);
+  xAxis.setAttribute('stroke', '#0d0d0d');
+  xAxis.setAttribute('stroke-width', '3');
+  svg.appendChild(xAxis);
+
+  // Y-axis labels (5 ticks)
+  for (let i = 0; i <= 5; i++) {
+    const value = minValue + ((maxValue - minValue) * i / 5);
+    const y = height - padding.bottom - (chartHeight * i / 5);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', padding.left - 10);
+    text.setAttribute('y', y + 4);
+    text.setAttribute('text-anchor', 'end');
+    text.setAttribute('class', 'axis-label');
+    text.textContent = formatNumber(Math.round(value));
+    svg.appendChild(text);
+  }
+
+  // X-axis labels (show ~6 time points)
+  const numXLabels = Math.min(6, filteredData.length);
+  for (let i = 0; i < numXLabels; i++) {
+    const index = Math.floor(i * (filteredData.length - 1) / (numXLabels - 1));
+    const d = filteredData[index];
+    const x = scaleX(d.timestamp);
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x);
+    text.setAttribute('y', height - padding.bottom + 25);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('class', 'axis-label');
+    text.textContent = formatDate(d.timestamp);
+    svg.appendChild(text);
+  }
+
+  chartContainer.appendChild(svg);
+
+  // Summary stats
+  const summary = document.createElement('div');
+  summary.className = 'time-series-summary';
+
+  const totalValue = filteredData.reduce((sum, d) => sum + d.value, 0);
+  const avgValue = totalValue / filteredData.length;
+  const maxPoint = filteredData.reduce((max, d) => d.value > max.value ? d : max, filteredData[0]);
+
+  summary.innerHTML = `
+    <div class="summary-item">
+      <span class="summary-label">Total:</span>
+      <span class="summary-value">${formatNumber(Math.round(totalValue))}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Average:</span>
+      <span class="summary-value">${formatNumber(Math.round(avgValue))}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Peak:</span>
+      <span class="summary-value">${formatNumber(maxPoint.value)} on ${formatDate(maxPoint.timestamp)}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Data Points:</span>
+      <span class="summary-value">${formatNumber(filteredData.length)} hours</span>
+    </div>
+  `;
+
+  chartContainer.appendChild(summary);
+  container.appendChild(chartContainer);
+}
+
+// Render hourly packet volume time series
+function renderPacketTimeSeries(stats) {
+  if (!stats.timeSeries || !stats.timeSeries.hourly) {
+    document.getElementById('time-series-packets-chart').innerHTML =
+      '<p class="chart-empty">No time-series data available</p>';
+    return;
+  }
+
+  const data = stats.timeSeries.hourly.map(d => ({
+    timestamp: d.timestamp,
+    value: d.packets,
+  }));
+
+  renderTimeSeriesChart('time-series-packets-chart', data, {
+    color: '#1b9c85',
+    label: 'Packets',
+    showPoints: false,
+  });
+}
+
+// Render config changes time series
+function renderConfigChangesTimeSeries(stats) {
+  if (!stats.timeSeries || !stats.timeSeries.hourly) {
+    document.getElementById('time-series-config-chart').innerHTML =
+      '<p class="chart-empty">No time-series data available</p>';
+    return;
+  }
+
+  // Update total config changes label
+  if (stats.timeSeries.totalConfigChanges !== undefined) {
+    document.getElementById('total-config-changes').textContent =
+      formatNumber(stats.timeSeries.totalConfigChanges);
+  }
+
+  const data = stats.timeSeries.hourly.map(d => ({
+    timestamp: d.timestamp,
+    value: d.configChanges,
+  }));
+
+  renderTimeSeriesChart('time-series-config-chart', data, {
+    color: '#ff1df5',
+    label: 'Config Changes',
+    showPoints: false,
+  });
+}
+
 // Show error
 function showError(message) {
   document.getElementById('loading-state').classList.add('hidden');
@@ -525,6 +772,8 @@ async function loadAndRender() {
     renderDvnComboChart(statsData);
     renderChainChart(statsData);
     renderSrcChainChart(statsData);
+    renderPacketTimeSeries(statsData);
+    renderConfigChangesTimeSeries(statsData);
 
     showContent();
   } catch (error) {

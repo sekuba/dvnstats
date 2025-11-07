@@ -4,6 +4,12 @@
  * Precompute packet statistics from all PacketDelivered records
  * Uses incremental processing to handle millions of packets without memory issues
  * Saves results to dashboard/data/packet-stats.json
+ *
+ * Usage:
+ *   npm run stats:precompute                 # All time
+ *   npm run stats:precompute -- --lookback=1y   # Last 1 year
+ *   npm run stats:precompute -- --lookback=30d  # Last 30 days
+ *   npm run stats:precompute -- --lookback=6m   # Last 6 months
  */
 
 const fs = require('fs');
@@ -13,13 +19,44 @@ const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || 'https://shinken.busine
 const BATCH_SIZE = 5000;
 const OUTPUT_PATH = path.join(__dirname, '../dashboard/data/packet-stats.json');
 
-async function fetchPacketBatch(offset, limit) {
+/**
+ * Parse lookback parameter (e.g., "1y", "30d", "6m")
+ * Returns timestamp (seconds) or null for all time
+ */
+function parseLookback(lookbackStr) {
+  if (!lookbackStr) return null;
+
+  const match = lookbackStr.match(/^(\d+)([hdmy])$/);
+  if (!match) {
+    throw new Error('Invalid lookback format. Use: 30d, 6m, 1y, 24h');
+  }
+
+  const value = Number.parseInt(match[1], 10);
+  const unit = match[2];
+
+  const now = Math.floor(Date.now() / 1000);
+  const multipliers = {
+    h: 3600,        // hours
+    d: 86400,       // days
+    m: 2592000,     // months (30 days)
+    y: 31536000,    // years (365 days)
+  };
+
+  return now - (value * multipliers[unit]);
+}
+
+async function fetchPacketBatch(offset, limit, minTimestamp = null) {
+  const whereClause = minTimestamp !== null
+    ? `where: { blockTimestamp: { _gte: ${minTimestamp} } }`
+    : '';
+
   const query = `
     query FetchPackets($offset: Int!, $limit: Int!) {
       PacketDelivered(
         order_by: { blockTimestamp: desc }
         limit: $limit
         offset: $offset
+        ${whereClause}
       ) {
         localEid
         srcEid
@@ -31,6 +68,7 @@ async function fetchPacketBatch(offset, limit) {
         effectiveRequiredDVNCount
         effectiveOptionalDVNCount
         isConfigTracked
+        configId
       }
     }
   `;
@@ -55,9 +93,24 @@ async function fetchPacketBatch(offset, limit) {
 }
 
 /**
+ * Create hourly buckets for time-series data
+ */
+function createHourlyBuckets(earliest, latest) {
+  const buckets = new Map();
+  const startHour = Math.floor(earliest / 3600) * 3600;
+  const endHour = Math.floor(latest / 3600) * 3600;
+
+  for (let hour = startHour; hour <= endHour; hour += 3600) {
+    buckets.set(hour, { packets: 0, configChanges: 0 });
+  }
+
+  return buckets;
+}
+
+/**
  * Process packets incrementally to avoid memory overflow
  */
-async function computeStatisticsIncremental() {
+async function computeStatisticsIncremental(minTimestamp = null) {
   console.log('Computing statistics incrementally...');
 
   // Initialize accumulators
@@ -73,15 +126,62 @@ async function computeStatisticsIncremental() {
   const chainCounts = new Map();
   const srcChainCounts = new Map();
 
-  let earliest = Number.POSITIVE_INFINITY;
-  let latest = Number.NEGATIVE_INFINITY;
+  // Time-series tracking
+  const seenConfigs = new Set(); // Track unique configIds
+  let earliestTimestamp = Number.POSITIVE_INFINITY;
+  let latestTimestamp = Number.NEGATIVE_INFINITY;
 
   let offset = 0;
   let hasMore = true;
   let batchCount = 0;
 
+  // First pass: determine time range
+  console.log('First pass: determining time range...');
   while (hasMore) {
-    const batch = await fetchPacketBatch(offset, BATCH_SIZE);
+    const batch = await fetchPacketBatch(offset, BATCH_SIZE, minTimestamp);
+
+    if (batch.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    batchCount++;
+
+    for (const packet of batch) {
+      const timestamp = Number(packet.blockTimestamp);
+      if (!Number.isNaN(timestamp)) {
+        if (timestamp < earliestTimestamp) earliestTimestamp = timestamp;
+        if (timestamp > latestTimestamp) latestTimestamp = timestamp;
+      }
+    }
+
+    offset += batch.length;
+
+    if (batch.length < BATCH_SIZE) {
+      hasMore = false;
+    }
+
+    if (batchCount % 10 === 0) {
+      console.log(`  Scanned ${offset.toLocaleString()} packets...`);
+    }
+
+    await new Promise(resolve => setImmediate(resolve));
+  }
+
+  console.log(`Time range: ${new Date(earliestTimestamp * 1000).toISOString()} to ${new Date(latestTimestamp * 1000).toISOString()}`);
+
+  // Create hourly buckets
+  const hourlyBuckets = createHourlyBuckets(earliestTimestamp, latestTimestamp);
+  console.log(`Created ${hourlyBuckets.size.toLocaleString()} hourly buckets`);
+
+  // Second pass: compute statistics
+  console.log('\nSecond pass: computing statistics...');
+  offset = 0;
+  hasMore = true;
+  batchCount = 0;
+
+  while (hasMore) {
+    const batch = await fetchPacketBatch(offset, BATCH_SIZE, minTimestamp);
 
     if (batch.length === 0) {
       hasMore = false;
@@ -136,23 +236,30 @@ async function computeStatisticsIncremental() {
       const srcEid = String(packet.srcEid);
       srcChainCounts.set(srcEid, (srcChainCounts.get(srcEid) || 0) + 1);
 
-      // Time range
+      // Time-series tracking
       const timestamp = Number(packet.blockTimestamp);
       if (!Number.isNaN(timestamp)) {
-        if (timestamp < earliest) earliest = timestamp;
-        if (timestamp > latest) latest = timestamp;
+        const hourBucket = Math.floor(timestamp / 3600) * 3600;
+        const bucket = hourlyBuckets.get(hourBucket);
+        if (bucket) {
+          bucket.packets++;
+
+          // Track config changes (first time seeing this configId)
+          if (packet.configId && !seenConfigs.has(packet.configId)) {
+            bucket.configChanges++;
+            seenConfigs.add(packet.configId);
+          }
+        }
       }
     }
 
     offset += batch.length;
     console.log(`  Processed batch ${batchCount}: ${total.toLocaleString()} packets total`);
 
-    // Stop if we got less than batch size (last page)
     if (batch.length < BATCH_SIZE) {
       hasMore = false;
     }
 
-    // Allow garbage collection between batches
     await new Promise(resolve => setImmediate(resolve));
   }
 
@@ -172,6 +279,7 @@ async function computeStatisticsIncremental() {
       timeRange: { earliest: null, latest: null },
       chainBreakdown: [],
       srcChainBreakdown: [],
+      timeSeries: { hourly: [] },
     };
   }
 
@@ -218,6 +326,15 @@ async function computeStatisticsIncremental() {
     }))
     .sort((a, b) => b.packetCount - a.packetCount);
 
+  // Time-series data
+  const hourlyData = Array.from(hourlyBuckets.entries())
+    .map(([timestamp, data]) => ({
+      timestamp,
+      packets: data.packets,
+      configChanges: data.configChanges,
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+
   return {
     total,
     computedAt: new Date().toISOString(),
@@ -231,8 +348,12 @@ async function computeStatisticsIncremental() {
     chainBreakdown,
     srcChainBreakdown,
     timeRange: {
-      earliest: earliest === Number.POSITIVE_INFINITY ? null : earliest,
-      latest: latest === Number.NEGATIVE_INFINITY ? null : latest,
+      earliest: earliestTimestamp === Number.POSITIVE_INFINITY ? null : earliestTimestamp,
+      latest: latestTimestamp === Number.NEGATIVE_INFINITY ? null : latestTimestamp,
+    },
+    timeSeries: {
+      hourly: hourlyData,
+      totalConfigChanges: seenConfigs.size,
     },
   };
 }
@@ -240,11 +361,30 @@ async function computeStatisticsIncremental() {
 async function main() {
   try {
     console.log('=== Packet Statistics Precomputation ===\n');
+
+    // Parse command line arguments
+    const args = process.argv.slice(2);
+    let lookbackParam = null;
+    let minTimestamp = null;
+
+    for (const arg of args) {
+      if (arg.startsWith('--lookback=')) {
+        lookbackParam = arg.split('=')[1];
+      }
+    }
+
+    if (lookbackParam) {
+      minTimestamp = parseLookback(lookbackParam);
+      console.log(`Lookback: ${lookbackParam} (from ${new Date(minTimestamp * 1000).toISOString()})`);
+    } else {
+      console.log('Lookback: All time');
+    }
+
     console.log(`Endpoint: ${GRAPHQL_ENDPOINT}`);
     console.log(`Batch size: ${BATCH_SIZE.toLocaleString()}\n`);
 
     // Compute statistics incrementally
-    const stats = await computeStatisticsIncremental();
+    const stats = await computeStatisticsIncremental(minTimestamp);
 
     // Ensure output directory exists
     const outputDir = path.dirname(OUTPUT_PATH);
@@ -260,6 +400,8 @@ async function main() {
     console.log(`  All-default: ${stats.allDefaultPercentage.toFixed(2)}%`);
     console.log(`  Unique DVN combos: ${stats.dvnCombinations.length.toLocaleString()}`);
     console.log(`  Chains: ${stats.chainBreakdown.length}`);
+    console.log(`  Config changes: ${stats.timeSeries.totalConfigChanges.toLocaleString()}`);
+    console.log(`  Hourly data points: ${stats.timeSeries.hourly.length.toLocaleString()}`);
 
     if (stats.timeRange.earliest && stats.timeRange.latest) {
       const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);
