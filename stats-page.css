@@ -432,3 +432,106 @@
     padding: 0.15rem 0.4rem;
   }
 }
+
+/* Pie Chart Styles */
+.pie-chart-container {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 2rem;
+  align-items: center;
+  padding: 1rem;
+}
+
+.pie-svg {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+}
+
+.pie-slice {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.pie-slice:hover {
+  opacity: 0.8;
+}
+
+.pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.pie-legend-item {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.pie-legend-item:hover {
+  background: rgba(242, 242, 0, 0.1);
+  border-color: var(--ink);
+}
+
+.pie-legend-color {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--ink);
+}
+
+.pie-legend-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+}
+
+.pie-legend-value {
+  text-align: right;
+  font-size: 0.85rem;
+}
+
+.pie-legend-value strong {
+  font-weight: 700;
+}
+
+.pie-legend-value span {
+  opacity: 0.7;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .pie-chart-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .pie-svg {
+    max-width: 220px;
+    margin: 0 auto;
+  }
+
+  .pie-legend-item {
+    grid-template-columns: 20px 1fr auto;
+    gap: 0.5rem;
+    padding: 0.4rem;
+  }
+
+  .pie-legend-color {
+    width: 20px;
+    height: 20px;
+  }
+
+  .pie-legend-label {
+    font-size: 0.75rem;
+  }
+
+  .pie-legend-value {
+    font-size: 0.8rem;
+  }
+}
