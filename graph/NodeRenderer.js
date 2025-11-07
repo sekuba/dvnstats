@@ -180,7 +180,6 @@ export class NodeRenderer {
               },
             });
             if (!result) {
-              
               if (status.style.display === "none") {
                 setStatus("Unable to resolve a connecting path.", "error");
               }
