@@ -339,21 +339,71 @@ function renderOptionalDvnCountChart(stats) {
   renderPieChart('optional-dvn-count-chart', data);
 }
 
-// Render top DVN combinations with resolved names
+// Render top DVN combinations with resolved names (deduplicated by resolved names)
 function renderDvnComboChart(stats) {
   const container = document.getElementById('dvn-combo-chart');
   container.innerHTML = '';
 
-  const topCombos = stats.dvnCombinations.slice(0, 20); // Top 20
-
-  if (topCombos.length === 0) {
+  if (!stats.dvnCombinations || stats.dvnCombinations.length === 0) {
     container.innerHTML = '<p class="chart-empty">No DVN combinations found</p>';
     return;
   }
 
-  const maxValue = topCombos[0]?.count || 0;
+  // Deduplicate by resolved names
+  const mergedCombos = new Map();
 
-  topCombos.forEach((combo, index) => {
+  stats.dvnCombinations.forEach(combo => {
+    // Resolve all DVN addresses to names
+    const resolvedDvns = combo.dvns.map(dvn => {
+      const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn) : dvn;
+      return {
+        address: dvn,
+        name: resolved,
+        isResolved: resolved !== dvn && !resolved.startsWith('0x')
+      };
+    });
+
+    // Sort by resolved name (or address if not resolved)
+    const sorted = [...resolvedDvns].sort((a, b) => {
+      const aKey = a.isResolved ? a.name : a.address;
+      const bKey = b.isResolved ? b.name : b.address;
+      return aKey.localeCompare(bKey);
+    });
+
+    // Create key from sorted resolved names
+    const comboKey = sorted.map(d => d.isResolved ? d.name : d.address).join('|||');
+
+    if (mergedCombos.has(comboKey)) {
+      // Merge with existing
+      const existing = mergedCombos.get(comboKey);
+      existing.count += combo.count;
+    } else {
+      // Add new
+      mergedCombos.set(comboKey, {
+        dvns: sorted,
+        count: combo.count,
+        comboKey
+      });
+    }
+  });
+
+  // Convert to array and recalculate percentages
+  const deduplicatedCombos = Array.from(mergedCombos.values())
+    .map(combo => ({
+      ...combo,
+      percentage: (combo.count / stats.total) * 100
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20); // Top 20
+
+  if (deduplicatedCombos.length === 0) {
+    container.innerHTML = '<p class="chart-empty">No DVN combinations found</p>';
+    return;
+  }
+
+  const maxValue = deduplicatedCombos[0]?.count || 0;
+
+  deduplicatedCombos.forEach((combo, index) => {
     const row = document.createElement('div');
     row.className = 'combo-row';
 
@@ -364,17 +414,13 @@ function renderDvnComboChart(stats) {
     const dvnList = document.createElement('div');
     dvnList.className = 'combo-dvn-list';
 
-    // Resolve DVN names
+    // Render resolved DVN names
     combo.dvns.forEach(dvn => {
       const badge = document.createElement('span');
       badge.className = 'dvn-badge-small';
 
-      // Try to resolve DVN name
-      const resolvedName = dvnResolver ? dvnResolver.resolveDvnName(dvn) : dvn;
-      const isResolved = resolvedName !== dvn && !resolvedName.startsWith('0x');
-
-      badge.textContent = isResolved ? resolvedName : formatAddress(dvn);
-      badge.title = `${isResolved ? resolvedName + ' - ' : ''}${dvn}`;
+      badge.textContent = dvn.isResolved ? dvn.name : formatAddress(dvn.address);
+      badge.title = dvn.isResolved ? `${dvn.name} - ${dvn.address}` : dvn.address;
       dvnList.appendChild(badge);
     });
 
