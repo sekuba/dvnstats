@@ -172,7 +172,7 @@ export class SecurityGraphView {
 
     const nodesById = new Map(webData.nodes.map((node) => [node.id, node]));
 
-    let focusMode = "none"; // "none" | "neighbors" | "path"
+    let focusMode = "none"; 
     let focusBaseNodeId = null;
     let visibleNodeIds = new Set();
     let visibleEdgeKeys = null;
@@ -357,7 +357,7 @@ export class SecurityGraphView {
       return true;
     };
 
-    // Render edges
+    
     edgesGroup = this.edgeRenderer.renderEdges(
       SVG_NS,
       edgeSecurityInfo,
@@ -368,7 +368,7 @@ export class SecurityGraphView {
       maxEdgePacketCount,
     );
 
-    // Render nodes
+    
     this.nodeRenderer.onRecenter = this.onRecenter;
     nodesGroup = this.nodeRenderer.renderNodes(
       SVG_NS,

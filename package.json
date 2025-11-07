@@ -12,7 +12,8 @@
     "test": "pnpm mocha",
     "format": "biome format --write .",
     "format:check": "biome check .",
-    "stats:packets": "node scripts/packetSecuritySummary.js"
+    "stats:precompute": "node scripts/precomputePacketStats.js",
+    "stats:batch": "node scripts/precomputePacketStats.js --batch"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.1",
