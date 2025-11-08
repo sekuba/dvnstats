@@ -1,10 +1,11 @@
-<img width="3840" height="4160" alt="image" src="https://github.com/user-attachments/assets/832c000e-573a-4e3b-ba4a-328a85553a3a" />
+# LayerZero Security Stats and Config Explorer
+[Learn about the Fragility of an interop protocol](https://sekuba.github.io/dvnstats/) by [surfing through real onchain data](https://sekuba.github.io/dvnstats/explorer.html).
 
+Made possible by Envio Hypersync and -index, GPT5-Codex, Sonnet 4.5 and yours truly.
 
-icecold codex x sekuba present *layerzero security overview thing*
+All frontend code is in the ./dashboard folder, you can host it yourself if you like. Below is envio explaining to you how to run the backend and the indexer. If you do so, remember to point the frontend at your own graphql endpoint.
 
-<img width="1697" height="937" alt="image" src="https://github.com/user-attachments/assets/96ceaf15-7bf9-4931-9e2e-206ca633ef7d" />
-
+In case you want to go deeper / see code, i recommend [spec.md](./spec.md) and the [EventHandlers.ts](./src/EventHandlers.ts) of the indexer respectively.
 
 ## Envio Indexer
 
