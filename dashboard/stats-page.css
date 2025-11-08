@@ -176,6 +176,8 @@
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
+  position: relative;
+  cursor: help;
 }
 
 .stat-card:hover {
@@ -222,6 +224,63 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.7;
+}
+
+/* Stat Card Tooltips */
+.stat-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 0.75rem 1rem;
+  min-width: 200px;
+  max-width: 300px;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+  text-align: left;
+}
+
+.stat-tooltip::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: var(--ink);
+}
+
+.stat-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-3px);
+  border: 6px solid transparent;
+  border-top-color: var(--paper);
+}
+
+.stat-card:hover .stat-tooltip,
+.stat-card.tooltip-active .stat-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-5px);
+}
+
+.stat-tooltip-text {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  margin: 0;
 }
 
 /* Chart Sections */
@@ -455,6 +514,17 @@
   .chart-section {
     padding: 1.25rem;
     box-shadow: 6px 6px 0 var(--ink);
+  }
+
+  .stat-tooltip {
+    min-width: 180px;
+    max-width: 250px;
+    padding: 0.6rem 0.8rem;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+
+  .stat-tooltip-text {
+    font-size: 0.75rem;
   }
 
   .bar-row {
