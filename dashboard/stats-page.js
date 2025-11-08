@@ -176,8 +176,6 @@ function renderPieChart(containerId, data, options = {}) {
     const percentage = (item.value / total) * 100;
     const angle = (item.value / total) * 360;
 
-    if (percentage < 0.5) return; // Skip tiny slices
-
     const slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
     const startAngle = currentAngle;
     const endAngle = currentAngle + angle;
@@ -218,7 +216,6 @@ function renderPieChart(containerId, data, options = {}) {
 
   data.forEach((item, index) => {
     const percentage = (item.value / total) * 100;
-    if (percentage < 0.5) return; // Skip tiny slices
 
     const legendItem = document.createElement("div");
     legendItem.className = "pie-legend-item";
