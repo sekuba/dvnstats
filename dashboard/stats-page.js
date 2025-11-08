@@ -121,9 +121,6 @@ function renderOverview(stats) {
   document.getElementById("stat-default-lib").textContent = formatPercent(
     stats.defaultLibPercentage,
   );
-  document.getElementById("stat-default-config").textContent = formatPercent(
-    stats.defaultConfigPercentage,
-  );
   document.getElementById("stat-tracked").textContent = formatPercent(stats.trackedPercentage);
   document.getElementById("stat-dvn-combos").textContent = formatNumber(
     stats.dvnCombinations.length,
