@@ -176,8 +176,6 @@ function renderPieChart(containerId, data, options = {}) {
     const percentage = (item.value / total) * 100;
     const angle = (item.value / total) * 360;
 
-    if (percentage < 0.5) return; // Skip tiny slices
-
     const slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
     const startAngle = currentAngle;
     const endAngle = currentAngle + angle;
@@ -218,7 +216,6 @@ function renderPieChart(containerId, data, options = {}) {
 
   data.forEach((item, index) => {
     const percentage = (item.value / total) * 100;
-    if (percentage < 0.5) return; // Skip tiny slices
 
     const legendItem = document.createElement("div");
     legendItem.className = "pie-legend-item";
@@ -295,19 +292,19 @@ function renderBarChart(containerId, data, options = {}) {
   });
 }
 
-// Render DVN count pie chart (with "Other" bucket for 0 and >4)
-function renderDvnCountChart(stats) {
+// Render DVN set threshold pie chart (with "Other" bucket for 0 and >4)
+function renderDvnSetThresholdChart(stats) {
   const buckets = new Map();
 
-  stats.dvnCountBuckets.forEach((bucket) => {
-    const count = bucket.requiredDvnCount;
-    if (count === 0 || count > 4) {
+  stats.dvnSetThresholdBuckets.forEach((bucket) => {
+    const threshold = bucket.dvnSetThreshold;
+    if (threshold === 0 || threshold > 4) {
       buckets.set(
         "Other (0 or >4 DVNs)",
         (buckets.get("Other (0 or >4 DVNs)") || 0) + bucket.packetCount,
       );
     } else {
-      buckets.set(`${count} DVN${count === 1 ? "" : "s"}`, bucket.packetCount);
+      buckets.set(`${threshold} DVN${threshold === 1 ? "" : "s"}`, bucket.packetCount);
     }
   });
 
@@ -324,20 +321,7 @@ function renderDvnCountChart(stats) {
       return a.label.localeCompare(b.label, undefined, { numeric: true });
     });
 
-  renderPieChart("dvn-count-chart", data);
-}
-
-// Render optional DVN count pie chart (exclude 0)
-function renderOptionalDvnCountChart(stats) {
-  const data = stats.optionalDvnCountBuckets
-    .filter((bucket) => bucket.optionalDvnCount > 0) // Exclude 0
-    .map((bucket) => ({
-      label: `${bucket.optionalDvnCount} DVN${bucket.optionalDvnCount === 1 ? "" : "s"}`,
-      value: bucket.packetCount,
-      percentage: bucket.percentage,
-    }));
-
-  renderPieChart("optional-dvn-count-chart", data);
+  renderPieChart("dvn-set-threshold-chart", data);
 }
 
 // Render top DVN combinations with resolved names (deduplicated by resolved names)
@@ -354,25 +338,81 @@ function renderDvnComboChart(stats) {
   const mergedCombos = new Map();
 
   stats.dvnCombinations.forEach((combo) => {
-    // Resolve all DVN addresses to names using the correct localEid
-    const resolvedDvns = combo.dvns.map((dvn) => {
-      const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
-      return {
-        address: dvn,
-        name: resolved,
-        isResolved: resolved !== dvn && !resolved.startsWith("0x"),
+    let resolvedDvns = [];
+    let comboKey;
+    let optionalInfo = null;
+
+    if (combo.type === "required") {
+      // Standard case: just required DVNs
+      resolvedDvns = combo.dvns.map((dvn) => {
+        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        return {
+          address: dvn,
+          name: resolved,
+          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
+        };
+      });
+
+      const sorted = [...resolvedDvns].sort((a, b) => {
+        const aKey = a.isResolved ? a.name : a.address;
+        const bKey = b.isResolved ? b.name : b.address;
+        return aKey.localeCompare(bKey);
+      });
+
+      comboKey = sorted.map((d) => (d.isResolved ? d.name : d.address)).join("|||");
+      resolvedDvns = sorted;
+    } else if (combo.type === "required_and_optional") {
+      // Hybrid case: required DVNs + optional threshold
+      const resolvedRequired = combo.requiredDvns.map((dvn) => {
+        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        return {
+          address: dvn,
+          name: resolved,
+          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
+        };
+      });
+
+      const sortedRequired = [...resolvedRequired].sort((a, b) => {
+        const aKey = a.isResolved ? a.name : a.address;
+        const bKey = b.isResolved ? b.name : b.address;
+        return aKey.localeCompare(bKey);
+      });
+
+      const resolvedOptional = combo.optionalDvns.map((dvn) => {
+        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        return {
+          address: dvn,
+          name: resolved,
+          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
+        };
+      });
+
+      comboKey =
+        sortedRequired.map((d) => (d.isResolved ? d.name : d.address)).join("|||") +
+        `:+${combo.optionalThreshold}optional`;
+      resolvedDvns = sortedRequired;
+      optionalInfo = {
+        threshold: combo.optionalThreshold,
+        dvns: resolvedOptional,
       };
-    });
+    } else if (combo.type === "optional_only") {
+      // Optional-only case
+      const resolvedOptional = combo.optionalDvns.map((dvn) => {
+        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        return {
+          address: dvn,
+          name: resolved,
+          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
+        };
+      });
 
-    // Sort by resolved name (or address if not resolved)
-    const sorted = [...resolvedDvns].sort((a, b) => {
-      const aKey = a.isResolved ? a.name : a.address;
-      const bKey = b.isResolved ? b.name : b.address;
-      return aKey.localeCompare(bKey);
-    });
-
-    // Create key from sorted resolved names
-    const comboKey = sorted.map((d) => (d.isResolved ? d.name : d.address)).join("|||");
+      comboKey = `optional:${combo.optionalThreshold}`;
+      resolvedDvns = [];
+      optionalInfo = {
+        threshold: combo.optionalThreshold,
+        dvns: resolvedOptional,
+      };
+    }
 
     if (mergedCombos.has(comboKey)) {
       // Merge with existing
@@ -381,7 +421,8 @@ function renderDvnComboChart(stats) {
     } else {
       // Add new
       mergedCombos.set(comboKey, {
-        dvns: sorted,
+        dvns: resolvedDvns,
+        optionalInfo,
         count: combo.count,
         comboKey,
       });
@@ -415,7 +456,7 @@ function renderDvnComboChart(stats) {
     const dvnList = document.createElement("div");
     dvnList.className = "combo-dvn-list";
 
-    // Render resolved DVN names
+    // Render resolved DVN names (required DVNs)
     combo.dvns.forEach((dvn) => {
       const badge = document.createElement("span");
       badge.className = "dvn-badge-small";
@@ -424,6 +465,20 @@ function renderDvnComboChart(stats) {
       badge.title = dvn.isResolved ? `${dvn.name} - ${dvn.address}` : dvn.address;
       dvnList.appendChild(badge);
     });
+
+    // Add optional DVN information if present
+    if (combo.optionalInfo) {
+      const optionalBadge = document.createElement("span");
+      optionalBadge.className = "dvn-badge-small dvn-badge-optional";
+      optionalBadge.textContent = `+${combo.optionalInfo.threshold} of ${combo.optionalInfo.dvns.length} optional`;
+
+      const optionalDvnNames = combo.optionalInfo.dvns
+        .map((dvn) => (dvn.isResolved ? dvn.name : dvn.address))
+        .join(", ");
+      optionalBadge.title = `${combo.optionalInfo.threshold} out of: ${optionalDvnNames}`;
+
+      dvnList.appendChild(optionalBadge);
+    }
 
     const barContainer = document.createElement("div");
     barContainer.className = "combo-bar-container";
@@ -923,8 +978,7 @@ async function loadAndRender(datasetName = null) {
     renderDatasetButtons(availableDatasets);
 
     renderOverview(statsData);
-    renderDvnCountChart(statsData);
-    renderOptionalDvnCountChart(statsData);
+    renderDvnSetThresholdChart(statsData);
     renderDvnComboChart(statsData);
     renderChainChart(statsData);
     renderSrcChainChart(statsData);
