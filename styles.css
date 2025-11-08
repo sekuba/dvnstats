@@ -257,6 +257,11 @@ main {
   color: #555;
 }
 
+.results-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .table-container {
   overflow-x: auto;
 }
@@ -957,6 +962,20 @@ td.meter-cell > * {
 
   .header-nav a,
   .header-nav button {
+    width: 100%;
+  }
+
+  .results-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .results-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .results-actions button {
     width: 100%;
   }
 
