@@ -127,9 +127,8 @@ async function fetchPacketBatch(limit, minTimestamp = null, cursor = null) {
     }`);
   }
 
-  const whereClause = whereConditions.length > 0
-    ? `where: { _and: [${whereConditions.join(", ")}] }`
-    : "";
+  const whereClause =
+    whereConditions.length > 0 ? `where: { _and: [${whereConditions.join(", ")}] }` : "";
 
   const query = `
     query FetchPackets($limit: Int!) {
@@ -300,9 +299,8 @@ async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
         }`);
       }
 
-      const whereClause = cursorConditions.length > 0
-        ? `where: { _and: [${cursorConditions.join(", ")}] }`
-        : "";
+      const whereClause =
+        cursorConditions.length > 0 ? `where: { _and: [${cursorConditions.join(", ")}] }` : "";
 
       const query = `
         query FetchVersions($limit: Int!) {
@@ -385,19 +383,19 @@ function mergeStatistics(existingStats, newStats) {
   const total = existingStats.total + newStats.total;
   const allDefault = Math.round(
     existingStats.total * (existingStats.allDefaultPercentage / 100) +
-    newStats.total * (newStats.allDefaultPercentage / 100)
+      newStats.total * (newStats.allDefaultPercentage / 100),
   );
   const defaultLib = Math.round(
     existingStats.total * (existingStats.defaultLibPercentage / 100) +
-    newStats.total * (newStats.defaultLibPercentage / 100)
+      newStats.total * (newStats.defaultLibPercentage / 100),
   );
   const defaultConfig = Math.round(
     existingStats.total * (existingStats.defaultConfigPercentage / 100) +
-    newStats.total * (newStats.defaultConfigPercentage / 100)
+      newStats.total * (newStats.defaultConfigPercentage / 100),
   );
   const tracked = Math.round(
     existingStats.total * (existingStats.trackedPercentage / 100) +
-    newStats.total * (newStats.trackedPercentage / 100)
+      newStats.total * (newStats.trackedPercentage / 100),
   );
 
   // Merge DVN combinations
@@ -513,11 +511,11 @@ function mergeStatistics(existingStats, newStats) {
   // Determine time range
   const earliest = Math.min(
     existingStats.timeRange.earliest || Number.POSITIVE_INFINITY,
-    newStats.timeRange.earliest || Number.POSITIVE_INFINITY
+    newStats.timeRange.earliest || Number.POSITIVE_INFINITY,
   );
   const latest = Math.max(
     existingStats.timeRange.latest || Number.NEGATIVE_INFINITY,
-    newStats.timeRange.latest || Number.NEGATIVE_INFINITY
+    newStats.timeRange.latest || Number.NEGATIVE_INFINITY,
   );
 
   return {
@@ -882,13 +880,17 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
       stats = await computeStatisticsIncremental(minTimestamp);
     } else {
       console.log(`Found previous run from ${metadata.computedAt}`);
-      console.log(`Last processed: ${metadata.lastProcessedTimestamp ? new Date(metadata.lastProcessedTimestamp * 1000).toISOString() : "N/A"}`);
+      console.log(
+        `Last processed: ${metadata.lastProcessedTimestamp ? new Date(metadata.lastProcessedTimestamp * 1000).toISOString() : "N/A"}`,
+      );
       console.log(`Previous total: ${metadata.totalRecords.toLocaleString()} packets\n`);
 
       // For incremental mode, only fetch records newer than last run
       const incrementalMinTimestamp = metadata.lastProcessedTimestamp;
 
-      console.log(`Fetching new records since ${new Date(incrementalMinTimestamp * 1000).toISOString()}...`);
+      console.log(
+        `Fetching new records since ${new Date(incrementalMinTimestamp * 1000).toISOString()}...`,
+      );
       const newStats = await computeStatisticsIncremental(incrementalMinTimestamp);
 
       if (newStats.total === 0) {
@@ -964,7 +966,7 @@ async function main() {
 
     if (batchMode) {
       // Batch mode: generate all supported time ranges
-      const timeRanges = ["30d", "90d", "1y", null]; // null = all time
+      const timeRanges = ["7d", "30d", "90d", "1y", null]; // null = all time
       console.log(`Batch mode: generating ${timeRanges.length} datasets\n`);
 
       for (let i = 0; i < timeRanges.length; i++) {
