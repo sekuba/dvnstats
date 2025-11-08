@@ -876,7 +876,7 @@ function showContent() {
 
 // Discover available datasets by trying common lookback patterns
 async function discoverDatasets() {
-  const patterns = ["30d", "90d", "1y", "all"];
+  const patterns = ["90d", "7d", "30d", "1y", "all"];
   const found = [];
 
   for (const pattern of patterns) {
