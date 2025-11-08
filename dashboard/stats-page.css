@@ -349,6 +349,11 @@
   margin-bottom: 0;
 }
 
+.analysis-text b {
+  color: var(--magenta);
+  font-weight: 700;
+}
+
 .chart-empty {
   text-align: center;
   padding: 2rem;
