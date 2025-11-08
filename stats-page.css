@@ -335,6 +335,20 @@
   letter-spacing: 0.05em;
 }
 
+.analysis-text {
+  line-height: 1.7;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+
+.analysis-text p {
+  margin: 0 0 1rem;
+}
+
+.analysis-text p:last-child {
+  margin-bottom: 0;
+}
+
 .chart-empty {
   text-align: center;
   padding: 2rem;
