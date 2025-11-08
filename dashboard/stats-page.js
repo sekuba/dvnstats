@@ -941,9 +941,7 @@ async function loadAndRender(datasetName = null) {
 // Initialize tooltip functionality for mobile tap handling
 function initTooltips() {
   const statCards = document.querySelectorAll(".stat-card");
-  const svgDiagrams = document.querySelectorAll(".svg-diagram-container");
 
-  // Handle stat card tooltips
   statCards.forEach((card) => {
     card.addEventListener("click", (e) => {
       // Check if we're on a touch device or small screen
@@ -962,9 +960,6 @@ function initTooltips() {
             otherCard.classList.remove("tooltip-active");
           }
         });
-        svgDiagrams.forEach((diagram) => {
-          diagram.classList.remove("tooltip-active");
-        });
 
         // Toggle this tooltip
         if (wasActive) {
@@ -976,49 +971,13 @@ function initTooltips() {
     });
   });
 
-  // Handle SVG diagram tooltips
-  svgDiagrams.forEach((diagram) => {
-    diagram.addEventListener("click", (e) => {
-      // Check if we're on a touch device or small screen
-      const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
-
-      if (isMobile) {
-        // Prevent the click from immediately closing the tooltip
-        e.stopPropagation();
-
-        // Toggle tooltip-active class
-        const wasActive = diagram.classList.contains("tooltip-active");
-
-        // Close all other tooltips
-        statCards.forEach((card) => {
-          card.classList.remove("tooltip-active");
-        });
-        svgDiagrams.forEach((otherDiagram) => {
-          if (otherDiagram !== diagram) {
-            otherDiagram.classList.remove("tooltip-active");
-          }
-        });
-
-        // Toggle this tooltip
-        if (wasActive) {
-          diagram.classList.remove("tooltip-active");
-        } else {
-          diagram.classList.add("tooltip-active");
-        }
-      }
-    });
-  });
-
   // Close tooltips when clicking outside on mobile
   document.addEventListener("click", (e) => {
     const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
 
-    if (isMobile && !e.target.closest(".stat-card") && !e.target.closest(".svg-diagram-container")) {
+    if (isMobile && !e.target.closest(".stat-card")) {
       statCards.forEach((card) => {
         card.classList.remove("tooltip-active");
-      });
-      svgDiagrams.forEach((diagram) => {
-        diagram.classList.remove("tooltip-active");
       });
     }
   });
