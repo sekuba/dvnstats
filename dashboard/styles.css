@@ -50,6 +50,12 @@ body {
   line-height: 1.4;
 }
 
+.header-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
 .endpoint {
   padding: 0.1rem 0.4rem;
   border: 2px solid var(--ink);
@@ -931,6 +937,22 @@ td.meter-cell > * {
   .page-header,
   main {
     padding: 1.25rem;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .header-nav a,
+  .header-nav button {
+    width: 100%;
   }
 
   #results {
