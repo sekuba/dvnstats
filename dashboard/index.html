@@ -36,50 +36,150 @@
             <h2>Total Packets</h2>
             <div class="stat-value" id="stat-total">—</div>
             <div class="stat-label">Analyzed packets</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Each packet is usually a single crosschain transaction, rarely a bundle of them</p>
+            </div>
           </div>
 
           <div class="stat-card stat-card--highlight">
-            <h2>All-Default Config</h2>
+            <h2>All-Default</h2>
             <div class="stat-value" id="stat-all-default">—</div>
-            <div class="stat-label">Using both defaults</div>
+            <div class="stat-label">No custom security</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets validated by falling back to the standard LayerZero validation library and settings.</p>
+            </div>
           </div>
 
           <div class="stat-card">
             <h2>Default Library</h2>
             <div class="stat-value" id="stat-default-lib">—</div>
-            <div class="stat-label">Using default library</div>
-          </div>
-
-          <div class="stat-card">
-            <h2>Default Config</h2>
-            <div class="stat-value" id="stat-default-config">—</div>
-            <div class="stat-label">Using default ULN config</div>
+            <div class="stat-label">No custom library</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets using the default smart contract (library) for validation</p>
+            </div>
           </div>
 
           <div class="stat-card">
             <h2>Tracked Library</h2>
             <div class="stat-value" id="stat-tracked">—</div>
             <div class="stat-label">Using ReceiveUln302</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets validated by a library of which we decode the validation settings (config)</p>
+            </div>
           </div>
 
           <div class="stat-card">
-            <h2>DVN Combinations</h2>
+            <h2>Default Config</h2>
+            <div class="stat-value" id="stat-default-config">—</div>
+            <div class="stat-label">No custom library config</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets using the default library <b>and</b> the default validation settings (config)</p>
+            </div>
+          </div>
+
+
+          <div class="stat-card stat-card--highlight">
+            <h2>Required DVN Combinations</h2>
             <div class="stat-value" id="stat-dvn-combos">—</div>
-            <div class="stat-label">Unique required DVN sets</div>
+            <div class="stat-label">Unique DVN sets by label</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Number of unique DVN contract sets used for validation in the 'required' setup</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Chains indexed</h2>
+            <div class="stat-value">18</div>
+            <div class="stat-label">EVM chains</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">All incoming packets and validation configs on 18 EVM chains are indexed</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Chains seen</h2>
+            <div class="stat-value">138</div>
+            <div class="stat-label">Unique endpoint IDs</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Unique source chains of incoming packets (with known validation settings)</p>
+            </div>
           </div>
         </section>
 
+        <!-- Jargon Explanation Cards -->
+        <section class="stats-grid">
+          <div class="stat-card stat-card--explain">
+            <h2>Packet</h2>
+            <div class="stat-explanation">A crosschain message in the LayerZero protocol. In most cases, it contains a single crosschain transaction between two OApps. Transfering a crosschain token generates a packet.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Packets contain a message payload, source EID and destination EID, source OApp address and destination OApp address</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>DVN</h2>
+            <div class="stat-explanation">Decentralized Verifier Network - A single smart contract that validates packets. Each DVN defines its validation logic, but the vast majority behaves like multisigs. Can be configured by the OApp owner or LayerZero (fallback).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">DVN is largely a misnomer, implying multiple validators where in reality there is always a single smart contract and often validation of a single entity's signature</p>
+            </div>
+          </div>
+
+
+          <div class="stat-card stat-card--explain">
+            <h2>OApp</h2>
+            <div class="stat-explanation">Omnichain Application - A smart contract application capable of sending and receiving crosschain messages. Usually not owned by LayerZero, but always using the LayerZero protocol for communication.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Most OApps implement token functions. There is no restriction on what an OApp can be, it just needs to include the standard LayerZero messaging interface</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>OFT</h2>
+            <div class="stat-explanation">Omnichain Fungible Token - An OApp standard that is also an ERC-20 token. Networking these tokens across chains via LayerZero allows for crosschain asset transfers.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">OFTs are the most widely used type of OApp. OFT can refer to a single token on a single chain or the abstracted set of all tokens of the same type across chains</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>EID</h2>
+            <div class="stat-explanation">Endpoint ID - A unique identifier for each blockchain in the LayerZero network. Different from chain IDs but serving the same purpose.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">EIDs are needed because some blockchains use the same chain IDs (e.g. Aptos and Ethereum)</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>Validation Library</h2>
+            <div class="stat-explanation">The main smart contract storing the settings for validating packets. This can be a custom contract but is almost always the default LayerZero ReceiveUln302 (Ultralight Node).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">The library can be thought of like a panel of switches, allowing for fine-grained control over validation settings</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>ULN config</h2>
+            <div class="stat-explanation">UltraLightNode config - Security settings (validation config) stored in the validation library. These settings determine which DVNs and how many source chain confirmations are required for packet validation. Settings are managed by the OApp owner or LayerZero (fallback).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">ULN, ReceiveUln302 and library are just other words for this specialized smart contract</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- PacketDelivered Event Flow Diagram -->
+        <img src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" class="svg-diagram" />
+
         <!-- Required DVN Count Distribution -->
         <section class="chart-section">
-          <h2 class="chart-title">Required DVN Count Distribution</h2>
-          <p class="chart-subtitle">Packets using 1-4 required DVNs (0 and >4 grouped as "Other")</p>
+          <h2 class="chart-title">Required DVN Count</h2>
+          <p class="chart-subtitle">'Required' DVN sets are smart contracts (often Multisigs) that <b>must</b> validate incoming packets (0 and >4 grouped as "Other")</p>
           <div id="dvn-count-chart" class="pie-chart"></div>
         </section>
 
         <!-- Optional DVN Count Distribution -->
         <section class="chart-section">
-          <h2 class="chart-title">Optional DVN Count Distribution</h2>
-          <p class="chart-subtitle">For packets using optional DVNs (0 excluded)</p>
+          <h2 class="chart-title">Optional DVN Count</h2>
+          <p class="chart-subtitle">'Optional' DVN sets are smart contracts configured with a threshold of how many in the set <b>must</b> validate incoming packets (0 excluded)</p>
           <div id="optional-dvn-count-chart" class="pie-chart"></div>
         </section>
 

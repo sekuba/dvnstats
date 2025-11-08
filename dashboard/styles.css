@@ -50,6 +50,17 @@ body {
   line-height: 1.4;
 }
 
+.header-nav {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.header-nav a {
+  text-align: center;
+  display: inline-block;
+}
+
 .endpoint {
   padding: 0.1rem 0.4rem;
   border: 2px solid var(--ink);
@@ -244,6 +255,11 @@ main {
   margin: 0.35rem 0 0;
   font-size: 0.8rem;
   color: #555;
+}
+
+.results-actions {
+  display: flex;
+  gap: 0.5rem;
 }
 
 .table-container {
@@ -931,6 +947,36 @@ td.meter-cell > * {
   .page-header,
   main {
     padding: 1.25rem;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-nav {
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+  }
+
+  .header-nav a,
+  .header-nav button {
+    width: 100%;
+  }
+
+  .results-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .results-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .results-actions button {
+    width: 100%;
   }
 
   #results {

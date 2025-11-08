@@ -176,6 +176,8 @@
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease;
+  position: relative;
+  cursor: help;
 }
 
 .stat-card:hover {
@@ -195,6 +197,16 @@
 
 .stat-card--highlight:hover {
   box-shadow: 11px 11px 0 var(--magenta);
+}
+
+.stat-card--explain {
+  background: rgba(27, 156, 133, 0.15);
+  border-color: var(--success);
+  box-shadow: 8px 8px 0 var(--success);
+}
+
+.stat-card--explain:hover {
+  box-shadow: 11px 11px 0 var(--success);
 }
 
 .stat-card h2 {
@@ -222,6 +234,81 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   opacity: 0.7;
+}
+
+.stat-explanation {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  margin-top: 0.5rem;
+  text-transform: none;
+}
+
+/* Stat Card Tooltips */
+.stat-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--ink);
+  padding: 0.75rem 1rem;
+  min-width: 200px;
+  max-width: 300px;
+  z-index: 100;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.2s ease,
+    visibility 0.2s ease,
+    transform 0.2s ease;
+  pointer-events: none;
+  text-align: left;
+}
+
+.stat-tooltip::before {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: var(--ink);
+}
+
+.stat-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-3px);
+  border: 6px solid transparent;
+  border-top-color: var(--paper);
+}
+
+.stat-card:hover .stat-tooltip,
+.stat-card.tooltip-active .stat-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(-5px);
+}
+
+.stat-tooltip-text {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+/* SVG Diagram */
+.svg-diagram {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 4px solid var(--ink);
+  margin-bottom: 2.5rem;
 }
 
 /* Chart Sections */
@@ -457,6 +544,17 @@
     box-shadow: 6px 6px 0 var(--ink);
   }
 
+  .stat-tooltip {
+    min-width: 180px;
+    max-width: 250px;
+    padding: 0.6rem 0.8rem;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+
+  .stat-tooltip-text {
+    font-size: 0.75rem;
+  }
+
   .bar-row {
     grid-template-columns: 80px 1fr 120px;
     gap: 0.75rem;
@@ -503,15 +601,15 @@
 /* Pie Chart Styles */
 .pie-chart-container {
   display: grid;
-  grid-template-columns: 450px 1fr;
-  gap: 1.5rem;
+  grid-template-columns: 550px 1fr;
+  gap: 1rem;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0;
 }
 
 .pie-svg {
   width: 100%;
-  max-width: 450px;
+  max-width: 550px;
   height: auto;
 }
 
@@ -527,7 +625,7 @@
 .pie-legend {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .pie-legend-item {
@@ -535,7 +633,7 @@
   grid-template-columns: 24px 1fr auto;
   gap: 0.75rem;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0.35rem 0.5rem;
   border: 2px solid transparent;
   transition: all 0.2s ease;
 }
@@ -607,15 +705,13 @@
 .time-series-container {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .time-series-svg {
   width: 100%;
   height: auto;
-  border: 3px solid var(--ink);
   background: var(--paper);
-  box-shadow: 5px 5px 0 var(--ink);
 }
 
 .axis-label {

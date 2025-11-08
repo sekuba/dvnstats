@@ -497,7 +497,12 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
     return;
   }
 
-  const { color = "#1b9c85", label = "Value", showPoints = false, timeInterval = "hourly" } = options;
+  const {
+    color = "#1b9c85",
+    label = "Value",
+    showPoints = false,
+    timeInterval = "hourly",
+  } = options;
 
   // Create chart container
   const chartContainer = document.createElement("div");
@@ -783,9 +788,10 @@ function renderConfigChangesTimeSeries(stats) {
 
   // Update subtitle with actual time interval
   const intervalCapitalized = timeInterval.charAt(0).toUpperCase() + timeInterval.slice(1);
-  const totalConfigChanges = stats.timeSeries.totalConfigChanges !== undefined
-    ? formatNumber(stats.timeSeries.totalConfigChanges)
-    : document.getElementById("total-config-changes").textContent;
+  const totalConfigChanges =
+    stats.timeSeries.totalConfigChanges !== undefined
+      ? formatNumber(stats.timeSeries.totalConfigChanges)
+      : document.getElementById("total-config-changes").textContent;
   document.getElementById("time-series-config-subtitle").innerHTML =
     `${intervalCapitalized} config changes • <span id="total-config-changes">${totalConfigChanges}</span> total config changes`;
 
@@ -932,6 +938,51 @@ async function loadAndRender(datasetName = null) {
   }
 }
 
+// Initialize tooltip functionality for mobile tap handling
+function initTooltips() {
+  const statCards = document.querySelectorAll(".stat-card");
+
+  statCards.forEach((card) => {
+    card.addEventListener("click", (e) => {
+      // Check if we're on a touch device or small screen
+      const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
+
+      if (isMobile) {
+        // Prevent the click from immediately closing the tooltip
+        e.stopPropagation();
+
+        // Toggle tooltip-active class
+        const wasActive = card.classList.contains("tooltip-active");
+
+        // Close all other tooltips
+        statCards.forEach((otherCard) => {
+          if (otherCard !== card) {
+            otherCard.classList.remove("tooltip-active");
+          }
+        });
+
+        // Toggle this tooltip
+        if (wasActive) {
+          card.classList.remove("tooltip-active");
+        } else {
+          card.classList.add("tooltip-active");
+        }
+      }
+    });
+  });
+
+  // Close tooltips when clicking outside on mobile
+  document.addEventListener("click", (e) => {
+    const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
+
+    if (isMobile && !e.target.closest(".stat-card")) {
+      statCards.forEach((card) => {
+        card.classList.remove("tooltip-active");
+      });
+    }
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   availableDatasets = await discoverDatasets();
 
@@ -943,4 +994,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderDatasetButtons(availableDatasets);
 
   await loadAndRender(availableDatasets[0].name);
+
+  // Initialize tooltips after content is loaded
+  initTooltips();
 });
