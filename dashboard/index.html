@@ -106,6 +106,45 @@
           </div>
         </section>
 
+        <!-- Jargon Explanation Cards -->
+        <section class="stats-grid">
+          <div class="stat-card stat-card--explain">
+            <h2>DVN</h2>
+            <div class="stat-explanation">Decentralized Verifier Network - A smart contract (often a multisig) that validates crosschain messages.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">DVNs are the security layer that confirms packets traveled correctly across chains</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>ULN Config</h2>
+            <div class="stat-explanation">Ultra Light Node Configuration - Settings that define which DVNs and how many confirmations are required for packet validation.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Each application can customize their security by choosing specific DVN sets and thresholds</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>Endpoint ID (EID)</h2>
+            <div class="stat-explanation">Unique identifier for each blockchain in the LayerZero network. Different from chain IDs.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">LayerZero uses EIDs to identify chains consistently across all networks</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- PacketDelivered Event Flow Diagram -->
+        <section class="svg-diagram-container">
+          <h2 class="svg-diagram-title">PacketDelivered Event Flow</h2>
+          <p class="svg-diagram-subtitle">Visual representation of how crosschain packets are validated and delivered</p>
+          <div class="svg-diagram-wrapper">
+            <img src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" />
+          </div>
+          <div class="svg-diagram-tooltip">
+            <p class="svg-diagram-tooltip-text">This diagram shows the complete flow of a crosschain packet from source to destination, including DVN validation steps</p>
+          </div>
+        </section>
+
         <!-- Required DVN Count Distribution -->
         <section class="chart-section">
           <h2 class="chart-title">Required DVN Count</h2>
