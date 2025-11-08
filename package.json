@@ -13,7 +13,9 @@
     "format": "biome format --write .",
     "format:check": "biome check .",
     "stats:precompute": "node scripts/precomputePacketStats.js",
-    "stats:batch": "node scripts/precomputePacketStats.js --batch"
+    "stats:batch": "node scripts/precomputePacketStats.js --batch",
+    "stats:incremental": "node scripts/precomputePacketStats.js --incremental",
+    "stats:batch-incremental": "node scripts/precomputePacketStats.js --batch --incremental"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.1",
