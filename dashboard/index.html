@@ -64,7 +64,7 @@
             <div class="stat-value" id="stat-tracked">—</div>
             <div class="stat-label">Using ReceiveUln302</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Incoming packets validated by a library of which we decode the settings (config)</p>
+              <p class="stat-tooltip-text">Incoming packets validated by a library of which we decode the validation settings (config)</p>
             </div>
           </div>
 
@@ -73,7 +73,7 @@
             <div class="stat-value" id="stat-default-config">—</div>
             <div class="stat-label">No custom library config</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Incoming packets using the default smart contract <b>and</b> the default settings (config)</p>
+              <p class="stat-tooltip-text">Incoming packets using the default library <b>and</b> the default validation settings (config)</p>
             </div>
           </div>
 
@@ -109,26 +109,59 @@
         <!-- Jargon Explanation Cards -->
         <section class="stats-grid">
           <div class="stat-card stat-card--explain">
+            <h2>Packet</h2>
+            <div class="stat-explanation">A crosschain message in the LayerZero protocol. In most cases, it contains a single crosschain transaction between two OApps. Transfering a crosschain token generates a packet.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Packets contain a message payload, source EID and destination EID, source OApp address and destination OApp address</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
             <h2>DVN</h2>
-            <div class="stat-explanation">Decentralized Verifier Network - A smart contract (often a multisig) that validates crosschain messages.</div>
+            <div class="stat-explanation">Decentralized Verifier Network - A single smart contract that validates packets. Each DVN defines its validation logic, but the vast majority behaves like multisigs. Can be configured by the OApp owner or LayerZero (fallback).</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">DVNs are the security layer that confirms packets traveled correctly across chains</p>
+              <p class="stat-tooltip-text">DVN is largely a misnomer, implying multiple validators where in reality there is always a single smart contract and often validation of a single entity's signature</p>
+            </div>
+          </div>
+
+
+          <div class="stat-card stat-card--explain">
+            <h2>OApp</h2>
+            <div class="stat-explanation">Omnichain Application - A smart contract application capable of sending and receiving crosschain messages. Usually not owned by LayerZero, but always using the LayerZero protocol for communication.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Most OApps implement token functions. There is no restriction on what an OApp can be, it just needs to include the standard LayerZero messaging interface</p>
             </div>
           </div>
 
           <div class="stat-card stat-card--explain">
-            <h2>ULN Config</h2>
-            <div class="stat-explanation">Ultra Light Node Configuration - Settings that define which DVNs and how many confirmations are required for packet validation.</div>
+            <h2>OFT</h2>
+            <div class="stat-explanation">Omnichain Fungible Token - An OApp standard that is also an ERC-20 token. Networking these tokens across chains via LayerZero allows for crosschain asset transfers.</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Each application can customize their security by choosing specific DVN sets and thresholds</p>
+              <p class="stat-tooltip-text">OFTs are the most widely used type of OApp. OFT can refer to a single token on a single chain or the abstracted set of all tokens of the same type across chains</p>
             </div>
           </div>
 
           <div class="stat-card stat-card--explain">
-            <h2>Endpoint ID (EID)</h2>
-            <div class="stat-explanation">Unique identifier for each blockchain in the LayerZero network. Different from chain IDs.</div>
+            <h2>EID</h2>
+            <div class="stat-explanation">Endpoint ID - A unique identifier for each blockchain in the LayerZero network. Different from chain IDs but serving the same purpose.</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">LayerZero uses EIDs to identify chains consistently across all networks</p>
+              <p class="stat-tooltip-text">EIDs are needed because some blockchains use the same chain IDs (e.g. Aptos and Ethereum)</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>Validation Library</h2>
+            <div class="stat-explanation">The main smart contract storing the settings for validating packets. This can be a custom contract but is almost always the default LayerZero ReceiveUln302 (Ultralight Node).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">The library can be thought of like a panel of switches, allowing for fine-grained control over validation settings</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>ULN config</h2>
+            <div class="stat-explanation">UltraLightNode config - Security settings (validation config) stored in the validation library. These settings determine which DVNs and how many source chain confirmations are required for packet validation. Settings are managed by the OApp owner or LayerZero (fallback).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">ULN, ReceiveUln302 and library are just other words for this specialized smart contract</p>
             </div>
           </div>
         </section>

@@ -209,11 +209,6 @@
   box-shadow: 11px 11px 0 var(--success);
 }
 
-.stat-card--explain h2 {
-  color: var(--success);
-  font-weight: 700;
-}
-
 .stat-card h2 {
   margin: 0 0 0.75rem;
   font-size: 0.85rem;
