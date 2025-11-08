@@ -56,6 +56,11 @@ body {
   align-items: center;
 }
 
+.header-nav a {
+  text-align: center;
+  display: inline-block;
+}
+
 .endpoint {
   padding: 0.1rem 0.4rem;
   border: 2px solid var(--ink);
