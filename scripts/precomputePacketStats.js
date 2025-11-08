@@ -83,6 +83,7 @@ async function fetchPacketBatch(offset, limit, minTimestamp = null) {
         effectiveOptionalDVNs
         effectiveRequiredDVNCount
         effectiveOptionalDVNCount
+        effectiveOptionalDVNThreshold
         isConfigTracked
       }
     }
@@ -296,8 +297,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   let tracked = 0;
 
   const dvnCombos = new Map();
-  const dvnCounts = new Map();
-  const optionalDvnCounts = new Map();
+  const dvnSetThresholdCounts = new Map();
   const chainCounts = new Map();
   const srcChainCounts = new Map();
 
@@ -352,32 +352,106 @@ async function computeStatisticsIncremental(minTimestamp = null) {
         tracked++;
       }
 
-      // DVN combinations (required DVNs only) - store with localEid for correct resolution
+      // Compute DVN set threshold based on required and optional DVNs
       const requiredDVNs = Array.isArray(packet.effectiveRequiredDVNs)
         ? packet.effectiveRequiredDVNs
         : [];
+      const optionalDVNs = Array.isArray(packet.effectiveOptionalDVNs)
+        ? packet.effectiveOptionalDVNs
+        : [];
 
-      if (requiredDVNs.length > 0) {
-        const localEid = String(packet.localEid);
-        const sortedDvns = [...requiredDVNs].sort();
-        const comboKey = `${localEid}:${sortedDvns.join(",")}`;
+      const requiredCount = packet.effectiveRequiredDVNCount ?? requiredDVNs.length;
+      const optionalThreshold = packet.effectiveOptionalDVNThreshold ?? 0;
 
-        if (!dvnCombos.has(comboKey)) {
-          dvnCombos.set(comboKey, {
-            localEid,
-            dvns: sortedDvns,
-            count: 0,
-          });
-        }
-        dvnCombos.get(comboKey).count++;
+      let dvnSetThreshold = 0;
+      let comboConfig = null;
+
+      // Case 1: Only required DVNs (most common)
+      if (requiredCount > 0 && requiredCount < 255 && optionalThreshold === 0) {
+        dvnSetThreshold = requiredCount;
+        comboConfig = {
+          type: "required",
+          dvns: requiredDVNs,
+        };
+      }
+      // Case 2: Both required and optional DVNs
+      else if (requiredCount > 0 && requiredCount < 255 && optionalThreshold > 0) {
+        dvnSetThreshold = requiredCount + optionalThreshold;
+        comboConfig = {
+          type: "required_and_optional",
+          requiredDvns: requiredDVNs,
+          optionalDvns: optionalDVNs,
+          optionalThreshold,
+        };
+      }
+      // Case 3: Only optional DVNs (required count is sentinel 255)
+      else if (requiredCount === 255 && optionalThreshold > 0) {
+        dvnSetThreshold = optionalThreshold;
+        comboConfig = {
+          type: "optional_only",
+          optionalDvns: optionalDVNs,
+          optionalThreshold,
+        };
       }
 
-      // DVN count buckets
-      const requiredCount = packet.effectiveRequiredDVNCount ?? requiredDVNs.length;
-      dvnCounts.set(requiredCount, (dvnCounts.get(requiredCount) || 0) + 1);
+      // Track DVN set threshold counts
+      dvnSetThresholdCounts.set(
+        dvnSetThreshold,
+        (dvnSetThresholdCounts.get(dvnSetThreshold) || 0) + 1,
+      );
 
-      const optionalCount = packet.effectiveOptionalDVNCount ?? 0;
-      optionalDvnCounts.set(optionalCount, (optionalDvnCounts.get(optionalCount) || 0) + 1);
+      // Track DVN combinations if we have a valid config
+      if (comboConfig) {
+        const localEid = String(packet.localEid);
+        let comboKey;
+
+        if (comboConfig.type === "required") {
+          // Standard case: just required DVNs
+          const sortedDvns = [...comboConfig.dvns].sort();
+          comboKey = `${localEid}:required:${sortedDvns.join(",")}`;
+
+          if (!dvnCombos.has(comboKey)) {
+            dvnCombos.set(comboKey, {
+              localEid,
+              type: "required",
+              dvns: sortedDvns,
+              count: 0,
+            });
+          }
+        } else if (comboConfig.type === "required_and_optional") {
+          // Hybrid case: required DVNs + optional threshold
+          const sortedRequired = [...comboConfig.requiredDvns].sort();
+          const sortedOptional = [...comboConfig.optionalDvns].sort();
+          comboKey = `${localEid}:hybrid:${sortedRequired.join(",")}:${sortedOptional.join(",")}:${comboConfig.optionalThreshold}`;
+
+          if (!dvnCombos.has(comboKey)) {
+            dvnCombos.set(comboKey, {
+              localEid,
+              type: "required_and_optional",
+              requiredDvns: sortedRequired,
+              optionalDvns: sortedOptional,
+              optionalThreshold: comboConfig.optionalThreshold,
+              count: 0,
+            });
+          }
+        } else if (comboConfig.type === "optional_only") {
+          // Optional-only case
+          const sortedOptional = [...comboConfig.optionalDvns].sort();
+          comboKey = `${localEid}:optional:${sortedOptional.join(",")}:${comboConfig.optionalThreshold}`;
+
+          if (!dvnCombos.has(comboKey)) {
+            dvnCombos.set(comboKey, {
+              localEid,
+              type: "optional_only",
+              optionalDvns: sortedOptional,
+              optionalThreshold: comboConfig.optionalThreshold,
+              count: 0,
+            });
+          }
+        }
+
+        dvnCombos.get(comboKey).count++;
+      }
 
       // Chain tracking
       const localEid = String(packet.localEid);
@@ -418,8 +492,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
       defaultConfigPercentage: 0,
       trackedPercentage: 0,
       dvnCombinations: [],
-      dvnCountBuckets: [],
-      optionalDvnCountBuckets: [],
+      dvnSetThresholdBuckets: [],
       timeRange: { earliest: null, latest: null },
       chainBreakdown: [],
       srcChainBreakdown: [],
@@ -431,29 +504,37 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   console.log("Finalizing results...");
 
   const dvnCombinations = Array.from(dvnCombos.values())
-    .map((combo) => ({
-      localEid: combo.localEid,
-      dvns: combo.dvns,
-      count: combo.count,
-      percentage: (combo.count / total) * 100,
-    }))
+    .map((combo) => {
+      const base = {
+        localEid: combo.localEid,
+        type: combo.type,
+        count: combo.count,
+        percentage: (combo.count / total) * 100,
+      };
+
+      // Add type-specific fields
+      if (combo.type === "required") {
+        base.dvns = combo.dvns;
+      } else if (combo.type === "required_and_optional") {
+        base.requiredDvns = combo.requiredDvns;
+        base.optionalDvns = combo.optionalDvns;
+        base.optionalThreshold = combo.optionalThreshold;
+      } else if (combo.type === "optional_only") {
+        base.optionalDvns = combo.optionalDvns;
+        base.optionalThreshold = combo.optionalThreshold;
+      }
+
+      return base;
+    })
     .sort((a, b) => b.count - a.count);
 
-  const dvnCountBuckets = Array.from(dvnCounts.entries())
-    .map(([count, packets]) => ({
-      requiredDvnCount: count,
+  const dvnSetThresholdBuckets = Array.from(dvnSetThresholdCounts.entries())
+    .map(([threshold, packets]) => ({
+      dvnSetThreshold: threshold,
       packetCount: packets,
       percentage: (packets / total) * 100,
     }))
-    .sort((a, b) => a.requiredDvnCount - b.requiredDvnCount);
-
-  const optionalDvnCountBuckets = Array.from(optionalDvnCounts.entries())
-    .map(([count, packets]) => ({
-      optionalDvnCount: count,
-      packetCount: packets,
-      percentage: (packets / total) * 100,
-    }))
-    .sort((a, b) => a.optionalDvnCount - b.optionalDvnCount);
+    .sort((a, b) => a.dvnSetThreshold - b.dvnSetThreshold);
 
   const chainBreakdown = Array.from(chainCounts.entries())
     .map(([eid, count]) => ({
@@ -488,8 +569,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
     defaultConfigPercentage: (defaultConfigOnly / total) * 100,
     trackedPercentage: (tracked / total) * 100,
     dvnCombinations,
-    dvnCountBuckets,
-    optionalDvnCountBuckets,
+    dvnSetThresholdBuckets,
     chainBreakdown,
     srcChainBreakdown,
     timeRange: {

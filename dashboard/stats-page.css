@@ -473,6 +473,17 @@
   transform: scale(1.05);
 }
 
+.dvn-badge-optional {
+  background: var(--magenta) !important;
+  color: var(--paper);
+  font-weight: bold;
+}
+
+.dvn-badge-optional:hover {
+  background: var(--accent) !important;
+  color: var(--ink);
+}
+
 .combo-bar-container {
   height: 28px;
   border: 2px solid var(--ink);

@@ -169,18 +169,11 @@
         <!-- PacketDelivered Event Flow Diagram -->
         <img src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" class="svg-diagram" />
 
-        <!-- Required DVN Count Distribution -->
+        <!-- DVN Set Threshold Distribution -->
         <section class="chart-section">
-          <h2 class="chart-title">Required DVN Count</h2>
-          <p class="chart-subtitle">'Required' DVN sets are smart contracts (often Multisigs) that <b>must</b> validate incoming packets (0 and >4 grouped as "Other")</p>
-          <div id="dvn-count-chart" class="pie-chart"></div>
-        </section>
-
-        <!-- Optional DVN Count Distribution -->
-        <section class="chart-section">
-          <h2 class="chart-title">Optional DVN Count</h2>
-          <p class="chart-subtitle">'Optional' DVN sets are smart contracts configured with a threshold of how many in the set <b>must</b> validate incoming packets (0 excluded)</p>
-          <div id="optional-dvn-count-chart" class="pie-chart"></div>
+          <h2 class="chart-title">DVN Set Threshold</h2>
+          <p class="chart-subtitle">Number of DVNs that <b>must</b> validate incoming packets. Combines required DVNs and optional DVN thresholds (0 and >4 grouped as "Other")</p>
+          <div id="dvn-set-threshold-chart" class="pie-chart"></div>
         </section>
 
         <!-- Top DVN Combinations -->
