@@ -37,34 +37,25 @@
             <div class="stat-value" id="stat-total">—</div>
             <div class="stat-label">Analyzed packets</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Placeholder tooltip for Total Packets</p>
+              <p class="stat-tooltip-text">Each packet is usually a single crosschain transaction, rarely a bundle of them</p>
             </div>
           </div>
 
           <div class="stat-card stat-card--highlight">
-            <h2>All-Default Config</h2>
+            <h2>All-Default</h2>
             <div class="stat-value" id="stat-all-default">—</div>
-            <div class="stat-label">Using both defaults</div>
+            <div class="stat-label">No custom security</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Placeholder tooltip for All-Default Config</p>
+              <p class="stat-tooltip-text">Incoming packets validated by falling back to the standard LayerZero validation library and settings.</p>
             </div>
           </div>
 
           <div class="stat-card">
             <h2>Default Library</h2>
             <div class="stat-value" id="stat-default-lib">—</div>
-            <div class="stat-label">Using default library</div>
+            <div class="stat-label">No custom library</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Placeholder tooltip for Default Library</p>
-            </div>
-          </div>
-
-          <div class="stat-card">
-            <h2>Default Config</h2>
-            <div class="stat-value" id="stat-default-config">—</div>
-            <div class="stat-label">Using default ULN config</div>
-            <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Placeholder tooltip for Default Config</p>
+              <p class="stat-tooltip-text">Incoming packets using the default smart contract (library) for validation</p>
             </div>
           </div>
 
@@ -73,31 +64,59 @@
             <div class="stat-value" id="stat-tracked">—</div>
             <div class="stat-label">Using ReceiveUln302</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Placeholder tooltip for Tracked Library</p>
+              <p class="stat-tooltip-text">Incoming packets validated by a library of which we decode the settings (config)</p>
             </div>
           </div>
 
           <div class="stat-card">
-            <h2>DVN Combinations</h2>
-            <div class="stat-value" id="stat-dvn-combos">—</div>
-            <div class="stat-label">Unique required DVN sets</div>
+            <h2>Default Config</h2>
+            <div class="stat-value" id="stat-default-config">—</div>
+            <div class="stat-label">No custom library config</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Placeholder tooltip for DVN Combinations</p>
+              <p class="stat-tooltip-text">Incoming packets using the default smart contract <b>and</b> the default settings (config)</p>
+            </div>
+          </div>
+
+
+          <div class="stat-card stat-card--highlight">
+            <h2>Required DVN Combinations</h2>
+            <div class="stat-value" id="stat-dvn-combos">—</div>
+            <div class="stat-label">Unique DVN sets by label</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Number of unique DVN contract sets used for validation in the 'required' setup</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Chains indexed</h2>
+            <div class="stat-value">18</div>
+            <div class="stat-label">EVM chains</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">All incoming packets and validation configs on 18 EVM chains are indexed</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Chains seen</h2>
+            <div class="stat-value">138</div>
+            <div class="stat-label">Unique endpoint IDs</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Unique source chains of incoming packets (with known validation settings)</p>
             </div>
           </div>
         </section>
 
         <!-- Required DVN Count Distribution -->
         <section class="chart-section">
-          <h2 class="chart-title">Required DVN Count Distribution</h2>
-          <p class="chart-subtitle">Packets using 1-4 required DVNs (0 and >4 grouped as "Other")</p>
+          <h2 class="chart-title">Required DVN Count</h2>
+          <p class="chart-subtitle">'Required' DVN sets are smart contracts (often Multisigs) that <b>must</b> validate incoming packets (0 and >4 grouped as "Other")</p>
           <div id="dvn-count-chart" class="pie-chart"></div>
         </section>
 
         <!-- Optional DVN Count Distribution -->
         <section class="chart-section">
-          <h2 class="chart-title">Optional DVN Count Distribution</h2>
-          <p class="chart-subtitle">For packets using optional DVNs (0 excluded)</p>
+          <h2 class="chart-title">Optional DVN Count</h2>
+          <p class="chart-subtitle">'Optional' DVN sets are smart contracts configured with a threshold of how many in the set <b>must</b> validate incoming packets (0 excluded)</p>
           <div id="optional-dvn-count-chart" class="pie-chart"></div>
         </section>
 

@@ -497,7 +497,12 @@ function renderTimeSeriesChart(containerId, data, options = {}) {
     return;
   }
 
-  const { color = "#1b9c85", label = "Value", showPoints = false, timeInterval = "hourly" } = options;
+  const {
+    color = "#1b9c85",
+    label = "Value",
+    showPoints = false,
+    timeInterval = "hourly",
+  } = options;
 
   // Create chart container
   const chartContainer = document.createElement("div");
@@ -783,9 +788,10 @@ function renderConfigChangesTimeSeries(stats) {
 
   // Update subtitle with actual time interval
   const intervalCapitalized = timeInterval.charAt(0).toUpperCase() + timeInterval.slice(1);
-  const totalConfigChanges = stats.timeSeries.totalConfigChanges !== undefined
-    ? formatNumber(stats.timeSeries.totalConfigChanges)
-    : document.getElementById("total-config-changes").textContent;
+  const totalConfigChanges =
+    stats.timeSeries.totalConfigChanges !== undefined
+      ? formatNumber(stats.timeSeries.totalConfigChanges)
+      : document.getElementById("total-config-changes").textContent;
   document.getElementById("time-series-config-subtitle").innerHTML =
     `${intervalCapitalized} config changes • <span id="total-config-changes">${totalConfigChanges}</span> total config changes`;
 
