@@ -30,6 +30,25 @@ export const APP_CONFIG = Object.freeze({
     BATCH_SIZE: 16,
   }),
 
+  BLOCK_REASONS: Object.freeze({
+    STALE_PEER: "stale-peer",
+    ZERO_PEER: "zero-peer",
+    IMPLICIT_BLOCK: "implicit-block",
+    EXPLICIT_BLOCK: "explicit-block",
+    DEAD_DVN: "dead-dvn",
+    BLOCKING_DVN: "blocking-dvn",
+    MISSING_LIBRARY: "missing-library",
+  }),
+
+  BLOCK_REASON_LABELS: Object.freeze({
+    "stale-peer": "Stale peer",
+    "zero-peer": "Zero peer",
+    "implicit-block": "No peer configured",
+    "dead-dvn": "Dead DVN",
+    "blocking-dvn": "Blocking DVN",
+    "missing-library": "Missing default receive library",
+  }),
+
   FEEDBACK: Object.freeze({
     TOAST_DURATION: 1600,
     MAX_TOASTS: 6,

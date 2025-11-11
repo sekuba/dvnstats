@@ -1,7 +1,7 @@
 import { APP_CONFIG } from "../config.js";
-import { isZeroAddress, normalizeKey } from "../core.js";
+import { normalizeKey } from "../core.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
-import { toString } from "../utils/NumberUtils.js";
+import { ensureArray, isDefined, toString } from "../utils/NumberUtils.js";
 
 const SYNTHETIC_ID_PREFIX = "synthetic:";
 
@@ -35,13 +35,12 @@ export function normalizeSecurityConfig({
     return null;
   }
 
-  const normalizedLocalEid =
-    config?.localEid !== undefined && config?.localEid !== null
-      ? toString(config.localEid)
-      : toString(localEid);
+  const normalizedLocalEid = isDefined(config?.localEid)
+    ? toString(config.localEid)
+    : toString(localEid);
 
   if (config) {
-    const fallbackSource = Array.isArray(config.fallbackFields) ? config.fallbackFields : [];
+    const fallbackSource = ensureArray(config.fallbackFields);
     const fallbackFields = orderFallbackFields(new Set(fallbackSource));
 
     return {
@@ -52,7 +51,7 @@ export function normalizeSecurityConfig({
       oappId: config.oappId ?? oappId ?? null,
       fallbackFields,
       sourceType: config.sourceType || "materialized",
-      synthetic: Boolean(config.synthetic),
+      synthetic: !!config.synthetic,
       peerStateHint: derivePeerStateHint(config, peerRecord, { isSynthetic: false }),
     };
   }
@@ -81,7 +80,7 @@ export function derivePeerStateHint(row, peerRecord, { isSynthetic = false } = {
     return isSynthetic ? "implicit-blocked" : "not-configured";
   }
 
-  if (isZeroAddress(peer)) {
+  if (AddressUtils.isZero(peer)) {
     if (peerRecord && peerRecord.fromPacketDelivered) {
       return "auto-discovered";
     }
@@ -113,9 +112,9 @@ function createSyntheticSecurityConfig({
   const defaultLibraryAddress = AddressUtils.normalizeSafe(defaultLibrary?.library);
   const overrideLibraryAddress = AddressUtils.normalizeSafe(overrideLibrary?.library);
   const effectiveReceiveLibrary =
-    overrideLibraryAddress && !isZeroAddress(overrideLibraryAddress)
+    overrideLibraryAddress && !AddressUtils.isZero(overrideLibraryAddress)
       ? overrideLibraryAddress
-      : defaultLibraryAddress && !isZeroAddress(defaultLibraryAddress)
+      : defaultLibraryAddress && !AddressUtils.isZero(defaultLibraryAddress)
         ? defaultLibraryAddress
         : null;
 
@@ -131,7 +130,7 @@ function createSyntheticSecurityConfig({
     }
   }
 
-  if (overrideLibraryAddress && !isZeroAddress(overrideLibraryAddress)) {
+  if (overrideLibraryAddress && !AddressUtils.isZero(overrideLibraryAddress)) {
     usesDefaultLibrary = false;
   } else if (effectiveReceiveLibrary) {
     fallbackFields.add("receiveLibrary");
@@ -153,7 +152,7 @@ function createSyntheticSecurityConfig({
   if (!peerRecord) {
     peer = APP_CONFIG.ADDRESSES.ZERO;
     peerStateHint = "implicit-blocked";
-  } else if (isZeroAddress(peer)) {
+  } else if (AddressUtils.isZero(peer)) {
     peerStateHint = "explicit-blocked";
   } else if (peerRecord.fromPacketDelivered) {
     peerStateHint = "auto-discovered";
@@ -161,7 +160,7 @@ function createSyntheticSecurityConfig({
     peerStateHint = "explicit";
   }
 
-  if (!peerOappId && peer && !isZeroAddress(peer)) {
+  if (!peerOappId && peer && !AddressUtils.isZero(peer)) {
     peerOappId = `${eid}_${AddressUtils.normalizeSafe(peer)}`;
   }
 
@@ -229,7 +228,7 @@ function resolveConfig({ isConfigTracked, defaultCfg, overrideCfg, fallbackField
     usesSentinel = overrideCfg.requiredDVNCount === REQUIRED_DVN_SENTINEL;
 
     FALLBACK_FIELD_ORDER.forEach((field) => {
-      if (overrideCfg[field] === undefined || overrideCfg[field] === null) {
+      if (isNullish(overrideCfg[field])) {
         fallbackFields.add(field);
       }
     });
@@ -237,7 +236,7 @@ function resolveConfig({ isConfigTracked, defaultCfg, overrideCfg, fallbackField
     assignConfig(effective, defaultCfg);
     usesSentinel = defaultCfg.requiredDVNCount === REQUIRED_DVN_SENTINEL;
     FALLBACK_FIELD_ORDER.forEach((field) => {
-      if (defaultCfg[field] !== undefined && defaultCfg[field] !== null) {
+      if (isDefined(defaultCfg[field])) {
         fallbackFields.add(field);
       }
     });
@@ -256,21 +255,18 @@ function normalizeConfig(input) {
   }
 
   const confirmations = input.confirmations ?? null;
-  const requiredDVNCount =
-    input.requiredDVNCount !== undefined && input.requiredDVNCount !== null
-      ? Number(input.requiredDVNCount)
-      : null;
-  const optionalDVNCount =
-    input.optionalDVNCount !== undefined && input.optionalDVNCount !== null
-      ? Number(input.optionalDVNCount)
-      : null;
-  const optionalDVNThreshold =
-    input.optionalDVNThreshold !== undefined && input.optionalDVNThreshold !== null
-      ? Number(input.optionalDVNThreshold)
-      : null;
+  const requiredDVNCount = isDefined(input.requiredDVNCount) ? Number(input.requiredDVNCount) : null;
+  const optionalDVNCount = isDefined(input.optionalDVNCount) ? Number(input.optionalDVNCount) : null;
+  const optionalDVNThreshold = isDefined(input.optionalDVNThreshold)
+    ? Number(input.optionalDVNThreshold)
+    : null;
 
-  const requiredDVNs = Array.isArray(input.requiredDVNs) ? dedupeAddresses(input.requiredDVNs) : [];
-  const optionalDVNs = Array.isArray(input.optionalDVNs) ? dedupeAddresses(input.optionalDVNs) : [];
+  const requiredDVNs = ensureArray(input.requiredDVNs).length
+    ? dedupeAddresses(input.requiredDVNs)
+    : [];
+  const optionalDVNs = ensureArray(input.optionalDVNs).length
+    ? dedupeAddresses(input.optionalDVNs)
+    : [];
 
   const hasValues =
     confirmations !== null ||
@@ -315,22 +311,12 @@ function emptyEffectiveConfig() {
 }
 
 function assignConfig(target, source) {
-  target.confirmations =
-    source.confirmations !== undefined && source.confirmations !== null
-      ? source.confirmations
-      : null;
-  target.requiredDVNCount =
-    source.requiredDVNCount !== undefined && source.requiredDVNCount !== null
-      ? source.requiredDVNCount
-      : null;
-  target.optionalDVNCount =
-    source.optionalDVNCount !== undefined && source.optionalDVNCount !== null
-      ? source.optionalDVNCount
-      : 0;
-  target.optionalDVNThreshold =
-    source.optionalDVNThreshold !== undefined && source.optionalDVNThreshold !== null
-      ? source.optionalDVNThreshold
-      : null;
+  target.confirmations = isDefined(source.confirmations) ? source.confirmations : null;
+  target.requiredDVNCount = isDefined(source.requiredDVNCount) ? source.requiredDVNCount : null;
+  target.optionalDVNCount = isDefined(source.optionalDVNCount) ? source.optionalDVNCount : 0;
+  target.optionalDVNThreshold = isDefined(source.optionalDVNThreshold)
+    ? source.optionalDVNThreshold
+    : null;
   target.requiredDVNs = source.requiredDVNs ?? [];
   target.optionalDVNs = source.optionalDVNs ?? [];
 }
@@ -341,7 +327,7 @@ function dedupeAddresses(addresses) {
   for (const address of addresses) {
     if (!address) continue;
     const normalized = AddressUtils.normalizeSafe(address);
-    if (!normalized || isZeroAddress(normalized) || seen.has(normalized)) {
+    if (!normalized || AddressUtils.isZero(normalized) || seen.has(normalized)) {
       continue;
     }
     seen.add(normalized);

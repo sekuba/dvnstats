@@ -1,5 +1,7 @@
-import { resolveChainDisplayLabel } from "../../core.js";
+import { createFormattedCell } from "../../formatters/cellFormatters.js";
+import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../utils/DvnUtils.js";
+import { ensureArray } from "../../utils/NumberUtils.js";
 import { OAppFormatter } from "./formatters/OAppFormatter.js";
 import { SecurityConfigFormatter } from "./formatters/SecurityConfigFormatter.js";
 import { buildQueryRegistry } from "./QueryRegistry.js";
@@ -21,21 +23,26 @@ export class QueryCoordinator {
     this.securityConfigFormatter = new SecurityConfigFormatter(
       this.chainMetadata,
       this.aliasStore,
-      (chainId) => this.getChainDisplayLabel(chainId),
+      (chainId) => getChainDisplayLabel(chainId, this.chainMetadata),
       (addresses, meta, localEidOverride) =>
         this.resolveDvnLabels(addresses, meta, localEidOverride),
     );
     this.oappFormatter = new OAppFormatter(this.aliasStore, (chainId) =>
-      this.getChainDisplayLabel(chainId),
+      getChainDisplayLabel(chainId, this.chainMetadata),
     );
   }
 
   getChainDisplayLabel(chainId) {
-    return resolveChainDisplayLabel(this.chainMetadata, chainId);
+    return getChainDisplayLabel(chainId, this.chainMetadata);
   }
 
   formatOAppIdCell(oappId) {
-    return this.oappFormatter.formatOAppIdCell(oappId);
+    if (!oappId) {
+      return createFormattedCell(["—"], "");
+    }
+    const alias = this.aliasStore.get(oappId);
+    const lines = alias ? [alias, `ID ${oappId}`] : [oappId];
+    return createFormattedCell(lines, oappId, { oappId });
   }
 
   resolveDvnLabels(addresses, meta, localEidOverride) {
@@ -140,7 +147,7 @@ export class QueryCoordinator {
 
       if (typeof config.processResponse === "function") {
         const result = (await config.processResponse(payload, { ...baseMeta })) || {};
-        rows = Array.isArray(result.rows) ? result.rows : [];
+        rows = ensureArray(result.rows);
         if (result.meta && typeof result.meta === "object") {
           finalMeta = { ...baseMeta, ...result.meta };
         }
@@ -204,7 +211,7 @@ export class QueryCoordinator {
         if (result && typeof result.then === "function") {
           result = await result;
         }
-        rows = Array.isArray(result.rows) ? result.rows : [];
+        rows = ensureArray(result.rows);
         if (result?.meta && typeof result.meta === "object") {
           finalMeta = { ...baseMeta, ...result.meta };
         }

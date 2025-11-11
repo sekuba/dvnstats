@@ -1,4 +1,4 @@
-import { coerceToNumber } from "./NumberUtils.js";
+import { coerceToNumber, isDefined } from "./NumberUtils.js";
 
 export function calculateTotalRoutePackets(routeStats) {
   if (!Array.isArray(routeStats)) {
@@ -68,14 +68,10 @@ export function createRouteStatsMap(routeStatsRaw, normalizeKey) {
       packetCount: safeCount,
       share,
       percent: share > 0 ? share * 100 : 0,
-      lastPacketBlock:
-        stat?.lastPacketBlock !== undefined && stat?.lastPacketBlock !== null
-          ? Number(stat.lastPacketBlock)
-          : null,
-      lastPacketTimestamp:
-        stat?.lastPacketTimestamp !== undefined && stat?.lastPacketTimestamp !== null
-          ? Number(stat.lastPacketTimestamp)
-          : null,
+      lastPacketBlock: isDefined(stat?.lastPacketBlock) ? Number(stat.lastPacketBlock) : null,
+      lastPacketTimestamp: isDefined(stat?.lastPacketTimestamp)
+        ? Number(stat.lastPacketTimestamp)
+        : null,
     });
   });
 

@@ -1,11 +1,43 @@
+import { APP_CONFIG } from "../../config.js";
 import { splitOAppId } from "../../core.js";
 import { AddressUtils } from "../../utils/AddressUtils.js";
 import {
   calculateTotalRoutePackets,
   enrichRouteStatsWithShares,
 } from "../../utils/MetricsUtils.js";
+import { ensureArray, isDefined, isNullish } from "../../utils/NumberUtils.js";
+import { createGraphEdge } from "../factories/SecurityEntryFactory.js";
 
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
 const ZERO_ADDRESS = AddressUtils.constants.ZERO;
+
+function assignRouteMetrics(target, routeMetric, fallback = null) {
+  target.routePacketCount = routeMetric?.packetCount ?? fallback?.routePacketCount ?? 0;
+  target.routePacketShare = routeMetric?.share ?? fallback?.routePacketShare ?? 0;
+  target.routePacketPercent = routeMetric?.percent ?? fallback?.routePacketPercent ?? 0;
+  target.routeLastPacketBlock =
+    routeMetric?.lastPacketBlock ?? fallback?.routeLastPacketBlock ?? null;
+  target.routeLastPacketTimestamp =
+    routeMetric?.lastPacketTimestamp ?? fallback?.routeLastPacketTimestamp ?? null;
+}
+
+function updateRouteMetricsIfBetter(target, routeMetric, configRouteMetric) {
+  const currentCount = target.routePacketCount ?? 0;
+
+  if (routeMetric && routeMetric.packetCount > currentCount) {
+    target.routePacketCount = routeMetric.packetCount;
+    target.routePacketShare = routeMetric.share ?? target.routePacketShare;
+    target.routePacketPercent = routeMetric.percent ?? target.routePacketPercent;
+    target.routeLastPacketBlock = routeMetric.lastPacketBlock ?? target.routeLastPacketBlock;
+    target.routeLastPacketTimestamp = routeMetric.lastPacketTimestamp ?? target.routeLastPacketTimestamp;
+  } else if (configRouteMetric && configRouteMetric.routePacketCount > currentCount) {
+    target.routePacketCount = configRouteMetric.routePacketCount;
+    target.routePacketShare = configRouteMetric.routePacketShare;
+    target.routePacketPercent = configRouteMetric.routePacketPercent;
+    target.routeLastPacketBlock = configRouteMetric.routeLastPacketBlock;
+    target.routeLastPacketTimestamp = configRouteMetric.routeLastPacketTimestamp;
+  }
+}
 
 const isZeroOAppId = (value) => {
   if (!value || typeof value !== "string") {
@@ -34,11 +66,11 @@ export function buildPeerInfo(config) {
     const parsed = splitOAppId(peerOappId);
     derivedLocalEid = parsed.localEid ?? null;
     derivedAddress = parsed.address ?? null;
-  } else if (config.peerLocalEid !== undefined && config.peerLocalEid !== null) {
+  } else if (isDefined(config.peerLocalEid)) {
     derivedLocalEid = String(config.peerLocalEid);
-  } else if (config.eid !== undefined && config.eid !== null) {
+  } else if (isDefined(config.eid)) {
     derivedLocalEid = String(config.eid);
-  } else if (config.localEid !== undefined && config.localEid !== null) {
+  } else if (isDefined(config.localEid)) {
     derivedLocalEid = String(config.localEid);
   }
 
@@ -55,7 +87,7 @@ export function buildPeerInfo(config) {
     peerOappId = null;
   }
 
-  const resolved = Boolean(peerOappId && derivedAddress);
+  const resolved = !!(peerOappId && derivedAddress);
 
   return {
     rawPeer,
@@ -74,7 +106,7 @@ export function shouldIncludeSecurityEntry(entry) {
     return false;
   }
 
-  const synthetic = Boolean(entry.synthetic);
+  const synthetic = !!(entry.synthetic);
   const sourceType = entry.sourceType || null;
   const peerState = entry.peerStateHint || null;
   const hasMaterializedConfig = !synthetic || sourceType === "materialized";
@@ -88,11 +120,11 @@ export function shouldIncludeSecurityEntry(entry) {
   }
 
   if (synthetic) {
-    const required = Array.isArray(entry.requiredDVNs) ? entry.requiredDVNs : [];
-    const optional = Array.isArray(entry.optionalDVNs) ? entry.optionalDVNs : [];
+    const required = ensureArray(entry.requiredDVNs);
+    const optional = ensureArray(entry.optionalDVNs);
     const hasBlockingDvn = [...required, ...optional].some((addr) => AddressUtils.isDead(addr));
 
-    if (!entry.peerOAppId) {
+    if (!entry.peerOappId) {
       if (peerState === "explicit-blocked") {
         return true;
       }
@@ -119,7 +151,7 @@ export function finalizeNodeMetrics({
   originalSecuritySummary = null,
   edgesMap = null,
 }) {
-  const normalize = (value) => (value === undefined || value === null ? null : String(value));
+  const normalize = (value) => (isNullish(value) ? null : String(value));
 
   const allowedSrcEids = new Set(
     node.securityConfigs.map((entry) => normalize(entry.srcEid)).filter((value) => value !== null),
@@ -184,7 +216,7 @@ export function finalizeNodeMetrics({
             metric && metric.lastPacketTimestamp !== undefined ? metric.lastPacketTimestamp : null;
           if (context.config && context.config.unresolvedPeer && !edgeRecord.peerStateHint) {
             edgeRecord.peerStateHint = "implicit-blocked";
-            edgeRecord.blockReasonHint = edgeRecord.blockReasonHint || "implicit-block";
+            edgeRecord.blockReasonHint = edgeRecord.blockReasonHint || BLOCK_REASONS.IMPLICIT_BLOCK;
           }
         }
       }
@@ -260,11 +292,11 @@ export function addPeerEdges({
       null;
     let resolvedBlockReason = blockReasonHint;
     const unresolvedPeer =
-      Boolean(contextConfig.unresolvedPeer) ||
-      Boolean(peerInfo?.unresolvedPeer) ||
-      (!peerRaw && !contextConfig.peerOAppId && peerStateHint === "implicit-blocked");
+      !!(contextConfig.unresolvedPeer) ||
+      !!(peerInfo?.unresolvedPeer) ||
+      (!peerRaw && !contextConfig.peerOappId && peerStateHint === "implicit-blocked");
     if (!resolvedBlockReason && unresolvedPeer) {
-      resolvedBlockReason = "implicit-block";
+      resolvedBlockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
     }
     if (resolvedBlockReason && !context.blockReasonHint) {
       context.blockReasonHint = resolvedBlockReason;
@@ -275,30 +307,25 @@ export function addPeerEdges({
       contextConfig && typeof contextConfig.routePacketCount === "number" ? contextConfig : null;
 
     if (!existing) {
-      edges.set(key, {
+      const newEdge = createGraphEdge({
         from: edgeFrom,
         to: edgeTo,
         srcEid,
         peerRaw,
         peerLocalEid,
-        peerOAppId: edgeFrom,
+        peerOappId: edgeFrom,
         peerStateHint,
         blockReasonHint: resolvedBlockReason,
-        isStalePeer: Boolean(context.isStalePeer),
+        isStalePeer: !!context.isStalePeer,
         libraryStatus: context.libraryStatus ?? contextConfig.libraryStatus ?? null,
-        synthetic: Boolean(context.synthetic ?? contextConfig.synthetic),
+        synthetic: !!(context.synthetic ?? contextConfig.synthetic),
         sourceType: context.sourceType ?? contextConfig.sourceType ?? null,
-        routePacketCount: routeMetric?.packetCount ?? configRouteMetric?.routePacketCount ?? 0,
-        routePacketShare: routeMetric?.share ?? configRouteMetric?.routePacketShare ?? 0,
-        routePacketPercent: routeMetric?.percent ?? configRouteMetric?.routePacketPercent ?? 0,
-        routeLastPacketBlock:
-          routeMetric?.lastPacketBlock ?? configRouteMetric?.routeLastPacketBlock ?? null,
-        routeLastPacketTimestamp:
-          routeMetric?.lastPacketTimestamp ?? configRouteMetric?.routeLastPacketTimestamp ?? null,
       });
+      assignRouteMetrics(newEdge, routeMetric, configRouteMetric);
+      edges.set(key, newEdge);
       context.attached = true;
     } else {
-      if (existing.srcEid === null || existing.srcEid === undefined) {
+      if (isNullish(existing.srcEid)) {
         existing.srcEid = srcEid;
       }
       if (!existing.peerRaw && peerRaw) {
@@ -328,26 +355,7 @@ export function addPeerEdges({
         existing.synthetic = true;
       }
 
-      const bestRouteCount = existing.routePacketCount ?? 0;
-      if (routeMetric && routeMetric.packetCount > bestRouteCount) {
-        existing.routePacketCount = routeMetric.packetCount;
-        existing.routePacketShare = routeMetric.share ?? existing.routePacketShare;
-        existing.routePacketPercent = routeMetric.percent ?? existing.routePacketPercent;
-        existing.routeLastPacketBlock =
-          routeMetric.lastPacketBlock ?? existing.routeLastPacketBlock;
-        existing.routeLastPacketTimestamp =
-          routeMetric.lastPacketTimestamp ?? existing.routeLastPacketTimestamp;
-      }
-      if (
-        configRouteMetric &&
-        configRouteMetric.routePacketCount > (existing.routePacketCount ?? 0)
-      ) {
-        existing.routePacketCount = configRouteMetric.routePacketCount;
-        existing.routePacketShare = configRouteMetric.routePacketShare;
-        existing.routePacketPercent = configRouteMetric.routePacketPercent;
-        existing.routeLastPacketBlock = configRouteMetric.routeLastPacketBlock;
-        existing.routeLastPacketTimestamp = configRouteMetric.routeLastPacketTimestamp;
-      }
+      updateRouteMetricsIfBetter(existing, routeMetric, configRouteMetric);
       context.attached = true;
     }
 

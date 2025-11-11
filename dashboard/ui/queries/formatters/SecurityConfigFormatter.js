@@ -1,12 +1,22 @@
 import { APP_CONFIG } from "../../../config.js";
-import { formatTimestampValue, isZeroAddress, splitOAppId } from "../../../core.js";
+import { splitOAppId } from "../../../core.js";
+import { formatTimestampValue } from "../../../formatters/valueFormatters.js";
+import { AddressUtils } from "../../../utils/AddressUtils.js";
 import {
   createFormattedCell,
   formatRouteActivityLine,
   formatUpdateInfo,
 } from "../../../formatters/cellFormatters.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../../utils/DvnUtils.js";
-import { bigIntSafe, coerceToNumber } from "../../../utils/NumberUtils.js";
+import { bigIntSafe, coerceToNumber, ensureArray, isNullish } from "../../../utils/NumberUtils.js";
+
+const BLOCK_PRIORITY = [
+  "peer-zero-explicit",
+  "peer-zero-implicit",
+  "required-dead-address",
+  "required-dead-lz",
+  "default-library-zero",
+];
 
 export class SecurityConfigFormatter {
   constructor(chainMetadata, aliasStore, getChainDisplayLabel, resolveDvnLabels) {
@@ -89,14 +99,6 @@ export class SecurityConfigFormatter {
         );
       });
 
-    const BLOCK_PRIORITY = [
-      "peer-zero-explicit",
-      "peer-zero-implicit",
-      "required-dead-address",
-      "required-dead-lz",
-      "default-library-zero",
-    ];
-
     blocked
       .map((entry) => {
         const priorityIndex = entry.blockingReasons.length
@@ -170,15 +172,13 @@ export class SecurityConfigFormatter {
   }
 
   prepareRouteActivity(meta) {
-    const stats = Array.isArray(meta?.routeStats) ? meta.routeStats : [];
+    const stats = ensureArray(meta?.routeStats);
     const map = new Map();
     let summed = 0;
 
     stats.forEach((stat) => {
       const key = stat?.srcEid ?? stat?.eid;
-      if (key === undefined || key === null) {
-        return;
-      }
+      if (isNullish(key)) return;
       const normalizedKey = String(key);
       const count = coerceToNumber(stat?.packetCount);
       map.set(normalizedKey, {
@@ -201,7 +201,7 @@ export class SecurityConfigFormatter {
 
   getRouteActivityForRow(row, activityData) {
     const key = row?.eid ?? null;
-    const normalizedKey = key === null || key === undefined ? null : String(key);
+    const normalizedKey = isNullish(key) ? null : String(key);
     const entry = normalizedKey ? activityData.map.get(normalizedKey) : undefined;
     const count = entry?.count ?? 0;
     const totalPackets = activityData.totalPackets > 0 ? activityData.totalPackets : 0;
@@ -223,7 +223,7 @@ export class SecurityConfigFormatter {
     let peerState = row.peerStateHint || null;
     if (!peerState) {
       const peerRecord = peerMap?.get(String(row.eid));
-      const isZeroPeer = isZeroAddress(row.peer);
+      const isZeroPeer = AddressUtils.isZero(row.peer);
       if (peerRecord) {
         if (isZeroPeer && !peerRecord.fromPacketDelivered) {
           peerState = "explicitly-blocked";
@@ -253,7 +253,7 @@ export class SecurityConfigFormatter {
       seenTypes.add("peer-zero-implicit");
     }
 
-    const requiredDvns = Array.isArray(row.effectiveRequiredDVNs) ? row.effectiveRequiredDVNs : [];
+    const requiredDvns = ensureArray(row.effectiveRequiredDVNs);
     const normalizedRequired = requiredDvns
       .map((addr) => String(addr || "").toLowerCase())
       .filter(Boolean);
@@ -459,7 +459,7 @@ export class SecurityConfigFormatter {
   formatPeer(row, peerMap, highlight = false, routeActivity = null) {
     const ctx = this.derivePeerContext(row);
     const peerData = peerMap?.get(String(row.eid));
-    const isZeroPeer = isZeroAddress(row.peer);
+    const isZeroPeer = AddressUtils.isZero(row.peer);
 
     let peerState = row.peerStateHint || null;
     if (!peerState) {

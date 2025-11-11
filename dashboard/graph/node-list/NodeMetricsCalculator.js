@@ -1,54 +1,32 @@
+import { APP_CONFIG } from "../../config.js";
 import { AddressUtils } from "../../utils/AddressUtils.js";
-import { coerceToNumber } from "../../utils/NumberUtils.js";
+import {
+  coerceToNumber,
+  createLabelAddressPairs,
+  ensureArray,
+  isDefined,
+  normalizeLabels,
+} from "../../utils/NumberUtils.js";
 
+/**
+ * Calculates metrics for nodes based on graph analysis data
+ * Extracted from NodeListView to follow single responsibility principle
+ */
 export class NodeMetricsCalculator {
   constructor({ getOAppAlias, formatChainLabel, areStringArraysEqual }) {
-    this.getOAppAlias = getOAppAlias;
-    this.formatChainLabel = formatChainLabel;
-    this.areStringArraysEqual = areStringArraysEqual;
+    this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
+    this.formatChainLabel = typeof formatChainLabel === "function" ? formatChainLabel : () => "";
+    this.areStringArraysEqual =
+      typeof areStringArraysEqual === "function" ? areStringArraysEqual : () => false;
   }
 
-  calculateMetrics(webData, analysis = {}) {
-    const nodes = Array.isArray(webData?.nodes) ? webData.nodes : [];
-
-    if (!nodes.length) {
-      return [];
-    }
-
-    const blockedNodes =
-      analysis?.blockedNodes instanceof Set
-        ? analysis.blockedNodes
-        : new Set(Array.isArray(analysis?.blockedNodes) ? analysis.blockedNodes : []);
-
-    const edgeSecurityInfo = Array.isArray(analysis?.edgeSecurityInfo)
-      ? analysis.edgeSecurityInfo
-      : [];
-    const dominantCombination = analysis?.dominantCombination || null;
+  /**
+   * Calculate comprehensive metrics for all nodes
+   */
+  calculateNodeMetrics(nodes, edgeSecurityInfo, blockedNodes, dominantCombination) {
+    const edgesByTo = this.buildEdgesByToMap(edgeSecurityInfo);
+    const edgesByFrom = this.buildEdgesByFromMap(edgeSecurityInfo);
     const combinationFingerprint = dominantCombination?.fingerprint ?? null;
-
-    const edgesByTo = new Map();
-    const edgesByFrom = new Map();
-    for (const info of edgeSecurityInfo) {
-      if (!edgesByTo.has(info.edge.to)) {
-        edgesByTo.set(info.edge.to, []);
-      }
-      edgesByTo.get(info.edge.to).push(info);
-
-      if (!edgesByFrom.has(info.edge.from)) {
-        edgesByFrom.set(info.edge.from, []);
-      }
-      edgesByFrom.get(info.edge.from).push(info);
-    }
-
-    const normalizeNames = (labels) =>
-      Array.isArray(labels)
-        ? labels
-            .map((label) =>
-              label === null || label === undefined ? "" : String(label).trim().toLowerCase(),
-            )
-            .filter(Boolean)
-            .sort()
-        : [];
 
     const nodeMetrics = nodes.map((node) => {
       const incoming = edgesByTo.get(node.id) || [];
@@ -69,36 +47,39 @@ export class NodeMetricsCalculator {
 
       const blockReasonSet = new Set();
       for (const edge of blockedIncoming) {
-        if (edge.blockReason === "stale-peer") {
-          blockReasonSet.add("Stale peer");
-        } else if (edge.blockReason === "zero-peer") {
-          blockReasonSet.add("Zero peer");
-        } else if (edge.blockReason === "implicit-block") {
-          blockReasonSet.add("No peer configured");
-        } else if (edge.blockReason === "dead-dvn") {
-          blockReasonSet.add("Dead DVN");
-        } else if (edge.blockReason === "blocking-dvn") {
-          blockReasonSet.add("Blocking DVN");
-        } else if (edge.blockReason === "missing-library") {
-          blockReasonSet.add("Missing default receive library");
-        } else {
+        const label = APP_CONFIG.BLOCK_REASON_LABELS[edge.blockReason];
+        if (label) {
+          blockReasonSet.add(label);
+        } else if (edge.blockReason) {
           blockReasonSet.add("Blocked route");
         }
       }
 
       const allowedSrcEids = new Set();
       const registerAllowed = (eid) => {
-        if (eid !== undefined && eid !== null) {
+        if (isDefined(eid)) {
           allowedSrcEids.add(String(eid));
         }
       };
-      activeIncoming.forEach((edge) => registerAllowed(edge?.edge?.srcEid));
-      blockedIncoming.forEach((edge) => registerAllowed(edge?.edge?.srcEid));
+
+      activeIncoming.forEach((edgeInfo) => {
+        const srcEid = edgeInfo?.edge?.srcEid;
+        if (isDefined(srcEid)) {
+          registerAllowed(srcEid);
+        }
+      });
+
+      blockedIncoming.forEach((edgeInfo) => {
+        const srcEid = edgeInfo?.edge?.srcEid;
+        if (isDefined(srcEid)) {
+          registerAllowed(srcEid);
+        }
+      });
 
       const configDetails = (node.securityConfigs || [])
         .map((cfg) => {
-          const normalizedSrcEid =
-            cfg.srcEid !== undefined && cfg.srcEid !== null ? String(cfg.srcEid) : null;
+          const normalizedSrcEid = isDefined(cfg.srcEid) ? String(cfg.srcEid) : null;
+
           if (
             allowedSrcEids.size > 0 &&
             (!normalizedSrcEid || !allowedSrcEids.has(normalizedSrcEid))
@@ -107,18 +88,18 @@ export class NodeMetricsCalculator {
           }
           const requiredLabels = cfg.requiredDVNLabels || cfg.requiredDVNs || [];
           const requiredAddresses = cfg.requiredDVNs || [];
-          const normalized = normalizeNames(requiredLabels);
+          const normalized = normalizeLabels(requiredLabels);
           const fingerprint = JSON.stringify({
             required: cfg.requiredDVNCount || 0,
             names: normalized,
-            sentinel: Boolean(cfg.usesRequiredDVNSentinel),
+            sentinel: !!(cfg.usesRequiredDVNSentinel),
           });
           const matchesDominant =
-            Boolean(combinationFingerprint) &&
+            !!(combinationFingerprint) &&
             !cfg.usesRequiredDVNSentinel &&
             fingerprint === combinationFingerprint;
-          const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
-          const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
+          const differsFromDominant = !!(combinationFingerprint) && !matchesDominant;
+          const usesSentinel = !!(cfg.usesRequiredDVNSentinel);
 
           if (usesSentinel) {
             diffReasonSet.add(
@@ -135,17 +116,11 @@ export class NodeMetricsCalculator {
             }
           }
 
-          const requiredPairs = requiredLabels.map((label, idx) => ({
-            label: label || "(unknown)",
-            address: requiredAddresses[idx] || null,
-          }));
+          const requiredPairs = createLabelAddressPairs(requiredLabels, requiredAddresses);
 
           const optionalLabels = cfg.optionalDVNLabels || cfg.optionalDVNs || [];
           const optionalAddresses = cfg.optionalDVNs || [];
-          const optionalPairs = optionalLabels.map((label, idx) => ({
-            label: label || "(unknown)",
-            address: optionalAddresses[idx] || null,
-          }));
+          const optionalPairs = createLabelAddressPairs(optionalLabels, optionalAddresses);
           const optionalSummary =
             cfg.optionalDVNCount && cfg.optionalDVNCount > 0
               ? `${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount}`
@@ -163,29 +138,14 @@ export class NodeMetricsCalculator {
             matchesDominant,
             differsFromDominant,
             fingerprint,
-            packetCount:
-              cfg.routePacketCount !== undefined && cfg.routePacketCount !== null
-                ? Number(cfg.routePacketCount)
-                : 0,
-            packetShare:
-              cfg.routePacketShare !== undefined && cfg.routePacketShare !== null
-                ? Number(cfg.routePacketShare)
-                : 0,
-            packetPercent:
-              cfg.routePacketPercent !== undefined && cfg.routePacketPercent !== null
-                ? Number(cfg.routePacketPercent)
-                : 0,
+            packetCount: isDefined(cfg.routePacketCount) ? Number(cfg.routePacketCount) : 0,
+            packetShare: isDefined(cfg.routePacketShare) ? Number(cfg.routePacketShare) : 0,
+            packetPercent: isDefined(cfg.routePacketPercent) ? Number(cfg.routePacketPercent) : 0,
             lastPacketBlock: cfg.routeLastPacketBlock ?? null,
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",
             peerStateHint: cfg.peerStateHint ?? null,
-            synthetic: Boolean(cfg.synthetic),
-            usesDefaultLibrary: cfg.usesDefaultLibrary !== false,
-            effectiveReceiveLibrary: cfg.effectiveReceiveLibrary || null,
-            defaultLibraryVersionId:
-              cfg.defaultLibraryVersionId !== undefined ? cfg.defaultLibraryVersionId : null,
-            libraryOverrideVersionId:
-              cfg.libraryOverrideVersionId !== undefined ? cfg.libraryOverrideVersionId : null,
+            synthetic: !!(cfg.synthetic),
           };
         })
         .filter(Boolean);
@@ -237,9 +197,9 @@ export class NodeMetricsCalculator {
         alias: this.getOAppAlias(node.id),
         chainLabel,
         depth: node.depth >= 0 ? node.depth : "—",
-        isTracked: Boolean(node.isTracked),
-        isDangling: Boolean(node.isDangling),
-        fromPacketDelivered: Boolean(node.fromPacketDelivered),
+        isTracked: !!(node.isTracked),
+        isDangling: !!(node.isDangling),
+        fromPacketDelivered: !!(node.fromPacketDelivered),
         isBlocked: blockedNodes.has(node.id),
         totalPackets,
         totalRoutePackets,
@@ -264,6 +224,7 @@ export class NodeMetricsCalculator {
       };
     });
 
+    // Sort metrics: tracked first, then by packet count, then by ID
     nodeMetrics.sort((a, b) => {
       if (a.isTracked !== b.isTracked) {
         return a.isTracked ? -1 : 1;
@@ -279,43 +240,31 @@ export class NodeMetricsCalculator {
     return nodeMetrics;
   }
 
-  prepareRenameActions(nodeMetrics, requestUniformAlias) {
-    if (!requestUniformAlias || !nodeMetrics.length) {
-      return null;
+  /**
+   * Build map of edges grouped by target node
+   */
+  buildEdgesByToMap(edgeSecurityInfo) {
+    const edgesByTo = new Map();
+    for (const info of edgeSecurityInfo) {
+      if (!edgesByTo.has(info.edge.to)) {
+        edgesByTo.set(info.edge.to, []);
+      }
+      edgesByTo.get(info.edge.to).push(info);
     }
+    return edgesByTo;
+  }
 
-    const zeroAddresses = new Set([AddressUtils.constants.ZERO, AddressUtils.constants.ZERO_PEER]);
-    const renameTargets = [];
-    const seenRenameTargets = new Set();
-
-    for (const metric of nodeMetrics) {
-      if (!metric || typeof metric.id !== "string") {
-        continue;
+  /**
+   * Build map of edges grouped by source node
+   */
+  buildEdgesByFromMap(edgeSecurityInfo) {
+    const edgesByFrom = new Map();
+    for (const info of edgeSecurityInfo) {
+      if (!edgesByFrom.has(info.edge.from)) {
+        edgesByFrom.set(info.edge.from, []);
       }
-      const trimmedId = metric.id.trim();
-      if (!trimmedId || seenRenameTargets.has(trimmedId)) {
-        continue;
-      }
-      const parts = trimmedId.split("_");
-      if (parts.length < 2) {
-        continue;
-      }
-      const rawAddr = parts[parts.length - 1];
-      const addr = AddressUtils.normalizeSafe(rawAddr) || "";
-      if (!addr.startsWith("0x")) {
-        continue;
-      }
-      if (zeroAddresses.has(addr.toLowerCase())) {
-        continue;
-      }
-      renameTargets.push({
-        oappId: trimmedId,
-        address: addr,
-        alias: metric.alias || null,
-      });
-      seenRenameTargets.add(trimmedId);
+      edgesByFrom.get(info.edge.from).push(info);
     }
-
-    return renameTargets.length > 0 ? { targets: renameTargets, requestUniformAlias } : null;
+    return edgesByFrom;
   }
 }

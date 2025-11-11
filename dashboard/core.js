@@ -1,6 +1,6 @@
 import { APP_CONFIG } from "./config.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
-import { resolveChainDisplayLabel as _resolveChainDisplayLabel } from "./utils/ChainUtils.js";
+import { ensureArray, isDefined, isNullish } from "./utils/NumberUtils.js";
 
 export class HasuraClient {
   constructor(endpoint = APP_CONFIG.GRAPHQL_ENDPOINT) {
@@ -81,10 +81,10 @@ export class ChainDirectory {
 
       const baseLabel =
         chain?.chainDetails?.shortName || chain?.chainDetails?.name || chain.chainKey || key;
-      const deployments = Array.isArray(chain.deployments) ? chain.deployments : [];
+      const deployments = ensureArray(chain.deployments);
 
       deployments.forEach((dep) => {
-        if (dep?.eid === undefined || dep.eid === null) return;
+        if (isNullish(dep?.eid)) return;
 
         const eid = String(dep.eid);
         const stage = dep.stage && dep.stage !== "mainnet" ? ` (${dep.stage})` : "";
@@ -136,7 +136,7 @@ export class ChainDirectory {
   }
 
   getChainDisplayLabel(localEid) {
-    if (localEid === undefined || localEid === null || localEid === "") {
+    if (isNullish(localEid) || localEid === "") {
       return "";
     }
 
@@ -185,15 +185,6 @@ export class ChainDirectory {
   }
 }
 
-export function resolveChainDisplayLabel(chainMetadata, chainId) {
-  return _resolveChainDisplayLabel(chainMetadata, chainId);
-}
-
-// Re-exported from AddressUtils for backward compatibility
-export function normalizeAddress(address) {
-  return AddressUtils.normalize(address);
-}
-
 export function normalizeOAppId(value) {
   if (!value) throw new Error("OApp ID required");
 
@@ -205,7 +196,7 @@ export function normalizeOAppId(value) {
   if (!localEid) throw new Error("OApp ID must include localEid");
 
   const address = trimmed.slice(separatorIndex + 1);
-  return `${localEid}_${normalizeAddress(address)}`;
+  return `${localEid}_${AddressUtils.normalize(address)}`;
 }
 
 export function splitOAppId(oappId) {
@@ -223,10 +214,7 @@ export function splitOAppId(oappId) {
 }
 
 export function normalizeKey(value) {
-  if (value === undefined || value === null) {
-    return null;
-  }
-  return String(value);
+  return isNullish(value) ? null : String(value);
 }
 
 export function clampInteger(rawValue, min, max, fallback) {
@@ -249,16 +237,3 @@ export function parseOptionalPositiveInt(rawValue) {
   return Number.NaN;
 }
 
-export {
-  formatInteger,
-  formatPercent,
-  formatTimestampValue,
-  looksLikeEidColumn,
-  looksLikeHash,
-  looksLikeTimestampColumn,
-  stringifyScalar,
-} from "./formatters/valueFormatters.js";
-
-export function isZeroAddress(address) {
-  return AddressUtils.isZero(address);
-}

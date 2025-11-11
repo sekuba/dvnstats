@@ -1,4 +1,6 @@
-import { clampInteger, formatTimestampValue } from "../../../core.js";
+import { clampInteger } from "../../../core.js";
+import { formatTimestampValue } from "../../../formatters/valueFormatters.js";
+import { isDefined } from "../../../utils/NumberUtils.js";
 import { createFormattedCell } from "../../../formatters/cellFormatters.js";
 
 export class OAppFormatter {
@@ -49,7 +51,7 @@ export class OAppFormatter {
       };
 
       group.count += 1;
-      if (packet.srcEid !== undefined && packet.srcEid !== null)
+      if (isDefined(packet.srcEid))
         group.eids.add(String(packet.srcEid));
 
       const timestamp = Number(packet.blockTimestamp ?? 0);
@@ -101,7 +103,7 @@ export class OAppFormatter {
           }
         }
       }
-      if (group.lastBlock !== null && group.lastBlock !== undefined) {
+      if (isDefined(group.lastBlock)) {
         lastLines.push(`Block ${group.lastBlock}`);
       }
       const lastCell = createFormattedCell(

@@ -1,4 +1,6 @@
-import { normalizeAddress, normalizeOAppId } from "../../../core.js";
+import { normalizeOAppId } from "../../../core.js";
+import { AddressUtils } from "../../../utils/AddressUtils.js";
+import { isDefined } from "../../../utils/NumberUtils.js";
 import { OAPP_SECURITY_CONFIG_QUERY } from "../../../queries/oappSecurityConfig.js";
 import { resolveOAppSecurityConfigs } from "../../../resolver.js";
 
@@ -73,7 +75,7 @@ export function createOAppSecurityConfig(coordinator) {
         if (!localEid || !address) {
           throw new Error("Provide an OApp ID or local EID plus address.");
         }
-        address = normalizeAddress(address);
+        address = AddressUtils.normalize(address);
         oappId = `${localEid}_${address}`;
         if (idInput) {
           idInput.value = oappId;
@@ -144,7 +146,7 @@ export function createOAppSecurityConfig(coordinator) {
       const derivedLocalEid =
         enrichedMeta.localEid ||
         (queryVars.localEid !== undefined ? String(queryVars.localEid) : null) ||
-        (oapp && oapp.localEid !== undefined && oapp.localEid !== null
+        (oapp && isDefined(oapp.localEid)
           ? String(oapp.localEid)
           : null);
       const resolvedOappId = queryVars.oappId || oapp?.id || enrichedMeta.oappInfo?.id || null;

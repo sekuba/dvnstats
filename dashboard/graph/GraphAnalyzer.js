@@ -1,5 +1,8 @@
 import { APP_CONFIG } from "../config.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
+import { ensureArray, isDefined, isNullish, normalizeLabels } from "../utils/NumberUtils.js";
+
+const BLOCK_REASONS = APP_CONFIG.BLOCK_REASONS;
 
 export class GraphAnalyzer {
   constructor({ getChainDisplayLabel }) {
@@ -20,7 +23,7 @@ export class GraphAnalyzer {
     for (const edge of edges) {
       const fromNode = nodesById.get(edge.from);
       const toNode = nodesById.get(edge.to);
-      const isUntrackedTarget = Boolean(toNode) && !toNode.isTracked;
+      const isUntrackedTarget = !!toNode && !toNode.isTracked;
       let requiredDVNCount = 0;
       let requiredDVNAddresses = [];
       let requiredDVNLabels = [];
@@ -32,23 +35,23 @@ export class GraphAnalyzer {
       let blockReason = null;
       const libraryStatusEdge = edge.libraryStatus ?? null;
       let libraryStatusValue = libraryStatusEdge;
-      const syntheticEdge = Boolean(edge.synthetic);
+      const syntheticEdge = !!edge.synthetic;
       let peerStateHint = edge.peerStateHint ?? null;
 
-      if (edge.blockReasonHint === "implicit-block") {
+      if (edge.blockReasonHint === BLOCK_REASONS.IMPLICIT_BLOCK) {
         isBlocked = true;
-        blockReason = "implicit-block";
-      } else if (edge.blockReasonHint === "explicit-block") {
+        blockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
+      } else if (edge.blockReasonHint === BLOCK_REASONS.EXPLICIT_BLOCK) {
         isBlocked = true;
-        blockReason = "zero-peer";
-      } else if (edge.blockReasonHint === "stale-peer") {
+        blockReason = BLOCK_REASONS.ZERO_PEER;
+      } else if (edge.blockReasonHint === BLOCK_REASONS.STALE_PEER) {
         isBlocked = true;
-        blockReason = "stale-peer";
+        blockReason = BLOCK_REASONS.STALE_PEER;
       }
 
       if (!blockReason && edge.isStalePeer) {
         isBlocked = true;
-        blockReason = "stale-peer";
+        blockReason = BLOCK_REASONS.STALE_PEER;
       }
 
       let hasSecurityConfig = false;
@@ -66,14 +69,14 @@ export class GraphAnalyzer {
             config.optionalDVNCount ||
             (Array.isArray(optionalDVNLabels) ? optionalDVNLabels.length : 0);
           optionalDVNThreshold = config.optionalDVNThreshold || 0;
-          usesSentinel = Boolean(config.usesRequiredDVNSentinel);
+          usesSentinel = !!config.usesRequiredDVNSentinel;
           if (!peerStateHint && config.peerStateHint) {
             peerStateHint = config.peerStateHint;
           }
           const usesDefaultLibrary = config.usesDefaultLibrary !== false;
           const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
           const hasEffectiveLibrary =
-            Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
+            !!effectiveReceiveLibrary && !AddressUtils.isZero(effectiveReceiveLibrary);
           const libraryOverrideVersionId =
             config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
           const hasLibraryOverride =
@@ -89,16 +92,16 @@ export class GraphAnalyzer {
             !hasEffectiveLibrary
           ) {
             isBlocked = true;
-            blockReason = "missing-library";
+            blockReason = BLOCK_REASONS.MISSING_LIBRARY;
           }
 
           if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
             isBlocked = true;
-            blockReason = "dead-dvn";
+            blockReason = BLOCK_REASONS.DEAD_DVN;
           }
           if (!isBlocked && requiredDVNLabels.some((label) => this.isBlockingDvnLabel(label))) {
             isBlocked = true;
-            blockReason = "blocking-dvn";
+            blockReason = BLOCK_REASONS.BLOCKING_DVN;
           }
         }
       }
@@ -106,10 +109,10 @@ export class GraphAnalyzer {
       if (!isBlocked) {
         if (peerStateHint === "explicit-blocked") {
           isBlocked = true;
-          blockReason = "zero-peer";
+          blockReason = BLOCK_REASONS.ZERO_PEER;
         } else if (peerStateHint === "implicit-blocked") {
           isBlocked = true;
-          blockReason = "implicit-block";
+          blockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
         }
       }
 
@@ -119,7 +122,7 @@ export class GraphAnalyzer {
           (config && config.peer && this.isZeroPeer(config.peer)))
       ) {
         isBlocked = true;
-        blockReason = "zero-peer";
+        blockReason = BLOCK_REASONS.ZERO_PEER;
       }
 
       if (!isBlocked && hasSecurityConfig && requiredDVNCount > maxRequiredDVNsInWeb) {
@@ -132,17 +135,12 @@ export class GraphAnalyzer {
         if (AddressUtils.isZero(fromAddress)) {
           isBlocked = true;
           if (!blockReason) {
-            blockReason = "implicit-block";
+            blockReason = BLOCK_REASONS.IMPLICIT_BLOCK;
           }
         }
       }
 
-      const normalizedRequiredNames = (requiredDVNLabels || [])
-        .map((name) =>
-          name === null || name === undefined ? "" : String(name).trim().toLowerCase(),
-        )
-        .filter(Boolean)
-        .sort();
+      const normalizedRequiredNames = normalizeLabels(requiredDVNLabels);
 
       const combinationFingerprint = hasSecurityConfig
         ? JSON.stringify({
@@ -264,7 +262,7 @@ export class GraphAnalyzer {
         entry.edges.push(info);
         entry.toNodes.add(edge.to);
         entry.fromNodes.add(edge.from);
-        if (edge.srcEid !== undefined && edge.srcEid !== null) {
+        if (isDefined(edge.srcEid)) {
           entry.srcEids.add(String(edge.srcEid));
         }
         entry.optionalCounts.add(optionalDVNCount || 0);
@@ -295,7 +293,7 @@ export class GraphAnalyzer {
     for (const info of edgeSecurityInfo) {
       const matchesPopular =
         info.hasSecurityConfig &&
-        Boolean(dominantFingerprint) &&
+        !!dominantFingerprint &&
         !info.isBlocked &&
         !info.usesSentinel &&
         info.combinationFingerprint === dominantFingerprint;
@@ -305,7 +303,7 @@ export class GraphAnalyzer {
       const differsDueToSentinel = info.hasSecurityConfig && info.usesSentinel;
       const differsDueToCombination =
         info.hasSecurityConfig &&
-        Boolean(dominantFingerprint) &&
+        !!dominantFingerprint &&
         !info.isBlocked &&
         info.combinationFingerprint !== dominantFingerprint;
 
@@ -410,7 +408,7 @@ export class GraphAnalyzer {
   }
 
   isBlockingDvnLabel(label) {
-    if (label === null || label === undefined) {
+    if (isNullish(label)) {
       return false;
     }
     return String(label).trim().toLowerCase() === "lzdeaddvn";
@@ -420,8 +418,8 @@ export class GraphAnalyzer {
     if (!config) {
       return false;
     }
-    const requiredAddresses = Array.isArray(config.requiredDVNs) ? config.requiredDVNs : [];
-    const requiredLabels = Array.isArray(config.requiredDVNLabels) ? config.requiredDVNLabels : [];
+    const requiredAddresses = ensureArray(config.requiredDVNs);
+    const requiredLabels = ensureArray(config.requiredDVNLabels);
     return (
       requiredAddresses.some((addr) => this.isDeadAddress(addr)) ||
       requiredLabels.some((label) => this.isBlockingDvnLabel(label))
@@ -477,7 +475,7 @@ export class GraphAnalyzer {
   }
 
   getNodeSecurityMetrics(node) {
-    const configs = Array.isArray(node?.securityConfigs) ? node.securityConfigs : [];
+    const configs = ensureArray(node?.securityConfigs);
     const nonBlockedConfigs = configs.filter((cfg) => !this.configHasBlockingDvn(cfg));
 
     const minRequiredDVNs =
@@ -497,17 +495,17 @@ export class GraphAnalyzer {
 
   resolveNodeChainLabel(node, nodeId, fallbackEid) {
     let chainSource = null;
-    if (node && node.localEid !== undefined && node.localEid !== null && node.localEid !== "") {
+    if (node && isDefined(node.localEid) && node.localEid !== "") {
       chainSource = node.localEid;
     } else if (node && typeof node.id === "string" && node.id.includes("_")) {
       chainSource = node.id.split("_")[0];
     } else if (typeof nodeId === "string" && nodeId.includes("_")) {
       chainSource = nodeId.split("_")[0];
-    } else if (fallbackEid !== undefined && fallbackEid !== null && fallbackEid !== "") {
+    } else if (isDefined(fallbackEid) && fallbackEid !== "") {
       chainSource = fallbackEid;
     }
 
-    if (chainSource === null || chainSource === undefined || chainSource === "") {
+    if (isNullish(chainSource) || chainSource === "") {
       return "";
     }
 
@@ -517,7 +515,7 @@ export class GraphAnalyzer {
   }
 
   formatChainLabel(chainId) {
-    if (chainId === undefined || chainId === null || chainId === "") {
+    if (isNullish(chainId) || chainId === "") {
       return "";
     }
     const display = this.getChainDisplayLabel(chainId);

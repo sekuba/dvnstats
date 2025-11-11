@@ -1,5 +1,6 @@
 import { APP_CONFIG } from "../../config.js";
-import { resolveChainDisplayLabel } from "../../core.js";
+import { getChainDisplayLabel } from "../../utils/ChainUtils.js";
+import { isNullish } from "../../utils/NumberUtils.js";
 import { buildPayloadDetails } from "./ResultsPayloadDetails.js";
 import { renderSummaryPanels } from "./ResultsSummaryPanels.js";
 import { buildResultsTable } from "./ResultsTable.js";
@@ -75,7 +76,7 @@ export class ResultsView {
 
     const summaryPanel = renderSummaryPanels(metaSnapshot, {
       aliasStore: this.aliasStore,
-      getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
+      getChainDisplayLabel: (chainId) => getChainDisplayLabel(chainId, this.chainMetadata),
     });
 
     if (!rows.length) {
@@ -115,15 +116,13 @@ export class ResultsView {
     const { SecurityGraphView } = await import("../../graph/SecurityGraphView.js");
     const renderer = new SecurityGraphView({
       getOAppAlias: (oappId) => this.aliasStore.get(oappId),
-      getChainDisplayLabel: (chainId) => this.getChainDisplayLabel(chainId),
+      getChainDisplayLabel: (chainId) => getChainDisplayLabel(chainId, this.chainMetadata),
       requestUniformAlias: (ids) => {
         if (!Array.isArray(ids) || !ids.length) {
           return;
         }
         const uniqueIds = Array.from(
-          new Set(
-            ids.map((id) => (id === null || id === undefined ? null : String(id))).filter(Boolean),
-          ),
+          new Set(ids.map((id) => (isNullish(id) ? null : String(id))).filter(Boolean)),
         );
         if (!uniqueIds.length) {
           return;
@@ -146,10 +145,6 @@ export class ResultsView {
     this.resultsBody.appendChild(graphContainer);
   }
 
-  getChainDisplayLabel(chainId) {
-    return resolveChainDisplayLabel(this.chainMetadata, chainId);
-  }
-
   renderError(meta) {
     this.copyJsonButton.disabled = true;
     this.resultsBody.classList.remove("empty");
@@ -167,7 +162,7 @@ export class ResultsView {
       return "";
     }
     for (const [key, value] of Object.entries(variables)) {
-      if (value === undefined || value === null) {
+      if (isNullish(value)) {
         continue;
       }
       if (key === "minPackets" && (value === "0" || value === 0)) {
