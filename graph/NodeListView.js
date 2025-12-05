@@ -355,24 +355,6 @@ export class NodeListView {
       return `${alias} (${metric.chainLabel})`;
     };
 
-    const formatNodeShort = (id) => {
-      if (!id) {
-        return "";
-      }
-      const metric = metricsById.get(id);
-      if (metric) {
-        return metric.alias || metric.id;
-      }
-      const alias = this.getOAppAlias(id);
-      return alias || id;
-    };
-
-    const formatRoute = (info) => {
-      const from = formatNodeShort(info.edge.from);
-      const to = formatNodeShort(info.edge.to);
-      return `${from} → ${to}`;
-    };
-
     const eligibleNodes = nodeMetrics.filter((metric) => metric.isTracked && !metric.isBlocked);
 
     const computeMedian = (values) => {
@@ -491,8 +473,6 @@ export class NodeListView {
       hasEdgeVariation,
       hasPacketVariation,
       formatNodeDescriptor,
-      formatNodeShort,
-      formatRoute,
       formatMedianValue,
       formatNumber,
     );
@@ -525,8 +505,6 @@ export class NodeListView {
     hasEdgeVariation,
     hasPacketVariation,
     formatNodeDescriptor,
-    formatNodeShort,
-    formatRoute,
     formatMedianValue,
     formatNumber,
   ) {
@@ -554,36 +532,10 @@ export class NodeListView {
           : "";
       this.appendSummaryRow(dl, "Edges Using Set", `${dominantCombination.count}${shareText}`);
 
-      const destIds = Array.from(dominantCombination.toNodes || []);
-      if (destIds.length) {
-        const sample = destIds
-          .slice(0, 3)
-          .map((id) => formatNodeShort(id))
-          .join(", ");
-        const destinations =
-          destIds.length > 3
-            ? `${destIds.length} nodes (${sample}, ...)`
-            : `${destIds.length} node${destIds.length === 1 ? "" : "s"} (${sample})`;
-        this.appendSummaryRow(dl, "Destination Nodes", destinations);
-      }
-
       const chains = Array.from(dominantCombination.srcEids || []).map(
         (localEid) => this.formatChainLabel(localEid) || localEid,
       );
       this.appendSummaryRow(dl, "Source Chains", chains.length ? chains.join(", ") : "—");
-
-      const routeExamples = dominantCombination.edges
-        ? dominantCombination.edges.slice(0, 3).map((info) => formatRoute(info))
-        : [];
-      if (routeExamples.length) {
-        const routes =
-          routeExamples.length >= 3 &&
-          dominantCombination.edges &&
-          dominantCombination.edges.length > 3
-            ? `${routeExamples.join("; ")}, ...`
-            : routeExamples.join("; ");
-        this.appendSummaryRow(dl, "Sample Routes", routes);
-      }
 
       dominantCard.appendChild(dl);
     } else {
