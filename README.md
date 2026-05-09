@@ -5,7 +5,7 @@ Made possible by Envio Hypersync and -index, GPT5-Codex, Sonnet 4.5 and yours tr
 
 All frontend code is in the ./dashboard folder, you can host it yourself if you like. Below is envio explaining to you how to run the backend and the indexer. If you do so, remember to point the frontend at your own graphql endpoint.
 
-In case you want to go deeper / see code, i recommend [spec.md](./spec.md) and the [EventHandlers.ts](./src/EventHandlers.ts) of the indexer respectively.
+In case you want to go deeper / see code, i recommend [spec.md](./spec.md) and the [layerzero.ts](./src/handlers/layerzero.ts) handler of the indexer respectively.
 
 ## Envio Indexer
 
@@ -27,7 +27,7 @@ pnpm codegen
 
 ### Pre-requisites
 
-- [Node.js (use v18 or newer)](https://nodejs.org/en/download/current)
+- [Node.js (use v22 or newer)](https://nodejs.org/en/download/current)
 - [pnpm (use v8 or newer)](https://pnpm.io/installation)
 - [Docker desktop](https://www.docker.com/products/docker-desktop/)
 

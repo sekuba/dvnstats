@@ -220,8 +220,10 @@ When a default changes, **all** OApp configs for that scope must be recomputed:
 
 ```typescript
 // DefaultReceiveLibrarySet or DefaultUlnConfigsSet
-const affectedConfigs = OAppSecurityConfig.getWhere.localEid.eq(localEid)
-  .filter(c => c.eid === changedEid)
+const affectedConfigs = OAppSecurityConfig.getWhere({
+  localEid: { _eq: localEid },
+  eid: { _eq: changedEid },
+})
 
 for (const config of affectedConfigs) {
   computeAndPersistEffectiveConfig(config.oappId, config.eid)

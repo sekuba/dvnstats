@@ -1,28 +1,26 @@
 import {
-  DefaultReceiveLibrary,
-  DefaultReceiveLibraryVersion,
-  DefaultUlnConfig,
-  DefaultUlnConfigVersion,
-  EndpointV2,
-  handlerContext,
-  OAppOFT,
-  OAppPeer,
-  OAppPeerVersion,
-  OAppRateLimit,
-  OAppRateLimiter,
-  OAppRateLimiterVersion,
-  OAppRateLimitVersion,
-  OAppReceiveLibrary,
-  OAppReceiveLibraryVersion,
-  OAppRouteStats,
-  OAppSecurityConfig,
-  OAppStats,
-  OAppUlnConfig,
-  OAppUlnConfigVersion,
-  PacketDelivered as PacketDeliveredEntity,
-  ReceiveUln302,
-} from "generated";
-import { getTrackedReceiveLibraryAddress, resolveLocalEid } from "./localChainRegistry";
+  type DefaultReceiveLibrary,
+  type DefaultReceiveLibraryVersion,
+  type DefaultUlnConfig,
+  type DefaultUlnConfigVersion,
+  type EvmOnEventContext as HandlerContext,
+  indexer,
+  type OAppPeer,
+  type OAppPeerVersion,
+  type OAppRateLimit,
+  type OAppRateLimiter,
+  type OAppRateLimiterVersion,
+  type OAppRateLimitVersion,
+  type OAppReceiveLibrary,
+  type OAppReceiveLibraryVersion,
+  type OAppRouteStats,
+  type OAppSecurityConfig,
+  type OAppStats,
+  type OAppUlnConfig,
+  type OAppUlnConfigVersion,
+  type PacketDelivered as PacketDeliveredEntity,
+} from "envio";
+import { getTrackedReceiveLibraryAddress, resolveLocalEid } from "../localChainRegistry";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const HEX_PREFIX = "0x";
@@ -128,7 +126,7 @@ type MergeResult = {
 };
 
 type ComputeEffectiveConfigArgs = {
-  context: handlerContext;
+  context: HandlerContext;
   localEid: bigint;
   oappId: string;
   oappAddress: string;
@@ -157,13 +155,13 @@ const uniqueNormalizedAddresses = (input: readonly string[] | undefined): string
  * Returns true if validation passes, false if issues were found.
  */
 const validateUlnConfig = (
-  context: handlerContext,
+  context: HandlerContext,
   config: {
     requiredDVNCount?: number;
     optionalDVNCount?: number;
     optionalDVNThreshold?: number;
-    requiredDVNs: string[];
-    optionalDVNs: string[];
+    requiredDVNs: readonly string[];
+    optionalDVNs: readonly string[];
   },
   source: string,
   localEid: bigint,
@@ -247,7 +245,7 @@ const validateUlnConfig = (
  * Zero addresses are filtered out but this indicates potential misconfiguration.
  */
 const checkForZeroAddresses = (
-  context: handlerContext,
+  context: HandlerContext,
   addresses: readonly string[],
   source: string,
   localEid: bigint,
@@ -373,7 +371,7 @@ const formatFallbackFields = (fields: Set<FallbackField>): string[] => {
   return result;
 };
 
-const arraysEqual = (a: string[], b: string[]): boolean => {
+const arraysEqual = (a: readonly string[], b: readonly string[]): boolean => {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) {
     if (a[i] !== b[i]) return false;
@@ -409,7 +407,7 @@ const configsAreEqual = (a: ConfigComparable, b: ConfigComparable): boolean =>
  * applied when the OApp's security config is later computed.
  */
 const mergeSecurityConfig = (
-  context: handlerContext | undefined,
+  context: HandlerContext | undefined,
   localEid: bigint,
   eid: bigint,
   oappId: string | undefined,
@@ -772,7 +770,7 @@ const computeAndPersistEffectiveConfig = async ({
 };
 
 const recomputeSecurityConfigsForScope = async (
-  context: handlerContext,
+  context: HandlerContext,
   localEid: bigint,
   eid: bigint,
   blockNumber: bigint,
@@ -781,7 +779,9 @@ const recomputeSecurityConfigsForScope = async (
   transactionHash: string,
 ) => {
   // NOTE: compound queries not supported
-  const configsForChain = await context.OAppSecurityConfig.getWhere.localEid.eq(localEid);
+  const configsForChain = await context.OAppSecurityConfig.getWhere({
+    localEid: { _eq: localEid },
+  });
   if (!configsForChain || configsForChain.length === 0) {
     return;
   }
@@ -826,94 +826,332 @@ const recomputeSecurityConfigsForScope = async (
   }
 };
 
-EndpointV2.DefaultReceiveLibrarySet.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
+indexer.onEvent(
+  { contract: "EndpointV2", event: "DefaultReceiveLibrarySet" },
+  async ({ event, context }) => {
+    if (context.isPreload) return;
 
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const transactionHash = event.transaction.hash;
-  const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-  const id = makeDefaultScopedId(localEid, event.params.eid);
-  const normalizedLibrary = normalizeAddress(event.params.newLib);
-  if (!normalizedLibrary) {
-    context.log.warn("DefaultReceiveLibrarySet missing newLib", {
-      localEid: localEid.toString(),
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const transactionHash = event.transaction.hash;
+    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+    const id = makeDefaultScopedId(localEid, event.params.eid);
+    const normalizedLibrary = normalizeAddress(event.params.newLib);
+    if (!normalizedLibrary) {
+      context.log.warn("DefaultReceiveLibrarySet missing newLib", {
+        localEid: localEid.toString(),
+        eid: event.params.eid,
+        rawValue: event.params.newLib,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+
+    const entity: DefaultReceiveLibrary = {
+      id,
+      localEid,
       eid: event.params.eid,
-      rawValue: event.params.newLib,
+      library: normalizedLibrary,
+      transactionHash,
+      lastUpdatedBlock: blockNumber,
+      lastUpdatedTimestamp: blockTimestamp,
+      lastUpdatedByEventId: eventId,
+    };
+    context.DefaultReceiveLibrary.set(entity);
+
+    const version: DefaultReceiveLibraryVersion = {
+      id: eventId,
+      localEid,
+      eid: event.params.eid,
+      library: normalizedLibrary,
+      blockNumber,
+      blockTimestamp,
+      eventId,
+      transactionHash,
+    };
+    context.DefaultReceiveLibraryVersion.set(version);
+
+    await recomputeSecurityConfigsForScope(
+      context,
+      localEid,
+      event.params.eid,
+      blockNumber,
+      blockTimestamp,
+      eventId,
+      transactionHash,
+    );
+  },
+);
+
+indexer.onEvent(
+  { contract: "ReceiveUln302", event: "DefaultUlnConfigsSet" },
+  async ({ event, context }) => {
+    if (context.isPreload) return;
+
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const transactionHash = event.transaction.hash;
+
+    for (const param of event.params.params) {
+      const eid = param[0];
+      const config = param[1];
+      const confirmations = config[0];
+      const requiredDVNCount = config[1];
+      const optionalDVNCount = config[2];
+      const optionalDVNThreshold = config[3];
+      const requiredDVNs = config[4];
+      const optionalDVNs = config[5];
+
+      // Check for zero addresses before normalization
+      checkForZeroAddresses(
+        context,
+        requiredDVNs,
+        "DefaultUlnConfigsSet",
+        localEid,
+        eid,
+        "required",
+      );
+      checkForZeroAddresses(
+        context,
+        optionalDVNs,
+        "DefaultUlnConfigsSet",
+        localEid,
+        eid,
+        "optional",
+      );
+
+      const id = makeDefaultScopedId(localEid, eid);
+      const normalizedRequired = uniqueNormalizedAddresses(requiredDVNs);
+      const normalizedOptional = uniqueNormalizedAddresses(optionalDVNs);
+
+      const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+      const entity: DefaultUlnConfig = {
+        id,
+        localEid,
+        eid,
+        confirmations: BigInt(confirmations),
+        requiredDVNCount: Number(requiredDVNCount),
+        optionalDVNCount: Number(optionalDVNCount),
+        optionalDVNThreshold: Number(optionalDVNThreshold),
+        requiredDVNs: normalizedRequired,
+        optionalDVNs: normalizedOptional,
+        transactionHash,
+        lastUpdatedBlock: blockNumber,
+        lastUpdatedTimestamp: blockTimestamp,
+        lastUpdatedByEventId: eventId,
+      };
+
+      // Validate config before storing
+      validateUlnConfig(
+        context,
+        {
+          requiredDVNCount: entity.requiredDVNCount,
+          optionalDVNCount: entity.optionalDVNCount,
+          optionalDVNThreshold: entity.optionalDVNThreshold,
+          requiredDVNs: entity.requiredDVNs,
+          optionalDVNs: entity.optionalDVNs,
+        },
+        "DefaultUlnConfigsSet",
+        localEid,
+        eid,
+      );
+
+      context.DefaultUlnConfig.set(entity);
+
+      // Note: DefaultUlnConfigVersion uses composite ID (eventId_eid) because
+      // DefaultUlnConfigsSet event can set multiple configs in one transaction.
+      // This differs from other Version entities which use simple eventId because
+      // their events only affect one config per event.
+      const versionId = `${eventId}_${eid.toString()}`;
+      const version: DefaultUlnConfigVersion = {
+        id: versionId,
+        localEid,
+        eid,
+        confirmations: BigInt(confirmations),
+        requiredDVNCount: Number(requiredDVNCount),
+        optionalDVNCount: Number(optionalDVNCount),
+        optionalDVNThreshold: Number(optionalDVNThreshold),
+        requiredDVNs: normalizedRequired,
+        optionalDVNs: normalizedOptional,
+        blockNumber,
+        blockTimestamp,
+        eventId,
+        transactionHash,
+      };
+      context.DefaultUlnConfigVersion.set(version);
+
+      await recomputeSecurityConfigsForScope(
+        context,
+        localEid,
+        eid,
+        blockNumber,
+        blockTimestamp,
+        eventId,
+        transactionHash,
+      );
+    }
+  },
+);
+
+indexer.onEvent(
+  { contract: "EndpointV2", event: "ReceiveLibrarySet" },
+  async ({ event, context }) => {
+    if (context.isPreload) return;
+
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+    const transactionHash = event.transaction.hash;
+    const receiver = normalizeOAppAddress(event.params.receiver);
+    if (!receiver) {
+      context.log.warn("ReceiveLibrarySet missing receiver", {
+        localEid: localEid.toString(),
+        eid: event.params.eid,
+        rawValue: event.params.receiver,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+    const oappId = makeOAppId(localEid, receiver);
+    const configId = makeRouteId(oappId, event.params.eid);
+    const normalizedLibrary = normalizeAddress(event.params.newLib);
+    if (!normalizedLibrary) {
+      context.log.warn("ReceiveLibrarySet missing newLib", {
+        localEid: localEid.toString(),
+        eid: event.params.eid,
+        receiver: event.params.receiver,
+        rawValue: event.params.newLib,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+
+    const oappDefaults: OAppStats = {
+      id: oappId,
+      localEid,
+      address: receiver,
+      totalPacketsReceived: 0n,
+      lastPacketBlock: undefined,
+      lastPacketTimestamp: undefined,
+    };
+    await context.OAppStats.getOrCreate(oappDefaults);
+
+    const libraryEntity: OAppReceiveLibrary = {
+      id: configId,
+      oappId,
+      localEid,
+      oapp: receiver,
+      eid: event.params.eid,
+      library: normalizedLibrary,
+      transactionHash,
+      lastUpdatedBlock: blockNumber,
+      lastUpdatedTimestamp: blockTimestamp,
+      lastUpdatedByEventId: eventId,
+    };
+    context.OAppReceiveLibrary.set(libraryEntity);
+
+    const libraryVersion: OAppReceiveLibraryVersion = {
+      id: eventId,
+      oappId,
+      localEid,
+      oapp: receiver,
+      eid: event.params.eid,
+      library: normalizedLibrary,
+      blockNumber,
+      blockTimestamp,
+      eventId,
+      transactionHash,
+    };
+    context.OAppReceiveLibraryVersion.set(libraryVersion);
+
+    await computeAndPersistEffectiveConfig({
+      context,
+      localEid,
+      oappId,
+      oappAddress: receiver,
+      eid: event.params.eid,
+      blockNumber,
+      blockTimestamp,
       eventId,
       transactionHash,
     });
-    return;
-  }
+  },
+);
 
-  const entity: DefaultReceiveLibrary = {
-    id,
-    localEid,
-    eid: event.params.eid,
-    library: normalizedLibrary,
-    transactionHash,
-    lastUpdatedBlock: blockNumber,
-    lastUpdatedTimestamp: blockTimestamp,
-    lastUpdatedByEventId: eventId,
-  };
-  context.DefaultReceiveLibrary.set(entity);
+indexer.onEvent(
+  { contract: "ReceiveUln302", event: "UlnConfigSet" },
+  async ({ event, context }) => {
+    if (context.isPreload) return;
 
-  const version: DefaultReceiveLibraryVersion = {
-    id: eventId,
-    localEid,
-    eid: event.params.eid,
-    library: normalizedLibrary,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  };
-  context.DefaultReceiveLibraryVersion.set(version);
+    const localEid = resolveLocalEid(event.chainId);
+    const blockNumber = toBigInt(event.block.number);
+    const blockTimestamp = toBigInt(event.block.timestamp);
+    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+    const transactionHash = event.transaction.hash;
+    const receiver = normalizeOAppAddress(event.params.oapp);
+    if (!receiver) {
+      context.log.warn("UlnConfigSet missing oapp address", {
+        localEid: localEid.toString(),
+        eid: event.params.eid,
+        rawValue: event.params.oapp,
+        eventId,
+        transactionHash,
+      });
+      return;
+    }
+    const oappId = makeOAppId(localEid, receiver);
+    const configId = makeRouteId(oappId, event.params.eid);
 
-  await recomputeSecurityConfigsForScope(
-    context,
-    localEid,
-    event.params.eid,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  );
-});
-
-ReceiveUln302.DefaultUlnConfigsSet.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
-
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const transactionHash = event.transaction.hash;
-
-  for (const [eid, config] of event.params.params) {
-    // Use destructuring for better readability and type safety
-    const [
-      confirmations,
-      requiredDVNCount,
-      optionalDVNCount,
-      optionalDVNThreshold,
-      requiredDVNs,
-      optionalDVNs,
-    ] = config;
+    const confirmations = event.params.config[0];
+    const requiredDVNCount = event.params.config[1];
+    const optionalDVNCount = event.params.config[2];
+    const optionalDVNThreshold = event.params.config[3];
+    const requiredDVNs = event.params.config[4];
+    const optionalDVNs = event.params.config[5];
 
     // Check for zero addresses before normalization
-    checkForZeroAddresses(context, requiredDVNs, "DefaultUlnConfigsSet", localEid, eid, "required");
-    checkForZeroAddresses(context, optionalDVNs, "DefaultUlnConfigsSet", localEid, eid, "optional");
+    checkForZeroAddresses(
+      context,
+      requiredDVNs,
+      `UlnConfigSet(${oappId})`,
+      localEid,
+      event.params.eid,
+      "required",
+    );
+    checkForZeroAddresses(
+      context,
+      optionalDVNs,
+      `UlnConfigSet(${oappId})`,
+      localEid,
+      event.params.eid,
+      "optional",
+    );
 
-    const id = makeDefaultScopedId(localEid, eid);
     const normalizedRequired = uniqueNormalizedAddresses(requiredDVNs);
     const normalizedOptional = uniqueNormalizedAddresses(optionalDVNs);
 
-    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-    const entity: DefaultUlnConfig = {
-      id,
+    const oappDefaults: OAppStats = {
+      id: oappId,
       localEid,
-      eid,
+      address: receiver,
+      totalPacketsReceived: 0n,
+      lastPacketBlock: undefined,
+      lastPacketTimestamp: undefined,
+    };
+    await context.OAppStats.getOrCreate(oappDefaults);
+
+    const configEntity: OAppUlnConfig = {
+      id: configId,
+      oappId,
+      localEid,
+      oapp: receiver,
+      eid: event.params.eid,
       confirmations: BigInt(confirmations),
       requiredDVNCount: Number(requiredDVNCount),
       optionalDVNCount: Number(optionalDVNCount),
@@ -930,28 +1168,25 @@ ReceiveUln302.DefaultUlnConfigsSet.handler(async ({ event, context }) => {
     validateUlnConfig(
       context,
       {
-        requiredDVNCount: entity.requiredDVNCount,
-        optionalDVNCount: entity.optionalDVNCount,
-        optionalDVNThreshold: entity.optionalDVNThreshold,
-        requiredDVNs: entity.requiredDVNs,
-        optionalDVNs: entity.optionalDVNs,
+        requiredDVNCount: configEntity.requiredDVNCount,
+        optionalDVNCount: configEntity.optionalDVNCount,
+        optionalDVNThreshold: configEntity.optionalDVNThreshold,
+        requiredDVNs: configEntity.requiredDVNs,
+        optionalDVNs: configEntity.optionalDVNs,
       },
-      "DefaultUlnConfigsSet",
+      `UlnConfigSet(${oappId})`,
       localEid,
-      eid,
+      event.params.eid,
     );
 
-    context.DefaultUlnConfig.set(entity);
+    context.OAppUlnConfig.set(configEntity);
 
-    // Note: DefaultUlnConfigVersion uses composite ID (eventId_eid) because
-    // DefaultUlnConfigsSet event can set multiple configs in one transaction.
-    // This differs from other Version entities which use simple eventId because
-    // their events only affect one config per event.
-    const versionId = `${eventId}_${eid.toString()}`;
-    const version: DefaultUlnConfigVersion = {
-      id: versionId,
+    const configVersion: OAppUlnConfigVersion = {
+      id: eventId,
+      oappId,
       localEid,
-      eid,
+      oapp: receiver,
+      eid: event.params.eid,
       confirmations: BigInt(confirmations),
       requiredDVNCount: Number(requiredDVNCount),
       optionalDVNCount: Number(optionalDVNCount),
@@ -963,462 +1198,255 @@ ReceiveUln302.DefaultUlnConfigsSet.handler(async ({ event, context }) => {
       eventId,
       transactionHash,
     };
-    context.DefaultUlnConfigVersion.set(version);
+    context.OAppUlnConfigVersion.set(configVersion);
 
-    await recomputeSecurityConfigsForScope(
-      context,
-      localEid,
-      eid,
-      blockNumber,
-      blockTimestamp,
-      eventId,
-      transactionHash,
-    );
-  }
-});
-
-EndpointV2.ReceiveLibrarySet.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
-
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-  const transactionHash = event.transaction.hash;
-  const receiver = normalizeOAppAddress(event.params.receiver);
-  if (!receiver) {
-    context.log.warn("ReceiveLibrarySet missing receiver", {
-      localEid: localEid.toString(),
-      eid: event.params.eid,
-      rawValue: event.params.receiver,
-      eventId,
-      transactionHash,
-    });
-    return;
-  }
-  const oappId = makeOAppId(localEid, receiver);
-  const configId = makeRouteId(oappId, event.params.eid);
-  const normalizedLibrary = normalizeAddress(event.params.newLib);
-  if (!normalizedLibrary) {
-    context.log.warn("ReceiveLibrarySet missing newLib", {
-      localEid: localEid.toString(),
-      eid: event.params.eid,
-      receiver: event.params.receiver,
-      rawValue: event.params.newLib,
-      eventId,
-      transactionHash,
-    });
-    return;
-  }
-
-  const oappDefaults: OAppStats = {
-    id: oappId,
-    localEid,
-    address: receiver,
-    totalPacketsReceived: 0n,
-    lastPacketBlock: undefined,
-    lastPacketTimestamp: undefined,
-  };
-  await context.OAppStats.getOrCreate(oappDefaults);
-
-  const libraryEntity: OAppReceiveLibrary = {
-    id: configId,
-    oappId,
-    localEid,
-    oapp: receiver,
-    eid: event.params.eid,
-    library: normalizedLibrary,
-    transactionHash,
-    lastUpdatedBlock: blockNumber,
-    lastUpdatedTimestamp: blockTimestamp,
-    lastUpdatedByEventId: eventId,
-  };
-  context.OAppReceiveLibrary.set(libraryEntity);
-
-  const libraryVersion: OAppReceiveLibraryVersion = {
-    id: eventId,
-    oappId,
-    localEid,
-    oapp: receiver,
-    eid: event.params.eid,
-    library: normalizedLibrary,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  };
-  context.OAppReceiveLibraryVersion.set(libraryVersion);
-
-  await computeAndPersistEffectiveConfig({
-    context,
-    localEid,
-    oappId,
-    oappAddress: receiver,
-    eid: event.params.eid,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  });
-});
-
-ReceiveUln302.UlnConfigSet.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
-
-  const localEid = resolveLocalEid(event.chainId);
-  const blockNumber = toBigInt(event.block.number);
-  const blockTimestamp = toBigInt(event.block.timestamp);
-  const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-  const transactionHash = event.transaction.hash;
-  const receiver = normalizeOAppAddress(event.params.oapp);
-  if (!receiver) {
-    context.log.warn("UlnConfigSet missing oapp address", {
-      localEid: localEid.toString(),
-      eid: event.params.eid,
-      rawValue: event.params.oapp,
-      eventId,
-      transactionHash,
-    });
-    return;
-  }
-  const oappId = makeOAppId(localEid, receiver);
-  const configId = makeRouteId(oappId, event.params.eid);
-
-  // Use destructuring for better readability and type safety
-  const [
-    confirmations,
-    requiredDVNCount,
-    optionalDVNCount,
-    optionalDVNThreshold,
-    requiredDVNs,
-    optionalDVNs,
-  ] = event.params.config;
-
-  // Check for zero addresses before normalization
-  checkForZeroAddresses(
-    context,
-    requiredDVNs,
-    `UlnConfigSet(${oappId})`,
-    localEid,
-    event.params.eid,
-    "required",
-  );
-  checkForZeroAddresses(
-    context,
-    optionalDVNs,
-    `UlnConfigSet(${oappId})`,
-    localEid,
-    event.params.eid,
-    "optional",
-  );
-
-  const normalizedRequired = uniqueNormalizedAddresses(requiredDVNs);
-  const normalizedOptional = uniqueNormalizedAddresses(optionalDVNs);
-
-  const oappDefaults: OAppStats = {
-    id: oappId,
-    localEid,
-    address: receiver,
-    totalPacketsReceived: 0n,
-    lastPacketBlock: undefined,
-    lastPacketTimestamp: undefined,
-  };
-  await context.OAppStats.getOrCreate(oappDefaults);
-
-  const configEntity: OAppUlnConfig = {
-    id: configId,
-    oappId,
-    localEid,
-    oapp: receiver,
-    eid: event.params.eid,
-    confirmations: BigInt(confirmations),
-    requiredDVNCount: Number(requiredDVNCount),
-    optionalDVNCount: Number(optionalDVNCount),
-    optionalDVNThreshold: Number(optionalDVNThreshold),
-    requiredDVNs: normalizedRequired,
-    optionalDVNs: normalizedOptional,
-    transactionHash,
-    lastUpdatedBlock: blockNumber,
-    lastUpdatedTimestamp: blockTimestamp,
-    lastUpdatedByEventId: eventId,
-  };
-
-  // Validate config before storing
-  validateUlnConfig(
-    context,
-    {
-      requiredDVNCount: configEntity.requiredDVNCount,
-      optionalDVNCount: configEntity.optionalDVNCount,
-      optionalDVNThreshold: configEntity.optionalDVNThreshold,
-      requiredDVNs: configEntity.requiredDVNs,
-      optionalDVNs: configEntity.optionalDVNs,
-    },
-    `UlnConfigSet(${oappId})`,
-    localEid,
-    event.params.eid,
-  );
-
-  context.OAppUlnConfig.set(configEntity);
-
-  const configVersion: OAppUlnConfigVersion = {
-    id: eventId,
-    oappId,
-    localEid,
-    oapp: receiver,
-    eid: event.params.eid,
-    confirmations: BigInt(confirmations),
-    requiredDVNCount: Number(requiredDVNCount),
-    optionalDVNCount: Number(optionalDVNCount),
-    optionalDVNThreshold: Number(optionalDVNThreshold),
-    requiredDVNs: normalizedRequired,
-    optionalDVNs: normalizedOptional,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  };
-  context.OAppUlnConfigVersion.set(configVersion);
-
-  await computeAndPersistEffectiveConfig({
-    context,
-    localEid,
-    oappId,
-    oappAddress: receiver,
-    eid: event.params.eid,
-    blockNumber,
-    blockTimestamp,
-    eventId,
-    transactionHash,
-  });
-});
-
-EndpointV2.PacketDelivered.handler(async ({ event, context }) => {
-  if (context.isPreload) return;
-
-  const localEid = resolveLocalEid(event.chainId);
-
-  try {
-    const [srcEid, sender, nonce] = event.params.origin;
-    const blockNumber = toBigInt(event.block.number);
-    const blockTimestamp = toBigInt(event.block.timestamp);
-    const eventId = makeEventId(localEid, event.block.number, event.logIndex);
-    const transactionHash = event.transaction.hash;
-    const receiver = normalizeOAppAddress(event.params.receiver);
-    if (!receiver) {
-      context.log.error("PacketDelivered missing receiver", {
-        localEid: localEid.toString(),
-        blockNumber: event.block.number,
-        logIndex: event.logIndex,
-        rawValue: event.params.receiver,
-        eventId,
-        transactionHash,
-      });
-      return;
-    }
-    const normalizedSender = normalizeOAppAddress(sender);
-    if (!normalizedSender) {
-      context.log.error("PacketDelivered missing sender", {
-        localEid: localEid.toString(),
-        blockNumber: event.block.number,
-        logIndex: event.logIndex,
-        rawValue: sender,
-        eventId,
-        transactionHash,
-      });
-      return;
-    }
-    const senderOappId = makeOAppId(srcEid, normalizedSender);
-    const oappId = makeOAppId(localEid, receiver);
-
-    const oappDefaults: OAppStats = {
-      id: oappId,
-      localEid,
-      address: receiver,
-      totalPacketsReceived: 0n,
-      lastPacketBlock: undefined,
-      lastPacketTimestamp: undefined,
-    };
-    const oapp = await context.OAppStats.getOrCreate(oappDefaults);
-
-    const updatedOApp: OAppStats = {
-      ...oapp,
-      totalPacketsReceived: oapp.totalPacketsReceived + 1n,
-      lastPacketBlock: blockNumber,
-      lastPacketTimestamp: blockTimestamp,
-    };
-    context.OAppStats.set(updatedOApp);
-
-    const statsId = makeRouteId(oappId, srcEid);
-    const statsDefaults: OAppRouteStats = {
-      id: statsId,
-      oappId,
-      localEid,
-      oapp: receiver,
-      srcEid,
-      packetCount: 0n,
-      lastPacketBlock: undefined,
-      lastPacketTimestamp: undefined,
-      lastPacketSecurityConfigId: undefined,
-    };
-    const stats = await context.OAppRouteStats.getOrCreate(statsDefaults);
-
-    // Check if peer is configured and track unconfigured deliveries
-    const peerRouteId = makeRouteId(oappId, srcEid);
-    const existingPeer = await context.OAppPeer.get(peerRouteId);
-
-    if (!existingPeer) {
-      // No peer configured for this route - create OAppPeer + OAppPeerVersion to track it
-      const autoPeer: OAppPeer = {
-        id: peerRouteId,
-        oappId,
-        localEid,
-        oapp: receiver,
-        eid: srcEid,
-        peer: sender,
-        peerOappId: senderOappId,
-        fromPacketDelivered: true,
-        transactionHash,
-        lastUpdatedBlock: blockNumber,
-        lastUpdatedTimestamp: blockTimestamp,
-        lastUpdatedByEventId: eventId,
-      };
-      context.OAppPeer.set(autoPeer);
-
-      const autoPeerVersion: OAppPeerVersion = {
-        id: eventId,
-        oappId,
-        localEid,
-        oapp: receiver,
-        eid: srcEid,
-        peer: sender,
-        peerOappId: senderOappId,
-        fromPacketDelivered: true,
-        transactionHash,
-        blockNumber,
-        blockTimestamp,
-        eventId,
-      };
-      context.OAppPeerVersion.set(autoPeerVersion);
-    } else if (existingPeer.fromPacketDelivered === false) {
-      // Peer was explicitly configured via PeerSet - verify sender matches
-      const configuredPeerNormalized = existingPeer.peer
-        ? normalizeOAppAddress(existingPeer.peer)
-        : undefined;
-
-      if (!configuredPeerNormalized) {
-        context.log.warn("PacketDelivered: failed to normalize configured peer", {
-          localEid: localEid.toString(),
-          srcEid: srcEid.toString(),
-          receiver,
-          sender: normalizedSender,
-          configuredPeer: existingPeer.peer,
-          blockNumber: event.block.number,
-          logIndex: event.logIndex,
-          eventId,
-          transactionHash,
-        });
-      } else if (isZeroAddress(configuredPeerNormalized)) {
-        // Route was explicitly blocked by setting peer to zero address
-        context.log.warn("PacketDelivered: route explicitly blocked but packet delivered", {
-          localEid: localEid.toString(),
-          srcEid: srcEid.toString(),
-          receiver,
-          sender: normalizedSender,
-          configuredPeer: configuredPeerNormalized,
-          blockNumber: event.block.number,
-          logIndex: event.logIndex,
-          eventId,
-          transactionHash,
-        });
-      } else if (configuredPeerNormalized !== normalizedSender) {
-        // Configured non-zero peer doesn't match actual sender
-        context.log.warn("PacketDelivered: sender does not match configured peer", {
-          localEid: localEid.toString(),
-          srcEid: srcEid.toString(),
-          receiver,
-          sender: normalizedSender,
-          configuredPeer: configuredPeerNormalized,
-          blockNumber: event.block.number,
-          logIndex: event.logIndex,
-          eventId,
-          transactionHash,
-        });
-      }
-      // If sender matches configured peer, all is good - no log, no action
-    }
-    // If existingPeer.fromPacketDelivered === true, we already auto-tracked this - skip silently
-
-    const securityConfig = await computeAndPersistEffectiveConfig({
+    await computeAndPersistEffectiveConfig({
       context,
       localEid,
       oappId,
       oappAddress: receiver,
-      eid: srcEid,
+      eid: event.params.eid,
       blockNumber,
       blockTimestamp,
       eventId,
       transactionHash,
     });
+  },
+);
 
-    const updatedStats: OAppRouteStats = {
-      ...stats,
-      packetCount: stats.packetCount + 1n,
-      lastPacketBlock: blockNumber,
-      lastPacketTimestamp: blockTimestamp,
-      lastPacketSecurityConfigId: securityConfig.id,
-    };
-    context.OAppRouteStats.set(updatedStats);
+indexer.onEvent(
+  { contract: "EndpointV2", event: "PacketDelivered" },
+  async ({ event, context }) => {
+    if (context.isPreload) return;
 
-    const packetEntity: PacketDeliveredEntity = {
-      id: eventId,
-      localEid,
-      blockNumber,
-      blockTimestamp,
-      receiver,
-      srcEid,
-      sender,
-      senderOappId,
-      nonce,
-      oappId,
-      securityConfigId: securityConfig.id,
-      transactionHash,
-      effectiveReceiveLibrary: securityConfig.effectiveReceiveLibrary,
-      libraryStatus: securityConfig.libraryStatus,
-      effectiveConfirmations: securityConfig.effectiveConfirmations,
-      effectiveRequiredDVNCount: securityConfig.effectiveRequiredDVNCount,
-      effectiveOptionalDVNCount: securityConfig.effectiveOptionalDVNCount,
-      effectiveOptionalDVNThreshold: securityConfig.effectiveOptionalDVNThreshold,
-      effectiveRequiredDVNs: securityConfig.effectiveRequiredDVNs,
-      effectiveOptionalDVNs: securityConfig.effectiveOptionalDVNs,
-      isConfigTracked: securityConfig.isConfigTracked,
-      usesDefaultLibrary: securityConfig.usesDefaultLibrary,
-      usesDefaultConfig: securityConfig.usesDefaultConfig,
-      usesRequiredDVNSentinel: securityConfig.usesRequiredDVNSentinel,
-      fallbackFields: securityConfig.fallbackFields,
-      defaultLibraryVersionId: securityConfig.defaultLibraryVersionId,
-      defaultConfigVersionId: securityConfig.defaultConfigVersionId,
-      libraryOverrideVersionId: securityConfig.libraryOverrideVersionId,
-      configOverrideVersionId: securityConfig.configOverrideVersionId,
-    };
+    const localEid = resolveLocalEid(event.chainId);
 
-    context.PacketDelivered.set(packetEntity);
-  } catch (error) {
-    context.log.error(
-      "Failed to process PacketDelivered event",
-      error instanceof Error ? error : new Error(String(error)),
-    );
-    context.log.error("PacketDelivered event context", {
-      blockNumber: event.block.number,
-      logIndex: event.logIndex,
-      receiver: event.params.receiver,
-      localEid: localEid.toString(),
-      origin: event.params.origin,
-    });
-    throw error;
-  }
-});
+    try {
+      const srcEid = event.params.origin[0];
+      const sender = event.params.origin[1];
+      const nonce = event.params.origin[2];
+      const blockNumber = toBigInt(event.block.number);
+      const blockTimestamp = toBigInt(event.block.timestamp);
+      const eventId = makeEventId(localEid, event.block.number, event.logIndex);
+      const transactionHash = event.transaction.hash;
+      const receiver = normalizeOAppAddress(event.params.receiver);
+      if (!receiver) {
+        context.log.error("PacketDelivered missing receiver", {
+          localEid: localEid.toString(),
+          blockNumber: event.block.number,
+          logIndex: event.logIndex,
+          rawValue: event.params.receiver,
+          eventId,
+          transactionHash,
+        });
+        return;
+      }
+      const normalizedSender = normalizeOAppAddress(sender);
+      if (!normalizedSender) {
+        context.log.error("PacketDelivered missing sender", {
+          localEid: localEid.toString(),
+          blockNumber: event.block.number,
+          logIndex: event.logIndex,
+          rawValue: sender,
+          eventId,
+          transactionHash,
+        });
+        return;
+      }
+      const senderOappId = makeOAppId(srcEid, normalizedSender);
+      const oappId = makeOAppId(localEid, receiver);
 
-OAppOFT.PeerSet.handler(
+      const oappDefaults: OAppStats = {
+        id: oappId,
+        localEid,
+        address: receiver,
+        totalPacketsReceived: 0n,
+        lastPacketBlock: undefined,
+        lastPacketTimestamp: undefined,
+      };
+      const oapp = await context.OAppStats.getOrCreate(oappDefaults);
+
+      const updatedOApp: OAppStats = {
+        ...oapp,
+        totalPacketsReceived: oapp.totalPacketsReceived + 1n,
+        lastPacketBlock: blockNumber,
+        lastPacketTimestamp: blockTimestamp,
+      };
+      context.OAppStats.set(updatedOApp);
+
+      const statsId = makeRouteId(oappId, srcEid);
+      const statsDefaults: OAppRouteStats = {
+        id: statsId,
+        oappId,
+        localEid,
+        oapp: receiver,
+        srcEid,
+        packetCount: 0n,
+        lastPacketBlock: undefined,
+        lastPacketTimestamp: undefined,
+        lastPacketSecurityConfigId: undefined,
+      };
+      const stats = await context.OAppRouteStats.getOrCreate(statsDefaults);
+
+      // Check if peer is configured and track unconfigured deliveries
+      const peerRouteId = makeRouteId(oappId, srcEid);
+      const existingPeer = await context.OAppPeer.get(peerRouteId);
+
+      if (!existingPeer) {
+        // No peer configured for this route - create OAppPeer + OAppPeerVersion to track it
+        const autoPeer: OAppPeer = {
+          id: peerRouteId,
+          oappId,
+          localEid,
+          oapp: receiver,
+          eid: srcEid,
+          peer: sender,
+          peerOappId: senderOappId,
+          fromPacketDelivered: true,
+          transactionHash,
+          lastUpdatedBlock: blockNumber,
+          lastUpdatedTimestamp: blockTimestamp,
+          lastUpdatedByEventId: eventId,
+        };
+        context.OAppPeer.set(autoPeer);
+
+        const autoPeerVersion: OAppPeerVersion = {
+          id: eventId,
+          oappId,
+          localEid,
+          oapp: receiver,
+          eid: srcEid,
+          peer: sender,
+          peerOappId: senderOappId,
+          fromPacketDelivered: true,
+          transactionHash,
+          blockNumber,
+          blockTimestamp,
+          eventId,
+        };
+        context.OAppPeerVersion.set(autoPeerVersion);
+      } else if (existingPeer.fromPacketDelivered === false) {
+        // Peer was explicitly configured via PeerSet - verify sender matches
+        const configuredPeerNormalized = existingPeer.peer
+          ? normalizeOAppAddress(existingPeer.peer)
+          : undefined;
+
+        if (!configuredPeerNormalized) {
+          context.log.warn("PacketDelivered: failed to normalize configured peer", {
+            localEid: localEid.toString(),
+            srcEid: srcEid.toString(),
+            receiver,
+            sender: normalizedSender,
+            configuredPeer: existingPeer.peer,
+            blockNumber: event.block.number,
+            logIndex: event.logIndex,
+            eventId,
+            transactionHash,
+          });
+        } else if (isZeroAddress(configuredPeerNormalized)) {
+          // Route was explicitly blocked by setting peer to zero address
+          context.log.warn("PacketDelivered: route explicitly blocked but packet delivered", {
+            localEid: localEid.toString(),
+            srcEid: srcEid.toString(),
+            receiver,
+            sender: normalizedSender,
+            configuredPeer: configuredPeerNormalized,
+            blockNumber: event.block.number,
+            logIndex: event.logIndex,
+            eventId,
+            transactionHash,
+          });
+        } else if (configuredPeerNormalized !== normalizedSender) {
+          // Configured non-zero peer doesn't match actual sender
+          context.log.warn("PacketDelivered: sender does not match configured peer", {
+            localEid: localEid.toString(),
+            srcEid: srcEid.toString(),
+            receiver,
+            sender: normalizedSender,
+            configuredPeer: configuredPeerNormalized,
+            blockNumber: event.block.number,
+            logIndex: event.logIndex,
+            eventId,
+            transactionHash,
+          });
+        }
+        // If sender matches configured peer, all is good - no log, no action
+      }
+      // If existingPeer.fromPacketDelivered === true, we already auto-tracked this - skip silently
+
+      const securityConfig = await computeAndPersistEffectiveConfig({
+        context,
+        localEid,
+        oappId,
+        oappAddress: receiver,
+        eid: srcEid,
+        blockNumber,
+        blockTimestamp,
+        eventId,
+        transactionHash,
+      });
+
+      const updatedStats: OAppRouteStats = {
+        ...stats,
+        packetCount: stats.packetCount + 1n,
+        lastPacketBlock: blockNumber,
+        lastPacketTimestamp: blockTimestamp,
+        lastPacketSecurityConfigId: securityConfig.id,
+      };
+      context.OAppRouteStats.set(updatedStats);
+
+      const packetEntity: PacketDeliveredEntity = {
+        id: eventId,
+        localEid,
+        blockNumber,
+        blockTimestamp,
+        receiver,
+        srcEid,
+        sender,
+        senderOappId,
+        nonce,
+        oappId,
+        securityConfigId: securityConfig.id,
+        transactionHash,
+        effectiveReceiveLibrary: securityConfig.effectiveReceiveLibrary,
+        libraryStatus: securityConfig.libraryStatus,
+        effectiveConfirmations: securityConfig.effectiveConfirmations,
+        effectiveRequiredDVNCount: securityConfig.effectiveRequiredDVNCount,
+        effectiveOptionalDVNCount: securityConfig.effectiveOptionalDVNCount,
+        effectiveOptionalDVNThreshold: securityConfig.effectiveOptionalDVNThreshold,
+        effectiveRequiredDVNs: securityConfig.effectiveRequiredDVNs,
+        effectiveOptionalDVNs: securityConfig.effectiveOptionalDVNs,
+        isConfigTracked: securityConfig.isConfigTracked,
+        usesDefaultLibrary: securityConfig.usesDefaultLibrary,
+        usesDefaultConfig: securityConfig.usesDefaultConfig,
+        usesRequiredDVNSentinel: securityConfig.usesRequiredDVNSentinel,
+        fallbackFields: securityConfig.fallbackFields,
+        defaultLibraryVersionId: securityConfig.defaultLibraryVersionId,
+        defaultConfigVersionId: securityConfig.defaultConfigVersionId,
+        libraryOverrideVersionId: securityConfig.libraryOverrideVersionId,
+        configOverrideVersionId: securityConfig.configOverrideVersionId,
+      };
+
+      context.PacketDelivered.set(packetEntity);
+    } catch (error) {
+      context.log.error(
+        "Failed to process PacketDelivered event",
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      context.log.error("PacketDelivered event context", {
+        blockNumber: event.block.number,
+        logIndex: event.logIndex,
+        receiver: event.params.receiver,
+        localEid: localEid.toString(),
+        origin: event.params.origin,
+      });
+      throw error;
+    }
+  },
+);
+
+indexer.onEvent(
+  { contract: "OAppOFT", event: "PeerSet", wildcard: true },
   async ({ event, context }) => {
     if (context.isPreload) return;
 
@@ -1509,10 +1537,10 @@ OAppOFT.PeerSet.handler(
     };
     context.OAppSecurityConfig.set(updatedSecurityConfig);
   },
-  { wildcard: true },
 );
 
-OAppOFT.RateLimiterSet.handler(
+indexer.onEvent(
+  { contract: "OAppOFT", event: "RateLimiterSet", wildcard: true },
   async ({ event, context }) => {
     if (context.isPreload) return;
 
@@ -1570,10 +1598,10 @@ OAppOFT.RateLimiterSet.handler(
     };
     context.OAppRateLimiterVersion.set(rateLimiterVersion);
   },
-  { wildcard: true },
 );
 
-OAppOFT.RateLimitsChanged.handler(
+indexer.onEvent(
+  { contract: "OAppOFT", event: "RateLimitsChanged", wildcard: true },
   async ({ event, context }) => {
     if (context.isPreload) return;
 
@@ -1604,7 +1632,10 @@ OAppOFT.RateLimitsChanged.handler(
     };
     await context.OAppStats.getOrCreate(oappDefaults);
 
-    for (const [rawDstEid, rawLimit, rawWindow] of event.params.rateLimitConfigs) {
+    for (const rateLimitConfig of event.params.rateLimitConfigs) {
+      const rawDstEid = rateLimitConfig[0];
+      const rawLimit = rateLimitConfig[1];
+      const rawWindow = rateLimitConfig[2];
       const dstEid = BigInt(rawDstEid);
       const limit = BigInt(rawLimit);
       const window = BigInt(rawWindow);
@@ -1642,5 +1673,4 @@ OAppOFT.RateLimitsChanged.handler(
       context.OAppRateLimitVersion.set(rateLimitVersion);
     }
   },
-  { wildcard: true },
 );

@@ -19,14 +19,15 @@
   "files": {
     "includes": [
       "**/*",
+      "!.envio/**",
       "!build/**",
-      "!generated/**",
       "!node_modules/**",
       "!.venv/**",
       "!dashboard/layerzero.json",
       "!dashboard/.next/**",
       "!dashboard/out/**",
-      "!dashboard/data/**"
+      "!dashboard/data/**",
+      "!backups/**"
     ]
   }
 }

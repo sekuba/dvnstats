@@ -25,13 +25,16 @@ lib/*
 .merlin
 .bsb.lock
 /node_modules/
+.envio/
 benchmarks/
 artifacts
-generated
 logs
+debug.log
 *.res.js
 *.res.mjs
 *.gen.ts
 build
 .env
 hyperindex-complete.mdx
+/backups
+/run
