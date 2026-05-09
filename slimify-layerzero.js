@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
-const path = require("path");
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const inputPath = args[0] || path.join(__dirname, "layerzero.json");
 const outputPath = args[1] || path.join(__dirname, "layerzero-slim.json");
 
