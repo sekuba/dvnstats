@@ -365,19 +365,33 @@
   background: var(--paper);
   color: var(--ink);
   cursor: pointer;
+  box-shadow: none;
+  transform: none;
+  transition: background-color 0.1s ease;
 }
 
 .chart-toggle-button:last-child {
   border-right: 0;
 }
 
-.chart-toggle-button:hover {
+button.chart-toggle-button:not(:disabled):hover {
   background: rgba(27, 156, 133, 0.12);
+  box-shadow: none;
+  transform: none;
+}
+
+button.chart-toggle-button:not(:disabled):active {
+  box-shadow: none;
+  transform: none;
 }
 
 .chart-toggle-button.active {
   background: var(--accent);
   cursor: default;
+}
+
+button.chart-toggle-button.active:not(:disabled):hover {
+  background: var(--accent);
 }
 
 .chart-subtitle {
