@@ -370,7 +370,7 @@ export class SecurityConfigFormatter {
     statusBits.push(statusExplanations[libraryStatus] || libraryStatus);
 
     if (row.usesDefaultLibrary && row.effectiveReceiveLibrary) {
-      statusBits.push("Uses default library");
+      statusBits.push("Inherits default library");
     }
     if (!row.usesDefaultLibrary && row.libraryOverrideVersionId) {
       statusBits.push("Custom override");
@@ -581,7 +581,7 @@ export class SecurityConfigFormatter {
     const names = Array.isArray(fields) ? fields : [];
     if (!names.length) {
       if (usesDefaultConfig) {
-        return createFormattedCell(["All from default"], "default", { highlight });
+        return createFormattedCell(["All config from default"], "default", { highlight });
       }
       return createFormattedCell(["None (fully custom)"], "", { highlight });
     }

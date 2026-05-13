@@ -16,6 +16,8 @@ const FALLBACK_FIELD_ORDER = [
 ];
 
 const REQUIRED_DVN_SENTINEL = APP_CONFIG.SENTINEL_VALUES.REQUIRED_DVN_SENTINEL;
+const OPTIONAL_DVN_SENTINEL = APP_CONFIG.SENTINEL_VALUES.OPTIONAL_DVN_SENTINEL;
+const CONFIRMATIONS_SENTINEL = APP_CONFIG.SENTINEL_VALUES.CONFIRMATIONS_SENTINEL;
 
 export function normalizeSecurityConfig({
   eid,
@@ -121,7 +123,7 @@ function createSyntheticSecurityConfig({
 
   let libraryStatus = "none";
   let isConfigTracked = false;
-  let usesDefaultLibrary = true;
+  let usesDefaultLibrary = false;
   if (effectiveReceiveLibrary) {
     if (trackedReceiveLibrary && effectiveReceiveLibrary === trackedReceiveLibrary) {
       libraryStatus = "tracked";
@@ -133,7 +135,8 @@ function createSyntheticSecurityConfig({
 
   if (overrideLibraryAddress && !isZeroAddress(overrideLibraryAddress)) {
     usesDefaultLibrary = false;
-  } else if (effectiveReceiveLibrary) {
+  } else {
+    usesDefaultLibrary = true;
     fallbackFields.add("receiveLibrary");
   }
 
@@ -220,27 +223,132 @@ function resolveConfig({ isConfigTracked, defaultCfg, overrideCfg, fallbackField
   }
 
   const effective = emptyEffectiveConfig();
-  let usesDefaultConfig = true;
+  const overrideHasConfig = overrideCfg.hasValues;
+  const usesDefaultConfig = !overrideHasConfig;
   let usesSentinel = false;
 
-  if (overrideCfg.hasValues) {
-    usesDefaultConfig = false;
-    assignConfig(effective, overrideCfg);
-    usesSentinel = overrideCfg.requiredDVNCount === REQUIRED_DVN_SENTINEL;
-
-    FALLBACK_FIELD_ORDER.forEach((field) => {
-      if (overrideCfg[field] === undefined || overrideCfg[field] === null) {
-        fallbackFields.add(field);
-      }
-    });
+  const overrideConfirmations = overrideCfg.confirmations;
+  const defaultConfirmations = defaultCfg.confirmations;
+  if (hasNonZeroConfirmations(overrideConfirmations)) {
+    effective.confirmations = normalizeConfirmations(overrideConfirmations);
+  } else if (defaultConfirmations !== undefined && defaultConfirmations !== null) {
+    effective.confirmations = normalizeConfirmations(defaultConfirmations);
   } else {
-    assignConfig(effective, defaultCfg);
-    usesSentinel = defaultCfg.requiredDVNCount === REQUIRED_DVN_SENTINEL;
-    FALLBACK_FIELD_ORDER.forEach((field) => {
-      if (defaultCfg[field] !== undefined && defaultCfg[field] !== null) {
-        fallbackFields.add(field);
-      }
-    });
+    effective.confirmations = null;
+  }
+  if (overrideHasConfig && !hasNonZeroConfirmations(overrideConfirmations)) {
+    fallbackFields.add("confirmations");
+  }
+
+  const overrideRequiredCount = overrideCfg.requiredDVNCount;
+  const defaultRequiredCount = defaultCfg.requiredDVNCount;
+  const overrideUsesRequiredDVNSentinel = overrideRequiredCount === REQUIRED_DVN_SENTINEL;
+  let rawRequiredCount = null;
+  if (isActiveCount(overrideRequiredCount, REQUIRED_DVN_SENTINEL)) {
+    rawRequiredCount = overrideRequiredCount;
+  } else if (defaultRequiredCount !== undefined && defaultRequiredCount !== null) {
+    rawRequiredCount = defaultRequiredCount;
+  }
+  if (overrideHasConfig && !isActiveCount(overrideRequiredCount, REQUIRED_DVN_SENTINEL)) {
+    fallbackFields.add("requiredDVNCount");
+  }
+
+  const overrideOptionalCount = overrideCfg.optionalDVNCount;
+  const defaultOptionalCount = defaultCfg.optionalDVNCount;
+  const overrideUsesOptionalDVNSentinel = overrideOptionalCount === OPTIONAL_DVN_SENTINEL;
+  let rawOptionalCount = null;
+  let usesOptionalDVNSentinel = false;
+  if (isActiveCount(overrideOptionalCount, OPTIONAL_DVN_SENTINEL)) {
+    usesOptionalDVNSentinel = overrideOptionalCount === OPTIONAL_DVN_SENTINEL;
+    rawOptionalCount = overrideOptionalCount === OPTIONAL_DVN_SENTINEL ? 0 : overrideOptionalCount;
+  } else if (defaultOptionalCount !== undefined && defaultOptionalCount !== null) {
+    usesOptionalDVNSentinel = defaultOptionalCount === OPTIONAL_DVN_SENTINEL;
+    rawOptionalCount = defaultOptionalCount === OPTIONAL_DVN_SENTINEL ? 0 : defaultOptionalCount;
+  }
+  if (overrideHasConfig && !isActiveCount(overrideOptionalCount, OPTIONAL_DVN_SENTINEL)) {
+    fallbackFields.add("optionalDVNCount");
+  }
+
+  const overrideOptionalThreshold = overrideCfg.optionalDVNThreshold;
+  const defaultOptionalThreshold = defaultCfg.optionalDVNThreshold;
+  if (
+    overrideOptionalThreshold !== undefined &&
+    overrideOptionalThreshold !== null &&
+    overrideOptionalThreshold > 0
+  ) {
+    effective.optionalDVNThreshold = overrideOptionalThreshold;
+  } else if (defaultOptionalThreshold !== undefined && defaultOptionalThreshold !== null) {
+    effective.optionalDVNThreshold = defaultOptionalThreshold;
+  }
+  if (
+    overrideHasConfig &&
+    !overrideUsesOptionalDVNSentinel &&
+    (overrideOptionalThreshold === undefined ||
+      overrideOptionalThreshold === null ||
+      overrideOptionalThreshold === 0)
+  ) {
+    fallbackFields.add("optionalDVNThreshold");
+  }
+
+  usesSentinel = rawRequiredCount === REQUIRED_DVN_SENTINEL;
+
+  if (usesSentinel) {
+    effective.requiredDVNCount = 0;
+    effective.requiredDVNs = [];
+  } else if (overrideCfg.requiredDVNs.length > 0) {
+    effective.requiredDVNs = overrideCfg.requiredDVNs;
+    effective.requiredDVNCount = overrideCfg.requiredDVNs.length;
+  } else if (
+    defaultCfg.requiredDVNs.length > 0 ||
+    (defaultRequiredCount !== undefined &&
+      defaultRequiredCount !== null &&
+      defaultRequiredCount > 0)
+  ) {
+    effective.requiredDVNs = defaultCfg.requiredDVNs;
+    effective.requiredDVNCount =
+      defaultCfg.requiredDVNs.length > 0 ? defaultCfg.requiredDVNs.length : rawRequiredCount;
+  } else {
+    effective.requiredDVNCount = rawRequiredCount;
+  }
+  if (
+    overrideHasConfig &&
+    !overrideUsesRequiredDVNSentinel &&
+    overrideCfg.requiredDVNs.length === 0
+  ) {
+    fallbackFields.add("requiredDVNs");
+  }
+
+  if (usesOptionalDVNSentinel) {
+    effective.optionalDVNs = [];
+    effective.optionalDVNCount = 0;
+  } else if (overrideCfg.optionalDVNs.length > 0) {
+    effective.optionalDVNs = overrideCfg.optionalDVNs;
+    effective.optionalDVNCount = overrideCfg.optionalDVNs.length;
+  } else if (
+    defaultCfg.optionalDVNs.length > 0 ||
+    (defaultOptionalCount !== undefined &&
+      defaultOptionalCount !== null &&
+      defaultOptionalCount > 0)
+  ) {
+    effective.optionalDVNs = defaultCfg.optionalDVNs;
+    effective.optionalDVNCount =
+      defaultCfg.optionalDVNs.length > 0 ? defaultCfg.optionalDVNs.length : rawOptionalCount || 0;
+  } else {
+    effective.optionalDVNCount = rawOptionalCount || 0;
+  }
+  if (
+    overrideHasConfig &&
+    !overrideUsesOptionalDVNSentinel &&
+    overrideCfg.optionalDVNs.length === 0
+  ) {
+    fallbackFields.add("optionalDVNs");
+  }
+
+  if (
+    effective.optionalDVNThreshold !== null &&
+    effective.optionalDVNThreshold > effective.optionalDVNCount
+  ) {
+    effective.optionalDVNThreshold = effective.optionalDVNCount;
   }
 
   return {
@@ -273,9 +381,11 @@ function normalizeConfig(input) {
   const optionalDVNs = Array.isArray(input.optionalDVNs) ? dedupeAddresses(input.optionalDVNs) : [];
 
   const hasValues =
-    confirmations !== null ||
-    (requiredDVNCount !== null && requiredDVNCount !== 0) ||
-    (optionalDVNCount !== null && optionalDVNCount !== 0) ||
+    hasNonZeroConfirmations(confirmations) ||
+    (requiredDVNCount !== null &&
+      (requiredDVNCount > 0 || requiredDVNCount === REQUIRED_DVN_SENTINEL)) ||
+    (optionalDVNCount !== null &&
+      (optionalDVNCount > 0 || optionalDVNCount === OPTIONAL_DVN_SENTINEL)) ||
     (optionalDVNThreshold !== null && optionalDVNThreshold !== 0) ||
     requiredDVNs.length > 0 ||
     optionalDVNs.length > 0;
@@ -289,6 +399,18 @@ function normalizeConfig(input) {
     optionalDVNs,
     hasValues,
   };
+}
+
+function hasNonZeroConfirmations(value) {
+  return value !== undefined && value !== null && String(value) !== "0";
+}
+
+function normalizeConfirmations(value) {
+  return String(value) === CONFIRMATIONS_SENTINEL ? 0 : value;
+}
+
+function isActiveCount(value, sentinel) {
+  return value !== undefined && value !== null && (value > 0 || value === sentinel);
 }
 
 function emptyNormalizedConfig() {
@@ -312,27 +434,6 @@ function emptyEffectiveConfig() {
     requiredDVNs: [],
     optionalDVNs: [],
   };
-}
-
-function assignConfig(target, source) {
-  target.confirmations =
-    source.confirmations !== undefined && source.confirmations !== null
-      ? source.confirmations
-      : null;
-  target.requiredDVNCount =
-    source.requiredDVNCount !== undefined && source.requiredDVNCount !== null
-      ? source.requiredDVNCount
-      : null;
-  target.optionalDVNCount =
-    source.optionalDVNCount !== undefined && source.optionalDVNCount !== null
-      ? source.optionalDVNCount
-      : 0;
-  target.optionalDVNThreshold =
-    source.optionalDVNThreshold !== undefined && source.optionalDVNThreshold !== null
-      ? source.optionalDVNThreshold
-      : null;
-  target.requiredDVNs = source.requiredDVNs ?? [];
-  target.optionalDVNs = source.optionalDVNs ?? [];
 }
 
 function dedupeAddresses(addresses) {
