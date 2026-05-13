@@ -1,6 +1,13 @@
 {
-  "computedAt": "2026-04-15T12:26:15.454Z",
-  "lastProcessedTimestamp": 1776254391,
-  "totalRecords": 14933628,
-  "lookback": "all"
+  "computedAt": "2026-05-13T07:29:19.714Z",
+  "lastProcessedTimestamp": 1778654942,
+  "totalRecords": 18926074,
+  "lookback": "all",
+  "coverage": {
+    "indexedChainCount": 54,
+    "indexedEidCount": 54,
+    "destinationEidCount": 54,
+    "sourceEidCount": 159,
+    "activeIndexedEidCount": 54
+  }
 }
