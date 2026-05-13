@@ -6,6 +6,24 @@ let statsData = null;
 let chainMetadata = null;
 let availableDatasets = [];
 let currentDataset = null;
+const chartViewState = {
+  "dvn-threshold": "snapshot",
+  "destination-chain": "snapshot",
+  "source-chain": "snapshot",
+};
+const STACKED_COLORS = [
+  "#1b9c85",
+  "#78bdff",
+  "#ff1df5",
+  "#f2f200",
+  "#ff6b6b",
+  "#4ecdc4",
+  "#aa96da",
+  "#f38181",
+  "#fcbad3",
+  "#95e1d3",
+];
+const STACKED_CHAIN_LIMIT = 8;
 
 async function loadChainMetadata() {
   const directory = new ChainDirectory();
@@ -71,6 +89,40 @@ function setText(id, value) {
   if (node) {
     node.textContent = value;
   }
+}
+
+function setChartView(chartKey, view) {
+  chartViewState[chartKey] = view;
+
+  document
+    .querySelectorAll(`[data-chart-toggle="${chartKey}"] .chart-toggle-button`)
+    .forEach((button) => {
+      button.classList.toggle("active", button.dataset.view === view);
+    });
+
+  document.querySelectorAll(`[data-chart-panel="${chartKey}"]`).forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.view !== view);
+  });
+}
+
+function syncChartViews() {
+  Object.entries(chartViewState).forEach(([chartKey, view]) => {
+    setChartView(chartKey, view);
+  });
+}
+
+function initChartToggles() {
+  document.querySelectorAll("[data-chart-toggle]").forEach((toggle) => {
+    const chartKey = toggle.dataset.chartToggle;
+
+    toggle.querySelectorAll(".chart-toggle-button").forEach((button) => {
+      button.addEventListener("click", () => {
+        setChartView(chartKey, button.dataset.view);
+      });
+    });
+  });
+
+  syncChartViews();
 }
 
 function getCoverageSummary(stats) {
@@ -269,6 +321,336 @@ function renderBarChart(containerId, data, options = {}) {
   });
 }
 
+function capitalize(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function pickStackedRollup(stats) {
+  const daily = stats.timeSeries?.daily;
+  const weekly = stats.timeSeries?.weekly;
+
+  if (Array.isArray(daily) && daily.length > 0 && daily.length <= 120) {
+    return { data: daily, interval: "daily" };
+  }
+
+  if (Array.isArray(weekly) && weekly.length > 0) {
+    return { data: weekly, interval: "weekly" };
+  }
+
+  if (Array.isArray(daily) && daily.length > 0) {
+    return { data: daily, interval: "daily" };
+  }
+
+  return null;
+}
+
+function renderStackedMissing(containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML =
+    '<p class="chart-empty">Regenerate packet stats to enable this time chart</p>';
+}
+
+function formatDvnThresholdLabel(key) {
+  if (key.endsWith("+")) return `${key} DVNs`;
+
+  const threshold = Number(key);
+  return `${threshold} DVN${threshold === 1 ? "" : "s"}`;
+}
+
+function makeThresholdGroupKey(threshold, shouldGroupHighThresholds) {
+  return shouldGroupHighThresholds && threshold > 5 ? "6+" : String(threshold);
+}
+
+function buildDvnThresholdSeries(rollupData) {
+  const thresholds = Array.from(
+    new Set(
+      rollupData.flatMap((bucket) =>
+        Object.keys(bucket.dvnThresholds || {})
+          .map((threshold) => Number(threshold))
+          .filter((threshold) => Number.isFinite(threshold)),
+      ),
+    ),
+  ).sort((a, b) => a - b);
+
+  const shouldGroupHighThresholds = thresholds.length > 7;
+  const groupKeys = Array.from(
+    new Set(
+      thresholds.map((threshold) => makeThresholdGroupKey(threshold, shouldGroupHighThresholds)),
+    ),
+  ).sort((a, b) => {
+    if (a.endsWith("+")) return 1;
+    if (b.endsWith("+")) return -1;
+    return Number(a) - Number(b);
+  });
+
+  return groupKeys.map((key, index) => ({
+    key,
+    label: formatDvnThresholdLabel(key),
+    color: STACKED_COLORS[index % STACKED_COLORS.length],
+    values: rollupData.map((bucket) => {
+      const value = Object.entries(bucket.dvnThresholds || {}).reduce(
+        (sum, [threshold, count]) =>
+          makeThresholdGroupKey(Number(threshold), shouldGroupHighThresholds) === key
+            ? sum + Number(count || 0)
+            : sum,
+        0,
+      );
+
+      return { timestamp: bucket.timestamp, value };
+    }),
+  }));
+}
+
+function buildChainSeries(rollupData, breakdown, breakdownKey, rollupKey, colorOffset = 0) {
+  const topKeys = (breakdown || [])
+    .slice(0, STACKED_CHAIN_LIMIT)
+    .map((entry) => String(entry[breakdownKey]));
+  const topKeySet = new Set(topKeys);
+
+  const series = topKeys.map((key, index) => ({
+    key,
+    label: getChainName(key, chainMetadata),
+    color: STACKED_COLORS[(index + colorOffset) % STACKED_COLORS.length],
+    values: rollupData.map((bucket) => ({
+      timestamp: bucket.timestamp,
+      value: Number(bucket[rollupKey]?.[key] || 0),
+    })),
+  }));
+
+  const otherValues = rollupData.map((bucket) => {
+    const value = Object.entries(bucket[rollupKey] || {}).reduce(
+      (sum, [key, count]) => (topKeySet.has(key) ? sum : sum + Number(count || 0)),
+      0,
+    );
+
+    return { timestamp: bucket.timestamp, value };
+  });
+
+  if (otherValues.some((point) => point.value > 0)) {
+    series.push({
+      key: "__other",
+      label: "Other",
+      color: "#0d0d0d",
+      values: otherValues,
+    });
+  }
+
+  return series;
+}
+
+function renderStackedAreaChart(containerId, series, options = {}) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = "";
+
+  const filteredSeries = (series || [])
+    .map((entry) => ({
+      ...entry,
+      total: entry.values.reduce((sum, point) => sum + point.value, 0),
+    }))
+    .filter((entry) => entry.total > 0);
+
+  if (filteredSeries.length === 0) {
+    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
+    return;
+  }
+
+  const timestamps = filteredSeries[0].values.map((point) => point.timestamp);
+  if (timestamps.length === 0) {
+    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
+    return;
+  }
+
+  const chartContainer = document.createElement("div");
+  chartContainer.className = "stacked-area-container";
+
+  const width = 1200;
+  const height = 340;
+  const padding = { top: 20, right: 40, bottom: 60, left: 80 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  const minTimestamp = Math.min(...timestamps);
+  const maxTimestamp = Math.max(...timestamps);
+  const timestampRange = maxTimestamp - minTimestamp || 1;
+  const stackedTotals = timestamps.map((_, index) =>
+    filteredSeries.reduce((sum, entry) => sum + entry.values[index].value, 0),
+  );
+  const maxStack = Math.max(1, ...stackedTotals);
+
+  const scaleX = (timestamp) =>
+    padding.left + ((timestamp - minTimestamp) / timestampRange) * chartWidth;
+  const scaleY = (value) => height - padding.bottom - (value / maxStack) * chartHeight;
+
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  svg.setAttribute("class", "stacked-area-svg");
+
+  const gridGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  gridGroup.setAttribute("class", "grid");
+
+  for (let i = 0; i <= 5; i++) {
+    const y = padding.top + (chartHeight * i) / 5;
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("x1", padding.left);
+    line.setAttribute("y1", y);
+    line.setAttribute("x2", width - padding.right);
+    line.setAttribute("y2", y);
+    line.setAttribute("stroke", "#0d0d0d");
+    line.setAttribute("stroke-width", "1");
+    line.setAttribute("stroke-opacity", "0.1");
+    gridGroup.appendChild(line);
+  }
+
+  svg.appendChild(gridGroup);
+
+  const baseline = new Array(timestamps.length).fill(0);
+
+  filteredSeries.forEach((entry) => {
+    const topPoints = entry.values.map((point, index) => {
+      const bottom = baseline[index];
+      const top = bottom + point.value;
+      baseline[index] = top;
+      return {
+        timestamp: point.timestamp,
+        bottom,
+        top,
+      };
+    });
+
+    const topPath = topPoints
+      .map((point, index) => {
+        const command = index === 0 ? "M" : "L";
+        return `${command} ${scaleX(point.timestamp)} ${scaleY(point.top)}`;
+      })
+      .join(" ");
+    const bottomPath = [...topPoints]
+      .reverse()
+      .map((point) => `L ${scaleX(point.timestamp)} ${scaleY(point.bottom)}`)
+      .join(" ");
+
+    const area = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    area.setAttribute("d", `${topPath} ${bottomPath} Z`);
+    area.setAttribute("fill", entry.color);
+    area.setAttribute("fill-opacity", "0.78");
+    area.setAttribute("stroke", "#0d0d0d");
+    area.setAttribute("stroke-width", "1");
+    area.setAttribute("class", "stacked-area-layer");
+
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = `${entry.label}: ${formatNumber(entry.total)} packets`;
+    area.appendChild(title);
+
+    svg.appendChild(area);
+  });
+
+  const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  yAxis.setAttribute("x1", padding.left);
+  yAxis.setAttribute("y1", padding.top);
+  yAxis.setAttribute("x2", padding.left);
+  yAxis.setAttribute("y2", height - padding.bottom);
+  yAxis.setAttribute("stroke", "#0d0d0d");
+  yAxis.setAttribute("stroke-width", "3");
+  svg.appendChild(yAxis);
+
+  const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
+  xAxis.setAttribute("x1", padding.left);
+  xAxis.setAttribute("y1", height - padding.bottom);
+  xAxis.setAttribute("x2", width - padding.right);
+  xAxis.setAttribute("y2", height - padding.bottom);
+  xAxis.setAttribute("stroke", "#0d0d0d");
+  xAxis.setAttribute("stroke-width", "3");
+  svg.appendChild(xAxis);
+
+  for (let i = 0; i <= 5; i++) {
+    const value = (maxStack * i) / 5;
+    const y = height - padding.bottom - (chartHeight * i) / 5;
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", padding.left - 10);
+    text.setAttribute("y", y + 4);
+    text.setAttribute("text-anchor", "end");
+    text.setAttribute("class", "axis-label");
+    text.textContent = formatNumber(Math.round(value));
+    svg.appendChild(text);
+  }
+
+  const numXLabels = Math.min(6, timestamps.length);
+  for (let i = 0; i < numXLabels; i++) {
+    const index =
+      numXLabels === 1 ? 0 : Math.floor((i * (timestamps.length - 1)) / (numXLabels - 1));
+    const timestamp = timestamps[index];
+    const x = scaleX(timestamp);
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", x);
+    text.setAttribute("y", height - padding.bottom + 25);
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("class", "axis-label");
+    text.textContent = formatDate(timestamp);
+    svg.appendChild(text);
+  }
+
+  chartContainer.appendChild(svg);
+
+  const totalPackets = filteredSeries.reduce((sum, entry) => sum + entry.total, 0);
+  const peakIndex = stackedTotals.reduce(
+    (maxIndex, value, index) => (value > stackedTotals[maxIndex] ? index : maxIndex),
+    0,
+  );
+
+  const summary = document.createElement("div");
+  summary.className = "time-series-summary stacked-summary";
+  summary.innerHTML = `
+    <div class="summary-item">
+      <span class="summary-label">Total:</span>
+      <span class="summary-value">${formatNumber(totalPackets)}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Interval:</span>
+      <span class="summary-value">${capitalize(options.interval || "daily")}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Peak:</span>
+      <span class="summary-value">${formatNumber(stackedTotals[peakIndex])} on ${formatDate(timestamps[peakIndex])}</span>
+    </div>
+    <div class="summary-item">
+      <span class="summary-label">Series:</span>
+      <span class="summary-value">${formatNumber(filteredSeries.length)}</span>
+    </div>
+  `;
+
+  chartContainer.appendChild(summary);
+
+  const legend = document.createElement("div");
+  legend.className = "stacked-legend";
+
+  filteredSeries.forEach((entry) => {
+    const item = document.createElement("div");
+    item.className = "stacked-legend-item";
+
+    const swatch = document.createElement("div");
+    swatch.className = "stacked-legend-color";
+    swatch.style.backgroundColor = entry.color;
+
+    const label = document.createElement("div");
+    label.className = "stacked-legend-label";
+    label.textContent = entry.label;
+
+    const value = document.createElement("div");
+    value.className = "stacked-legend-value";
+    const percentage = totalPackets > 0 ? (entry.total / totalPackets) * 100 : 0;
+    value.innerHTML = `<strong>${formatNumber(entry.total)}</strong> <span>(${formatPercent(percentage)})</span>`;
+
+    item.appendChild(swatch);
+    item.appendChild(label);
+    item.appendChild(value);
+    legend.appendChild(item);
+  });
+
+  chartContainer.appendChild(legend);
+  container.appendChild(chartContainer);
+}
+
 // Render DVN set threshold pie chart (with "Other" bucket for 0 and >4)
 function renderDvnSetThresholdChart(stats) {
   const buckets = new Map();
@@ -299,6 +681,25 @@ function renderDvnSetThresholdChart(stats) {
     });
 
   renderPieChart("dvn-set-threshold-chart", data);
+}
+
+function renderDvnSetThresholdTimeChart(stats) {
+  const rollup = pickStackedRollup(stats);
+  setText(
+    "dvn-set-threshold-subtitle",
+    rollup
+      ? `Effective required DVN count distribution • ${capitalize(rollup.interval)} packet history in Over Time view`
+      : 'Number of DVNs that must validate incoming packets. Combines required DVNs and optional DVN thresholds (0 and >4 grouped as "Other")',
+  );
+
+  if (!rollup) {
+    renderStackedMissing("dvn-set-threshold-time-chart");
+    return;
+  }
+
+  renderStackedAreaChart("dvn-set-threshold-time-chart", buildDvnThresholdSeries(rollup.data), {
+    interval: rollup.interval,
+  });
 }
 
 // Render top DVN combinations with resolved names (deduplicated by resolved names)
@@ -500,6 +901,27 @@ function renderChainChart(stats) {
   renderBarChart("chain-chart", data, { barClass: "bar-fill--accent" });
 }
 
+function renderDestinationChainTimeChart(stats) {
+  const rollup = pickStackedRollup(stats);
+  setText(
+    "chain-chart-subtitle",
+    rollup
+      ? `Destination chain packet distribution • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
+      : "Local EID distribution",
+  );
+
+  if (!rollup) {
+    renderStackedMissing("chain-time-chart");
+    return;
+  }
+
+  renderStackedAreaChart(
+    "chain-time-chart",
+    buildChainSeries(rollup.data, stats.chainBreakdown, "localEid", "destinationChains", 3),
+    { interval: rollup.interval },
+  );
+}
+
 // Render source chain breakdown
 function renderSrcChainChart(stats) {
   const data = stats.srcChainBreakdown.slice(0, 20).map((item) => ({
@@ -509,6 +931,27 @@ function renderSrcChainChart(stats) {
   }));
 
   renderBarChart("src-chain-chart", data, { barClass: "bar-fill--magenta" });
+}
+
+function renderSourceChainTimeChart(stats) {
+  const rollup = pickStackedRollup(stats);
+  setText(
+    "src-chain-chart-subtitle",
+    rollup
+      ? `Source chain packet distribution • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
+      : "Source EID distribution",
+  );
+
+  if (!rollup) {
+    renderStackedMissing("src-chain-time-chart");
+    return;
+  }
+
+  renderStackedAreaChart(
+    "src-chain-time-chart",
+    buildChainSeries(rollup.data, stats.srcChainBreakdown, "srcEid", "sourceChains", 0),
+    { interval: rollup.interval },
+  );
 }
 
 // Render time-series line chart
@@ -954,11 +1397,15 @@ async function loadAndRender(datasetName = null) {
 
     renderOverview(statsData);
     renderDvnSetThresholdChart(statsData);
+    renderDvnSetThresholdTimeChart(statsData);
     renderDvnComboChart(statsData);
     renderChainChart(statsData);
+    renderDestinationChainTimeChart(statsData);
     renderSrcChainChart(statsData);
+    renderSourceChainTimeChart(statsData);
     renderPacketTimeSeries(statsData);
     renderConfigChangesTimeSeries(statsData);
+    syncChartViews();
 
     showContent();
   } catch (error) {
@@ -1013,6 +1460,8 @@ function initTooltips() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initChartToggles();
+
   availableDatasets = await discoverDatasets();
 
   if (availableDatasets.length === 0) {

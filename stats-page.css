@@ -329,6 +329,57 @@
   padding-bottom: 0.75rem;
 }
 
+.chart-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border-bottom: 3px solid var(--ink);
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.chart-title-row .chart-title {
+  margin: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.chart-toggle {
+  display: inline-flex;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+
+.chart-toggle-button {
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.45rem 0.75rem;
+  border: 0;
+  border-right: 3px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.chart-toggle-button:last-child {
+  border-right: 0;
+}
+
+.chart-toggle-button:hover {
+  background: rgba(27, 156, 133, 0.12);
+}
+
+.chart-toggle-button.active {
+  background: var(--accent);
+  cursor: default;
+}
+
 .chart-subtitle {
   margin: 0 0 1.5rem;
   font-size: 0.85rem;
@@ -574,6 +625,20 @@
     box-shadow: 6px 6px 0 var(--ink);
   }
 
+  .chart-title-row {
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .chart-toggle {
+    width: 100%;
+  }
+
+  .chart-toggle-button {
+    flex: 1;
+    padding: 0.45rem 0.4rem;
+  }
+
   .stat-tooltip {
     min-width: 180px;
     max-width: 250px;
@@ -744,6 +809,83 @@
   background: var(--paper);
 }
 
+.stacked-area-chart {
+  width: 100%;
+}
+
+.stacked-area-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.stacked-area-svg {
+  width: 100%;
+  height: auto;
+  background: var(--paper);
+}
+
+.stacked-area-layer {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.stacked-area-layer:hover {
+  opacity: 0.86;
+}
+
+.stacked-summary {
+  background: rgba(120, 189, 255, 0.12);
+}
+
+.stacked-legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.stacked-legend-item {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.35rem 0.5rem;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.stacked-legend-item:hover {
+  background: rgba(242, 242, 0, 0.1);
+  border-color: var(--ink);
+}
+
+.stacked-legend-color {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ink);
+}
+
+.stacked-legend-label {
+  min-width: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stacked-legend-value {
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+.stacked-legend-value span {
+  opacity: 0.7;
+  font-size: 0.78rem;
+}
+
 .axis-label {
   font-family: inherit;
   font-size: 11px;
@@ -784,6 +926,14 @@
 @media (max-width: 768px) {
   .time-series-summary {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .stacked-legend {
+    grid-template-columns: 1fr;
+  }
+
+  .stacked-legend-item {
+    grid-template-columns: 20px minmax(0, 1fr) auto;
   }
 
   .axis-label {
