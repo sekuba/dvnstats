@@ -859,7 +859,10 @@ async function discoverDatasets() {
   for (const pattern of patterns) {
     try {
       const filename = `packet-stats-${pattern}.json`;
-      const response = await fetch(`${DATA_DIR}/${filename}`, { method: "HEAD" });
+      const response = await fetch(`${DATA_DIR}/${filename}`, {
+        method: "HEAD",
+        cache: "no-store",
+      });
       if (response.ok) {
         found.push({ name: pattern, filename });
       }
@@ -936,7 +939,7 @@ async function loadAndRender(datasetName = null) {
 
     const dataPath = `${DATA_DIR}/packet-stats-${datasetName}.json`;
 
-    const response = await fetch(dataPath);
+    const response = await fetch(dataPath, { cache: "no-store" });
     if (!response.ok) {
       throw new Error(`Failed to load statistics: ${response.status} ${response.statusText}`);
     }
