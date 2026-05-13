@@ -37,6 +37,9 @@ const BATCH_SIZE = 100000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.join(__dirname, "../dashboard/data");
 const INDEXED_CHAIN_CONFIGS = readLocalChainConfigs();
+const STATS_SCHEMA_VERSION = 2;
+const DAY_SECONDS = 86400;
+const WEEK_SECONDS = DAY_SECONDS * 7;
 
 /**
  * Generate output filename based on lookback parameter
@@ -205,6 +208,126 @@ function createHourlyBuckets(earliest, latest) {
   }
 
   return buckets;
+}
+
+function createCategorizedBucket() {
+  return {
+    packets: 0,
+    configChanges: 0,
+    dvnThresholds: {},
+    destinationChains: {},
+    sourceChains: {},
+  };
+}
+
+function getDayBucket(timestamp) {
+  return Math.floor(timestamp / DAY_SECONDS) * DAY_SECONDS;
+}
+
+function getWeekBucket(timestamp) {
+  const dayBucket = getDayBucket(timestamp);
+  const date = new Date(dayBucket * 1000);
+  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
+  return dayBucket - daysSinceMonday * DAY_SECONDS;
+}
+
+function createRollupBuckets(earliest, latest, interval) {
+  const buckets = new Map();
+  const getBucket = interval === "weekly" ? getWeekBucket : getDayBucket;
+  const step = interval === "weekly" ? WEEK_SECONDS : DAY_SECONDS;
+  const start = getBucket(earliest);
+  const end = getBucket(latest);
+
+  for (let timestamp = start; timestamp <= end; timestamp += step) {
+    buckets.set(timestamp, createCategorizedBucket());
+  }
+
+  return buckets;
+}
+
+function incrementCountObject(counts, key, amount = 1) {
+  const normalizedKey = String(key);
+  counts[normalizedKey] = (counts[normalizedKey] || 0) + amount;
+}
+
+function ensureRollupBucket(buckets, timestamp) {
+  if (!buckets.has(timestamp)) {
+    buckets.set(timestamp, createCategorizedBucket());
+  }
+  return buckets.get(timestamp);
+}
+
+function incrementPacketRollup(buckets, interval, timestamp, dvnSetThreshold, localEid, srcEid) {
+  const bucketTimestamp =
+    interval === "weekly" ? getWeekBucket(timestamp) : getDayBucket(timestamp);
+  const bucket = ensureRollupBucket(buckets, bucketTimestamp);
+
+  bucket.packets++;
+  incrementCountObject(bucket.dvnThresholds, dvnSetThreshold);
+  incrementCountObject(bucket.destinationChains, localEid);
+  incrementCountObject(bucket.sourceChains, srcEid);
+}
+
+function applyConfigChangesToRollups(hourlyBuckets, dailyBuckets, weeklyBuckets) {
+  for (const [timestamp, data] of hourlyBuckets.entries()) {
+    if (!data.configChanges) continue;
+
+    ensureRollupBucket(dailyBuckets, getDayBucket(timestamp)).configChanges += data.configChanges;
+    ensureRollupBucket(weeklyBuckets, getWeekBucket(timestamp)).configChanges += data.configChanges;
+  }
+}
+
+function sortCountObject(counts) {
+  return Object.fromEntries(
+    Object.entries(counts || {}).sort(([a], [b]) =>
+      a.localeCompare(b, undefined, { numeric: true }),
+    ),
+  );
+}
+
+function serializeRollupBuckets(buckets) {
+  return Array.from(buckets.entries())
+    .map(([timestamp, data]) => ({
+      timestamp,
+      packets: data.packets,
+      configChanges: data.configChanges,
+      dvnThresholds: sortCountObject(data.dvnThresholds),
+      destinationChains: sortCountObject(data.destinationChains),
+      sourceChains: sortCountObject(data.sourceChains),
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function mergeCountObjects(target, source) {
+  for (const [key, count] of Object.entries(source || {})) {
+    target[key] = (target[key] || 0) + Number(count || 0);
+  }
+}
+
+function mergeCategorizedTimeSeries(existingSeries = [], newSeries = []) {
+  const buckets = new Map();
+
+  for (const series of [existingSeries, newSeries]) {
+    for (const entry of series || []) {
+      const timestamp = Number(entry.timestamp);
+      if (!Number.isFinite(timestamp)) continue;
+
+      const bucket = ensureRollupBucket(buckets, timestamp);
+      bucket.packets += Number(entry.packets || 0);
+      bucket.configChanges += Number(entry.configChanges || 0);
+      mergeCountObjects(bucket.dvnThresholds, entry.dvnThresholds);
+      mergeCountObjects(bucket.destinationChains, entry.destinationChains);
+      mergeCountObjects(bucket.sourceChains, entry.sourceChains);
+    }
+  }
+
+  return serializeRollupBuckets(buckets);
+}
+
+function hasCategorizedRollups(stats) {
+  return Boolean(
+    stats && Array.isArray(stats.timeSeries?.daily) && Array.isArray(stats.timeSeries?.weekly),
+  );
 }
 
 /**
@@ -516,6 +639,15 @@ function mergeStatistics(existingStats, newStats) {
     }))
     .sort((a, b) => a.timestamp - b.timestamp);
 
+  const dailyData = mergeCategorizedTimeSeries(
+    existingStats.timeSeries?.daily || [],
+    newStats.timeSeries?.daily || [],
+  );
+  const weeklyData = mergeCategorizedTimeSeries(
+    existingStats.timeSeries?.weekly || [],
+    newStats.timeSeries?.weekly || [],
+  );
+
   // Recalculate percentages for DVN combinations
   const dvnCombinations = Array.from(dvnComboMap.values())
     .map((combo) => ({
@@ -539,6 +671,7 @@ function mergeStatistics(existingStats, newStats) {
   );
 
   return {
+    schemaVersion: STATS_SCHEMA_VERSION,
     total,
     computedAt: new Date().toISOString(),
     allDefaultPercentage: (allDefault / total) * 100,
@@ -555,6 +688,8 @@ function mergeStatistics(existingStats, newStats) {
     },
     timeSeries: {
       hourly: hourlyData,
+      daily: dailyData,
+      weekly: weeklyData,
       totalConfigChanges,
     },
   };
@@ -588,6 +723,12 @@ async function computeStatisticsIncremental(minTimestamp = null) {
   // Create hourly buckets
   const hourlyBuckets = createHourlyBuckets(earliestTimestamp, latestTimestamp);
   console.log(`Created ${hourlyBuckets.size.toLocaleString()} hourly buckets`);
+
+  const dailyBuckets = createRollupBuckets(earliestTimestamp, latestTimestamp, "daily");
+  const weeklyBuckets = createRollupBuckets(earliestTimestamp, latestTimestamp, "weekly");
+  console.log(
+    `Created ${dailyBuckets.size.toLocaleString()} daily buckets and ${weeklyBuckets.size.toLocaleString()} weekly buckets`,
+  );
 
   // Fetch actual config changes (Version events) and populate buckets
   const totalConfigChanges = await fetchConfigChanges(hourlyBuckets, minTimestamp);
@@ -745,6 +886,16 @@ async function computeStatisticsIncremental(minTimestamp = null) {
         if (bucket) {
           bucket.packets++;
         }
+
+        incrementPacketRollup(dailyBuckets, "daily", timestamp, dvnSetThreshold, localEid, srcEid);
+        incrementPacketRollup(
+          weeklyBuckets,
+          "weekly",
+          timestamp,
+          dvnSetThreshold,
+          localEid,
+          srcEid,
+        );
       }
     }
 
@@ -768,6 +919,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
 
   if (total === 0) {
     return {
+      schemaVersion: STATS_SCHEMA_VERSION,
       total: 0,
       computedAt: new Date().toISOString(),
       allDefaultPercentage: 0,
@@ -779,12 +931,14 @@ async function computeStatisticsIncremental(minTimestamp = null) {
       timeRange: { earliest: null, latest: null },
       chainBreakdown: [],
       srcChainBreakdown: [],
-      timeSeries: { hourly: [] },
+      timeSeries: { hourly: [], daily: [], weekly: [], totalConfigChanges },
     };
   }
 
   // Convert to arrays and sort
   console.log("Finalizing results...");
+
+  applyConfigChangesToRollups(hourlyBuckets, dailyBuckets, weeklyBuckets);
 
   const dvnCombinations = Array.from(dvnCombos.values())
     .map((combo) => {
@@ -844,7 +998,11 @@ async function computeStatisticsIncremental(minTimestamp = null) {
     }))
     .sort((a, b) => a.timestamp - b.timestamp);
 
+  const dailyData = serializeRollupBuckets(dailyBuckets);
+  const weeklyData = serializeRollupBuckets(weeklyBuckets);
+
   return {
+    schemaVersion: STATS_SCHEMA_VERSION,
     total,
     computedAt: new Date().toISOString(),
     allDefaultPercentage: (allDefault / total) * 100,
@@ -861,6 +1019,8 @@ async function computeStatisticsIncremental(minTimestamp = null) {
     },
     timeSeries: {
       hourly: hourlyData,
+      daily: dailyData,
+      weekly: weeklyData,
       totalConfigChanges,
     },
   };
@@ -894,9 +1054,21 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
   if (incrementalMode) {
     // Load existing stats and metadata
     const metadata = loadMetadata(lookbackParam);
+    const existingStats = fs.existsSync(outputPath)
+      ? JSON.parse(fs.readFileSync(outputPath, "utf8"))
+      : null;
 
-    if (!metadata || !fs.existsSync(outputPath)) {
+    if (!metadata || !existingStats) {
       console.log("No previous run found. Performing full computation...\n");
+      stats = await computeStatisticsIncremental(minTimestamp);
+    } else if (
+      metadata.schemaVersion !== STATS_SCHEMA_VERSION ||
+      existingStats.schemaVersion !== STATS_SCHEMA_VERSION ||
+      !hasCategorizedRollups(existingStats)
+    ) {
+      console.log(
+        `Previous stats schema is older than v${STATS_SCHEMA_VERSION}. Performing full computation...\n`,
+      );
       stats = await computeStatisticsIncremental(minTimestamp);
     } else {
       console.log(`Found previous run from ${metadata.computedAt}`);
@@ -915,13 +1087,12 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
 
       if (newStats.total === 0) {
         console.log("\nNo new records found. Skipping merge.");
-        stats = JSON.parse(fs.readFileSync(outputPath, "utf8"));
+        stats = existingStats;
         stats.computedAt = new Date().toISOString();
       } else {
         console.log(`\nFound ${newStats.total.toLocaleString()} new packets`);
 
         // Load existing stats and merge
-        const existingStats = JSON.parse(fs.readFileSync(outputPath, "utf8"));
         stats = mergeStatistics(existingStats, newStats);
       }
     }
@@ -931,6 +1102,7 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
   }
 
   // Add lookback metadata to stats
+  stats.schemaVersion = STATS_SCHEMA_VERSION;
   stats.lookback = lookbackParam || "all";
   stats.coverage = buildCoverageSummary(stats);
 
@@ -940,6 +1112,7 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
 
   // Save metadata for next incremental run
   const metadata = {
+    schemaVersion: STATS_SCHEMA_VERSION,
     computedAt: stats.computedAt,
     lastProcessedTimestamp: stats.timeRange.latest,
     totalRecords: stats.total,
@@ -955,6 +1128,8 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
   console.log(`  Chains: ${stats.chainBreakdown.length}`);
   console.log(`  Config changes: ${stats.timeSeries.totalConfigChanges.toLocaleString()}`);
   console.log(`  Hourly data points: ${stats.timeSeries.hourly.length.toLocaleString()}`);
+  console.log(`  Daily data points: ${(stats.timeSeries.daily || []).length.toLocaleString()}`);
+  console.log(`  Weekly data points: ${(stats.timeSeries.weekly || []).length.toLocaleString()}`);
 
   if (stats.timeRange.earliest && stats.timeRange.latest) {
     const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);

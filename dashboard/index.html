@@ -162,9 +162,16 @@
 
         <!-- DVN Set Threshold Distribution -->
         <section class="chart-section">
-          <h2 class="chart-title">DVN Set Threshold</h2>
-          <p class="chart-subtitle">Number of DVNs that <b>must</b> validate incoming packets. Combines required DVNs and optional DVN thresholds (0 and >4 grouped as "Other")</p>
-          <div id="dvn-set-threshold-chart" class="pie-chart"></div>
+          <div class="chart-title-row">
+            <h2 class="chart-title">DVN Set Threshold</h2>
+            <div class="chart-toggle" data-chart-toggle="dvn-threshold">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="dvn-set-threshold-subtitle" class="chart-subtitle">Number of DVNs that <b>must</b> validate incoming packets. Combines required DVNs and optional DVN thresholds (0 and >4 grouped as "Other")</p>
+          <div id="dvn-set-threshold-chart" class="pie-chart" data-chart-panel="dvn-threshold" data-view="snapshot"></div>
+          <div id="dvn-set-threshold-time-chart" class="stacked-area-chart hidden" data-chart-panel="dvn-threshold" data-view="time"></div>
         </section>
 
         <!-- Top DVN Combinations -->
@@ -190,16 +197,30 @@
 
         <!-- Chain Breakdown -->
         <section class="chart-section">
-          <h2 class="chart-title">Packets by Destination Chain</h2>
-          <p class="chart-subtitle">Local EID distribution</p>
-          <div id="chain-chart" class="bar-chart"></div>
+          <div class="chart-title-row">
+            <h2 class="chart-title">Packets by Destination Chain</h2>
+            <div class="chart-toggle" data-chart-toggle="destination-chain">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="chain-chart-subtitle" class="chart-subtitle">Local EID distribution</p>
+          <div id="chain-chart" class="bar-chart" data-chart-panel="destination-chain" data-view="snapshot"></div>
+          <div id="chain-time-chart" class="stacked-area-chart hidden" data-chart-panel="destination-chain" data-view="time"></div>
         </section>
 
         <!-- Source Chain Breakdown -->
         <section class="chart-section">
-          <h2 class="chart-title">Packets by Source Chain</h2>
-          <p class="chart-subtitle">Source EID distribution</p>
-          <div id="src-chain-chart" class="bar-chart"></div>
+          <div class="chart-title-row">
+            <h2 class="chart-title">Packets by Source Chain</h2>
+            <div class="chart-toggle" data-chart-toggle="source-chain">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="src-chain-chart-subtitle" class="chart-subtitle">Source EID distribution</p>
+          <div id="src-chain-chart" class="bar-chart" data-chart-panel="source-chain" data-view="snapshot"></div>
+          <div id="src-chain-time-chart" class="stacked-area-chart hidden" data-chart-panel="source-chain" data-view="time"></div>
         </section>
 
         <!-- Analysis Section -->
