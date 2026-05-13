@@ -15,7 +15,8 @@
     "stats:precompute": "node scripts/precomputePacketStats.js",
     "stats:batch": "node scripts/precomputePacketStats.js --batch",
     "stats:incremental": "node scripts/precomputePacketStats.js --incremental",
-    "stats:batch-incremental": "node scripts/precomputePacketStats.js --batch --incremental"
+    "stats:batch-incremental": "node scripts/precomputePacketStats.js --batch --incremental",
+    "registry:build": "node scripts/buildDashboardRegistry.js"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.1",

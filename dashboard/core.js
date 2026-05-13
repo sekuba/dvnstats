@@ -1,3 +1,4 @@
+import { CHAIN_REGISTRY_SUMMARY, getIndexedChain, INDEXED_CHAINS } from "./chainRegistry.js";
 import { APP_CONFIG } from "./config.js";
 import { AddressUtils } from "./utils/AddressUtils.js";
 import { resolveChainDisplayLabel as _resolveChainDisplayLabel } from "./utils/ChainUtils.js";
@@ -54,21 +55,41 @@ export class ChainDirectory {
   async load() {
     if (this.loaded) return;
 
+    this.reset();
+
     for (const source of APP_CONFIG.DATA_SOURCES.CHAIN_METADATA) {
       const data = await fetchJson(source);
       if (data) {
-        this.hydrate(data);
+        this.hydrateLayerZeroMetadata(data);
+        this.hydrateIndexedChains();
         console.info(`[ChainDirectory] Loaded from ${source}`);
         this.loaded = true;
         return;
       }
     }
 
+    this.hydrateIndexedChains();
     console.warn("[ChainDirectory] No metadata source available");
     this.loaded = true;
   }
 
   hydrate(data) {
+    if (!data || typeof data !== "object") return;
+
+    this.reset();
+    this.hydrateLayerZeroMetadata(data);
+    this.hydrateIndexedChains();
+  }
+
+  reset() {
+    this.localEidLabels.clear();
+    this.localEidDetails.clear();
+    this.dvnDirectory.clear();
+    this.chainLabelCache.clear();
+    this.dvnNameCache.clear();
+  }
+
+  hydrateLayerZeroMetadata(data) {
     if (!data || typeof data !== "object") return;
 
     let count = 0;
@@ -95,6 +116,7 @@ export class ChainDirectory {
           label,
           stage: dep.stage || "mainnet",
           chainKey: chain.chainKey || null,
+          indexed: false,
         });
 
         if (chain.dvns && typeof chain.dvns === "object") {
@@ -114,6 +136,28 @@ export class ChainDirectory {
     });
 
     console.log(`[ChainDirectory] Registered ${count} deployments`);
+  }
+
+  hydrateIndexedChains() {
+    INDEXED_CHAINS.forEach((chain) => {
+      const localEid = String(chain.localEid);
+      const label = chain.label || this.localEidLabels.get(localEid) || `EID ${localEid}`;
+
+      this.localEidLabels.set(localEid, label);
+      this.localEidDetails.set(localEid, {
+        ...(this.localEidDetails.get(localEid) || {}),
+        label,
+        stage: chain.stage || "mainnet",
+        chainKey: chain.chainKey || null,
+        chainId: chain.chainId,
+        endpointV2: chain.endpointV2,
+        receiveUln302: chain.receiveUln302,
+        indexed: true,
+      });
+    });
+
+    this.chainLabelCache.clear();
+    this.dvnNameCache.clear();
   }
 
   getChainInfo(localEid) {
@@ -148,10 +192,35 @@ export class ChainDirectory {
     return `${info.primary} (${key})`;
   }
 
-  listLocalEndpoints() {
+  listLocalEndpoints({ indexedOnly = true } = {}) {
     return Array.from(this.localEidLabels.entries())
-      .map(([id, label]) => ({ id, label }))
+      .map(([id, label]) => {
+        const details = this.localEidDetails.get(id) || {};
+        return {
+          id,
+          label,
+          chainId: details.chainId,
+          indexed: Boolean(details.indexed),
+        };
+      })
+      .filter((entry) => !indexedOnly || entry.indexed)
       .sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  getIndexedChain(localEid) {
+    return getIndexedChain(localEid);
+  }
+
+  listIndexedChains() {
+    return INDEXED_CHAINS.map((chain) => ({ ...chain }));
+  }
+
+  getIndexedChainCount() {
+    return CHAIN_REGISTRY_SUMMARY.indexedChainCount;
+  }
+
+  getRegistrySummary() {
+    return CHAIN_REGISTRY_SUMMARY;
   }
 
   resolveDvnName(address, { localEid } = {}) {

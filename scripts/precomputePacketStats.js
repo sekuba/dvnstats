@@ -30,11 +30,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readLocalChainConfigs } from "./readLocalChainConfigs.js";
 
 const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || "https://shinken.business/v1/graphql";
 const BATCH_SIZE = 100000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.join(__dirname, "../dashboard/data");
+const INDEXED_CHAIN_CONFIGS = readLocalChainConfigs();
 
 /**
  * Generate output filename based on lookback parameter
@@ -78,6 +80,22 @@ function saveMetadata(lookbackParam, metadata) {
   const metadataPath = getMetadataFilename(lookbackParam);
   fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
   console.log(`Metadata saved to: ${metadataPath}`);
+}
+
+function buildCoverageSummary(stats) {
+  const destinationEids = new Set(
+    (stats.chainBreakdown || []).map((chain) => String(chain.localEid)),
+  );
+  const sourceEids = new Set((stats.srcChainBreakdown || []).map((chain) => String(chain.srcEid)));
+  const indexedEids = new Set(INDEXED_CHAIN_CONFIGS.map((chain) => chain.localEid));
+
+  return {
+    indexedChainCount: INDEXED_CHAIN_CONFIGS.length,
+    indexedEidCount: indexedEids.size,
+    destinationEidCount: destinationEids.size,
+    sourceEidCount: sourceEids.size,
+    activeIndexedEidCount: Array.from(indexedEids).filter((eid) => destinationEids.has(eid)).length,
+  };
 }
 
 /**
@@ -914,6 +932,7 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
 
   // Add lookback metadata to stats
   stats.lookback = lookbackParam || "all";
+  stats.coverage = buildCoverageSummary(stats);
 
   // Save to file
   fs.writeFileSync(outputPath, JSON.stringify(stats, null, 2));
@@ -925,6 +944,7 @@ async function runPrecomputation(lookbackParam = null, incrementalMode = false) 
     lastProcessedTimestamp: stats.timeRange.latest,
     totalRecords: stats.total,
     lookback: lookbackParam || "all",
+    coverage: stats.coverage,
   };
   saveMetadata(lookbackParam, metadata);
 

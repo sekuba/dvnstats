@@ -1,80 +1,25 @@
+import { ChainDirectory } from "./core.js";
+
 const DATA_DIR = "./data";
 
 let statsData = null;
 let chainMetadata = null;
-let dvnResolver = null;
 let availableDatasets = [];
 let currentDataset = null;
 
-class DVNResolver {
-  constructor() {
-    this.dvnDirectory = new Map();
-  }
-
-  hydrate(data) {
-    if (!data || typeof data !== "object") return;
-
-    Object.entries(data).forEach(([key, chain]) => {
-      if (!chain || typeof chain !== "object") return;
-
-      const deployments = Array.isArray(chain.deployments) ? chain.deployments : [];
-
-      deployments.forEach((dep) => {
-        if (dep?.eid === undefined || dep.eid === null) return;
-
-        const eid = String(dep.eid);
-
-        if (chain.dvns && typeof chain.dvns === "object") {
-          Object.entries(chain.dvns).forEach(([addr, info]) => {
-            if (!addr) return;
-            const normalized = String(addr).toLowerCase();
-            const dvnLabel = info?.canonicalName || info?.name || info?.id || addr;
-            this.dvnDirectory.set(`local:${eid}:${normalized}`, dvnLabel);
-            if (!this.dvnDirectory.has(`fallback:${normalized}`)) {
-              this.dvnDirectory.set(`fallback:${normalized}`, dvnLabel);
-            }
-          });
-        }
-      });
-    });
-  }
-
-  resolveDvnName(address, localEid = null) {
-    if (!address) return address;
-
-    const normalized = String(address).toLowerCase();
-
-    let resolved = undefined;
-    if (localEid !== undefined && localEid !== null) {
-      resolved = this.dvnDirectory.get(`local:${localEid}:${normalized}`);
-    }
-    if (!resolved) {
-      resolved = this.dvnDirectory.get(`fallback:${normalized}`) || address;
-    }
-
-    return resolved;
-  }
-
-  resolveDvnNames(addresses, localEid = null) {
-    return Array.isArray(addresses)
-      ? addresses.map((addr) => this.resolveDvnName(addr, localEid))
-      : [];
-  }
-}
-
 async function loadChainMetadata() {
-  try {
-    const response = await fetch("./layerzero.json");
-    if (!response.ok) return null;
-    return await response.json();
-  } catch (error) {
-    console.warn("Could not load chain metadata:", error);
-    return null;
-  }
+  const directory = new ChainDirectory();
+  await directory.load();
+  return directory;
 }
 
 function getChainName(eid, metadata) {
   if (!metadata) return `EID ${eid}`;
+
+  if (typeof metadata.getChainInfo === "function") {
+    const info = metadata.getChainInfo(eid);
+    return info?.primary || `EID ${eid}`;
+  }
 
   for (const [chainKey, chainData] of Object.entries(metadata)) {
     if (!chainData.deployments) continue;
@@ -91,6 +36,14 @@ function getChainName(eid, metadata) {
   }
 
   return `EID ${eid}`;
+}
+
+function resolveDvnName(address, localEid = null) {
+  if (!address) return address;
+  if (chainMetadata && typeof chainMetadata.resolveDvnName === "function") {
+    return chainMetadata.resolveDvnName(address, { localEid });
+  }
+  return address;
 }
 
 // Format numbers
@@ -113,26 +66,53 @@ function formatAddress(address) {
   return `${address.substring(0, 6)}…${address.substring(address.length - 4)}`;
 }
 
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (node) {
+    node.textContent = value;
+  }
+}
+
+function getCoverageSummary(stats) {
+  const registrySummary =
+    chainMetadata && typeof chainMetadata.getRegistrySummary === "function"
+      ? chainMetadata.getRegistrySummary()
+      : null;
+
+  const indexedChainCount =
+    stats.coverage?.indexedChainCount ??
+    registrySummary?.indexedChainCount ??
+    (chainMetadata && typeof chainMetadata.getIndexedChainCount === "function"
+      ? chainMetadata.getIndexedChainCount()
+      : null) ??
+    stats.chainBreakdown?.length ??
+    0;
+
+  return {
+    indexedChainCount,
+    destinationEidCount: stats.coverage?.destinationEidCount ?? stats.chainBreakdown?.length ?? 0,
+    sourceEidCount: stats.coverage?.sourceEidCount ?? stats.srcChainBreakdown?.length ?? 0,
+  };
+}
+
 function renderOverview(stats) {
-  document.getElementById("stat-total").textContent = formatNumber(stats.total);
-  document.getElementById("stat-all-default").textContent = formatPercent(
-    stats.allDefaultPercentage,
-  );
-  document.getElementById("stat-default-lib").textContent = formatPercent(
-    stats.defaultLibPercentage,
-  );
-  document.getElementById("stat-tracked").textContent = formatPercent(stats.trackedPercentage);
-  document.getElementById("stat-dvn-combos").textContent = formatNumber(
-    stats.dvnCombinations.length,
-  );
+  const coverage = getCoverageSummary(stats);
 
-  const subtitle = `${formatNumber(stats.total)} packets • ${stats.dvnCombinations.length} unique DVN combinations`;
-  document.getElementById("stats-subtitle").textContent = subtitle;
+  setText("stat-total", formatNumber(stats.total));
+  setText("stat-all-default", formatPercent(stats.allDefaultPercentage));
+  setText("stat-default-lib", formatPercent(stats.defaultLibPercentage));
+  setText("stat-tracked", formatPercent(stats.trackedPercentage));
+  setText("stat-dvn-combos", formatNumber(stats.dvnCombinations.length));
+  setText("stat-indexed-chains", formatNumber(coverage.indexedChainCount));
+  setText("stat-source-eids", formatNumber(coverage.sourceEidCount));
 
-  document.getElementById("computed-at").textContent = new Date(stats.computedAt).toLocaleString();
+  const subtitle = `${formatNumber(stats.total)} packets • ${stats.dvnCombinations.length} unique DVN combinations • ${coverage.indexedChainCount} indexed chains`;
+  setText("stats-subtitle", subtitle);
+
+  setText("computed-at", new Date(stats.computedAt).toLocaleString());
 
   const timeRange = `${formatDate(stats.timeRange.earliest)} → ${formatDate(stats.timeRange.latest)}`;
-  document.getElementById("time-range").textContent = timeRange;
+  setText("time-range", timeRange);
 }
 
 function renderPieChart(containerId, data, options = {}) {
@@ -342,7 +322,7 @@ function renderDvnComboChart(stats) {
     if (combo.type === "required") {
       // Standard case: just required DVNs
       resolvedDvns = combo.dvns.map((dvn) => {
-        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        const resolved = resolveDvnName(dvn, combo.localEid);
         return {
           address: dvn,
           name: resolved,
@@ -361,7 +341,7 @@ function renderDvnComboChart(stats) {
     } else if (combo.type === "required_and_optional") {
       // Hybrid case: required DVNs + optional threshold
       const resolvedRequired = combo.requiredDvns.map((dvn) => {
-        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        const resolved = resolveDvnName(dvn, combo.localEid);
         return {
           address: dvn,
           name: resolved,
@@ -376,7 +356,7 @@ function renderDvnComboChart(stats) {
       });
 
       const resolvedOptional = combo.optionalDvns.map((dvn) => {
-        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        const resolved = resolveDvnName(dvn, combo.localEid);
         return {
           address: dvn,
           name: resolved,
@@ -395,7 +375,7 @@ function renderDvnComboChart(stats) {
     } else if (combo.type === "optional_only") {
       // Optional-only case
       const resolvedOptional = combo.optionalDvns.map((dvn) => {
-        const resolved = dvnResolver ? dvnResolver.resolveDvnName(dvn, combo.localEid) : dvn;
+        const resolved = resolveDvnName(dvn, combo.localEid);
         return {
           address: dvn,
           name: resolved,
@@ -952,11 +932,6 @@ async function loadAndRender(datasetName = null) {
 
     if (!chainMetadata) {
       chainMetadata = await loadChainMetadata();
-
-      if (chainMetadata) {
-        dvnResolver = new DVNResolver();
-        dvnResolver.hydrate(chainMetadata);
-      }
     }
 
     const dataPath = `${DATA_DIR}/packet-stats-${datasetName}.json`;
