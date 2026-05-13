@@ -100,16 +100,6 @@ type NormalizedConfig = {
   hasValues: boolean;
 };
 
-type ConfigComparable = {
-  confirmations?: bigint;
-  requiredDVNCount: number;
-  optionalDVNCount: number;
-  optionalDVNThreshold: number;
-  requiredDVNs: string[];
-  optionalDVNs: string[];
-  usesSentinel: boolean;
-};
-
 type MergeResult = {
   effectiveReceiveLibrary?: string;
   libraryStatus: "tracked" | "unsupported" | "none";
@@ -122,7 +112,6 @@ type MergeResult = {
   usesRequiredDVNSentinel: boolean;
   isConfigTracked: boolean;
   fallbackFieldSet: Set<FallbackField>;
-  comparable: ConfigComparable;
 };
 
 type ComputeEffectiveConfigArgs = {
@@ -351,16 +340,6 @@ const isTrackedReceiveLibrary = (localEid: bigint, library?: string): boolean =>
   return tracked !== undefined && tracked === library;
 };
 
-const emptyConfigComparable = (): ConfigComparable => ({
-  confirmations: undefined,
-  requiredDVNCount: 0,
-  optionalDVNCount: 0,
-  optionalDVNThreshold: 0,
-  requiredDVNs: [],
-  optionalDVNs: [],
-  usesSentinel: false,
-});
-
 const formatFallbackFields = (fields: Set<FallbackField>): string[] => {
   const result: string[] = [];
   for (const field of FALLBACK_FIELD_ORDER) {
@@ -371,37 +350,17 @@ const formatFallbackFields = (fields: Set<FallbackField>): string[] => {
   return result;
 };
 
-const arraysEqual = (a: readonly string[], b: readonly string[]): boolean => {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i += 1) {
-    if (a[i] !== b[i]) return false;
-  }
-  return true;
-};
-
-const configsAreEqual = (a: ConfigComparable, b: ConfigComparable): boolean =>
-  a.usesSentinel === b.usesSentinel &&
-  a.requiredDVNCount === b.requiredDVNCount &&
-  a.optionalDVNCount === b.optionalDVNCount &&
-  a.optionalDVNThreshold === b.optionalDVNThreshold &&
-  arraysEqual(a.requiredDVNs, b.requiredDVNs) &&
-  arraysEqual(a.optionalDVNs, b.optionalDVNs) &&
-  ((a.confirmations === undefined && b.confirmations === undefined) ||
-    (a.confirmations !== undefined &&
-      b.confirmations !== undefined &&
-      a.confirmations === b.confirmations));
-
 /**
  * Merges default and OApp-specific library/config settings to compute effective values.
  *
  * Library resolution:
  * - If OApp has non-zero override: use override
- * - Else if default exists: use default (marks fallback)
- * - Else: undefined (no library configured)
+ * - Else: route is controlled by the default library slot
+ *   (use current default if non-zero, otherwise currently unconfigured)
  *
  * Config resolution (per field):
  * - If OApp field is non-zero/non-sentinel: use OApp value
- * - Else: fall back to default value (marks fallback)
+ * - Else: route is controlled by the corresponding default config field
  *
  * This ensures that defaults set BEFORE an OApp is first seen are correctly
  * applied when the OApp's security config is later computed.
@@ -433,15 +392,15 @@ const mergeSecurityConfig = (
   if (overrideLibrary && !isZeroAddress(overrideLibrary)) {
     // OApp has non-zero override: use it
     effectiveReceiveLibrary = overrideLibrary;
-  } else if (defaultLibrary && !isZeroAddress(defaultLibrary)) {
-    // OApp has zero/no override AND default is non-zero: use default
-    effectiveReceiveLibrary = defaultLibrary;
-    if (!overrideLibrary || isZeroAddress(overrideLibrary)) {
-      fallbackFields.add("receiveLibrary");
-    }
   } else {
-    // Both override and default are zero/missing: route unconfigured
-    effectiveReceiveLibrary = undefined;
+    // No non-zero OApp override means the route remains controlled by the default library slot.
+    fallbackFields.add("receiveLibrary");
+    if (defaultLibrary && !isZeroAddress(defaultLibrary)) {
+      effectiveReceiveLibrary = defaultLibrary;
+    } else {
+      // Default is zero/missing: currently unconfigured, but still default-slot controlled.
+      effectiveReceiveLibrary = undefined;
+    }
   }
 
   const isConfigTracked = isTrackedReceiveLibrary(localEid, effectiveReceiveLibrary);
@@ -468,7 +427,6 @@ const mergeSecurityConfig = (
       usesRequiredDVNSentinel: false,
       isConfigTracked: false,
       fallbackFieldSet: fallbackFields,
-      comparable: emptyConfigComparable(),
     };
   }
 
@@ -488,18 +446,16 @@ const mergeSecurityConfig = (
     // Sentinel value in default also means zero confirmations
     effectiveConfirmations =
       defaultConfirmations === SENTINEL_CONFIRMATIONS ? 0n : defaultConfirmations;
-    if (
-      overrideHasConfig &&
-      (overrideConfirmations === undefined || overrideConfirmations === 0n)
-    ) {
-      fallbackFields.add("confirmations");
-    }
   } else {
     effectiveConfirmations = undefined;
+  }
+  if (overrideHasConfig && (overrideConfirmations === undefined || overrideConfirmations === 0n)) {
+    fallbackFields.add("confirmations");
   }
 
   const overrideRequiredCount = overrideConfig.requiredDVNCount;
   const defaultRequiredCount = defaultConfig.requiredDVNCount;
+  const overrideUsesRequiredDVNSentinel = overrideRequiredCount === SENTINEL_REQUIRED_DVN_COUNT;
   let rawRequiredCount: number | undefined;
   if (
     overrideRequiredCount !== undefined &&
@@ -508,28 +464,32 @@ const mergeSecurityConfig = (
     rawRequiredCount = overrideRequiredCount;
   } else if (defaultRequiredCount !== undefined) {
     rawRequiredCount = defaultRequiredCount;
-    if (overrideHasConfig && (overrideRequiredCount === undefined || overrideRequiredCount === 0)) {
-      fallbackFields.add("requiredDVNCount");
-    }
+  }
+  if (overrideHasConfig && (overrideRequiredCount === undefined || overrideRequiredCount === 0)) {
+    fallbackFields.add("requiredDVNCount");
   }
 
   const overrideOptionalCount = overrideConfig.optionalDVNCount;
   const defaultOptionalCount = defaultConfig.optionalDVNCount;
+  const overrideUsesOptionalDVNSentinel = overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT;
   let rawOptionalCount: number | undefined;
+  let usesOptionalDVNSentinel = false;
   if (
     overrideOptionalCount !== undefined &&
     (overrideOptionalCount > 0 || overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT)
   ) {
     // Sentinel value means explicitly set to zero optional DVNs
+    usesOptionalDVNSentinel = overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT;
     rawOptionalCount =
       overrideOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT ? 0 : overrideOptionalCount;
   } else if (defaultOptionalCount !== undefined) {
     // Sentinel value in default also means zero optional DVNs
+    usesOptionalDVNSentinel = defaultOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT;
     rawOptionalCount =
       defaultOptionalCount === SENTINEL_OPTIONAL_DVN_COUNT ? 0 : defaultOptionalCount;
-    if (overrideHasConfig && (overrideOptionalCount === undefined || overrideOptionalCount === 0)) {
-      fallbackFields.add("optionalDVNCount");
-    }
+  }
+  if (overrideHasConfig && (overrideOptionalCount === undefined || overrideOptionalCount === 0)) {
+    fallbackFields.add("optionalDVNCount");
   }
 
   const overrideOptionalThreshold = overrideConfig.optionalDVNThreshold;
@@ -539,12 +499,13 @@ const mergeSecurityConfig = (
     effectiveOptionalDVNThreshold = overrideOptionalThreshold;
   } else if (defaultOptionalThreshold !== undefined) {
     effectiveOptionalDVNThreshold = defaultOptionalThreshold;
-    if (
-      overrideHasConfig &&
-      (overrideOptionalThreshold === undefined || overrideOptionalThreshold === 0)
-    ) {
-      fallbackFields.add("optionalDVNThreshold");
-    }
+  }
+  if (
+    overrideHasConfig &&
+    !overrideUsesOptionalDVNSentinel &&
+    (overrideOptionalThreshold === undefined || overrideOptionalThreshold === 0)
+  ) {
+    fallbackFields.add("optionalDVNThreshold");
   }
 
   const overrideRequiredDVNs = overrideConfig.requiredDVNs;
@@ -561,24 +522,26 @@ const mergeSecurityConfig = (
     (defaultRequiredCount !== undefined && defaultRequiredCount > 0)
   ) {
     effectiveRequiredDVNs = defaultRequiredDVNs;
-    if (overrideHasConfig && overrideRequiredDVNs.length === 0) {
-      fallbackFields.add("requiredDVNs");
-    }
+  }
+  if (overrideHasConfig && !overrideUsesRequiredDVNSentinel && overrideRequiredDVNs.length === 0) {
+    fallbackFields.add("requiredDVNs");
   }
 
   const overrideOptionalDVNs = overrideConfig.optionalDVNs;
   const defaultOptionalDVNs = defaultConfig.optionalDVNs;
   let effectiveOptionalDVNs: string[] = [];
-  if (overrideOptionalDVNs.length > 0) {
+  if (usesOptionalDVNSentinel) {
+    effectiveOptionalDVNs = [];
+  } else if (overrideOptionalDVNs.length > 0) {
     effectiveOptionalDVNs = overrideOptionalDVNs;
   } else if (
     defaultOptionalDVNs.length > 0 ||
     (defaultOptionalCount !== undefined && defaultOptionalCount > 0)
   ) {
     effectiveOptionalDVNs = defaultOptionalDVNs;
-    if (overrideHasConfig && overrideOptionalDVNs.length === 0) {
-      fallbackFields.add("optionalDVNs");
-    }
+  }
+  if (overrideHasConfig && !overrideUsesOptionalDVNSentinel && overrideOptionalDVNs.length === 0) {
+    fallbackFields.add("optionalDVNs");
   }
 
   let effectiveRequiredDVNCount: number | undefined;
@@ -619,17 +582,6 @@ const mergeSecurityConfig = (
     }
   }
 
-  const comparable: ConfigComparable = {
-    confirmations: effectiveConfirmations,
-    requiredDVNCount: effectiveRequiredDVNCount !== undefined ? effectiveRequiredDVNCount : 0,
-    optionalDVNCount: effectiveOptionalDVNCount,
-    optionalDVNThreshold:
-      effectiveOptionalDVNThreshold !== undefined ? effectiveOptionalDVNThreshold : 0,
-    requiredDVNs: effectiveRequiredDVNs,
-    optionalDVNs: effectiveOptionalDVNs,
-    usesSentinel: usesRequiredDVNSentinel,
-  };
-
   return {
     effectiveReceiveLibrary,
     libraryStatus,
@@ -642,7 +594,6 @@ const mergeSecurityConfig = (
     usesRequiredDVNSentinel,
     isConfigTracked: true,
     fallbackFieldSet: fallbackFields,
-    comparable,
   };
 };
 
@@ -710,15 +661,10 @@ const computeAndPersistEffectiveConfig = async ({
     ),
   };
 
-  const defaultResolved = mergeSecurityConfig(context, localEid, eid, undefined, defaults);
   const resolved = mergeSecurityConfig(context, localEid, eid, oappId, defaults, overrides);
 
-  const usesDefaultLibrary =
-    resolved.effectiveReceiveLibrary === defaultResolved.effectiveReceiveLibrary;
-  const usesDefaultConfig =
-    resolved.isConfigTracked &&
-    defaultResolved.isConfigTracked &&
-    configsAreEqual(resolved.comparable, defaultResolved.comparable);
+  const usesDefaultLibrary = resolved.fallbackFieldSet.has("receiveLibrary");
+  const usesDefaultConfig = resolved.isConfigTracked && !overrides.config.hasValues;
 
   const derivedPeer = peerState?.peer;
   const derivedPeerNormalized = derivedPeer ? normalizeOAppAddress(derivedPeer) : undefined;
