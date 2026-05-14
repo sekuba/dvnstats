@@ -5,6 +5,7 @@ import {
   formatRouteActivityLine,
   formatUpdateInfo,
 } from "../../../formatters/cellFormatters.js";
+import { isMissingReceiveLibrary } from "../../../security/SecurityConfigState.js";
 import { resolveDvnLabels as _resolveDvnLabels } from "../../../utils/DvnUtils.js";
 import { bigIntSafe, coerceToNumber } from "../../../utils/NumberUtils.js";
 
@@ -289,17 +290,7 @@ export class SecurityConfigFormatter {
       }
     }
 
-    const libraryStatus = row.libraryStatus || "unknown";
-    const noLibraryConfigured = !row.effectiveReceiveLibrary;
-    const usesDefaultLibrary = row.usesDefaultLibrary !== false;
-    const fallbackFields = Array.isArray(row.fallbackFields) ? row.fallbackFields : [];
-    const defaultLibraryFallback = fallbackFields.includes("receiveLibrary");
-
-    if (
-      noLibraryConfigured &&
-      (libraryStatus === "none" || usesDefaultLibrary || defaultLibraryFallback) &&
-      !seenTypes.has("default-library-zero")
-    ) {
+    if (isMissingReceiveLibrary(row) && !seenTypes.has("default-library-zero")) {
       reasons.push({
         type: "default-library-zero",
         label: "Falling back to zero receive library (route disabled)",

@@ -1,3 +1,4 @@
+import { isMissingReceiveLibrary } from "../security/SecurityConfigState.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { coerceToNumber } from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
@@ -199,6 +200,19 @@ export class NodeListView {
             lastPacketBlock: cfg.routeLastPacketBlock ?? null,
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",
+            isConfigTracked: cfg.isConfigTracked ?? null,
+            usesDefaultLibrary: cfg.usesDefaultLibrary,
+            usesDefaultConfig: cfg.usesDefaultConfig,
+            effectiveReceiveLibrary: cfg.effectiveReceiveLibrary || null,
+            defaultLibraryVersionId:
+              cfg.defaultLibraryVersionId !== undefined ? cfg.defaultLibraryVersionId : null,
+            defaultConfigVersionId:
+              cfg.defaultConfigVersionId !== undefined ? cfg.defaultConfigVersionId : null,
+            libraryOverrideVersionId:
+              cfg.libraryOverrideVersionId !== undefined ? cfg.libraryOverrideVersionId : null,
+            configOverrideVersionId:
+              cfg.configOverrideVersionId !== undefined ? cfg.configOverrideVersionId : null,
+            fallbackFields: Array.isArray(cfg.fallbackFields) ? cfg.fallbackFields : [],
             peerStateHint: cfg.peerStateHint ?? null,
             synthetic: Boolean(cfg.synthetic),
           };
@@ -883,23 +897,7 @@ export class NodeListView {
       const standardGroups = new Map();
       const variantDetails = [];
 
-      const isMissingConfig = (detail) => {
-        if (!detail) {
-          return false;
-        }
-        const usesDefaultLibrary = detail.usesDefaultLibrary !== false;
-        const hasLibraryOverride =
-          detail.libraryOverrideVersionId !== null && detail.libraryOverrideVersionId !== undefined;
-        const effectiveLibrary = detail.effectiveReceiveLibrary || null;
-        const hasEffectiveLibrary =
-          Boolean(effectiveLibrary) && !AddressUtils.isZero(effectiveLibrary);
-        return (
-          usesDefaultLibrary &&
-          !hasLibraryOverride &&
-          detail.libraryStatus === "none" &&
-          !hasEffectiveLibrary
-        );
-      };
+      const isMissingConfig = (detail) => isMissingReceiveLibrary(detail);
 
       const describeRequiredLabel = (detail) => {
         if (!detail) {

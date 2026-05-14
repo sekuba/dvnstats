@@ -1,4 +1,5 @@
 import { APP_CONFIG } from "../config.js";
+import { isMissingReceiveLibrary } from "../security/SecurityConfigState.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 
 export class GraphAnalyzer {
@@ -30,26 +31,9 @@ export class GraphAnalyzer {
       let usesSentinel = false;
       let isBlocked = false;
       let blockReason = null;
-      const libraryStatusEdge = edge.libraryStatus ?? null;
-      let libraryStatusValue = libraryStatusEdge;
-      const syntheticEdge = Boolean(edge.synthetic);
-      let peerStateHint = edge.peerStateHint ?? null;
-
-      if (edge.blockReasonHint === "implicit-block") {
-        isBlocked = true;
-        blockReason = "implicit-block";
-      } else if (edge.blockReasonHint === "explicit-block") {
-        isBlocked = true;
-        blockReason = "zero-peer";
-      } else if (edge.blockReasonHint === "stale-peer") {
-        isBlocked = true;
-        blockReason = "stale-peer";
-      }
-
-      if (!blockReason && edge.isStalePeer) {
-        isBlocked = true;
-        blockReason = "stale-peer";
-      }
+      let libraryStatusValue = null;
+      let syntheticEdge = false;
+      let peerStateHint = null;
 
       let hasSecurityConfig = false;
       let config = null;
@@ -74,6 +58,33 @@ export class GraphAnalyzer {
       } else if (!config && edgeConfig && !edgeConfigMatchesDirection) {
         reverseSecurityConfig = edgeConfig;
       }
+
+      const edgeStateAppliesToDirection = Boolean(
+        config || edgeConfigMatchesDirection || !reverseSecurityConfig,
+      );
+      const libraryStatusEdge = edgeStateAppliesToDirection ? (edge.libraryStatus ?? null) : null;
+      libraryStatusValue = libraryStatusEdge;
+      syntheticEdge = edgeStateAppliesToDirection ? Boolean(edge.synthetic) : false;
+      peerStateHint = edgeStateAppliesToDirection ? (edge.peerStateHint ?? null) : null;
+
+      if (edgeStateAppliesToDirection) {
+        if (edge.blockReasonHint === "implicit-block") {
+          isBlocked = true;
+          blockReason = "implicit-block";
+        } else if (edge.blockReasonHint === "explicit-block") {
+          isBlocked = true;
+          blockReason = "zero-peer";
+        } else if (edge.blockReasonHint === "stale-peer") {
+          isBlocked = true;
+          blockReason = "stale-peer";
+        }
+
+        if (!blockReason && edge.isStalePeer) {
+          isBlocked = true;
+          blockReason = "stale-peer";
+        }
+      }
+
       if (config) {
         hasSecurityConfig = true;
         requiredDVNCount = config.requiredDVNCount || 0;
@@ -88,24 +99,9 @@ export class GraphAnalyzer {
         if (config.peerStateHint) {
           peerStateHint = config.peerStateHint;
         }
-        const usesDefaultLibrary = config.usesDefaultLibrary !== false;
-        const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
-        const hasEffectiveLibrary =
-          Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
-        const libraryOverrideVersionId =
-          config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
-        const hasLibraryOverride =
-          libraryOverrideVersionId !== null && libraryOverrideVersionId !== undefined;
-        const defaultLibraryFallback = usesDefaultLibrary && !hasLibraryOverride;
-
         libraryStatusValue = config.libraryStatus ?? libraryStatusEdge;
 
-        if (
-          !isBlocked &&
-          defaultLibraryFallback &&
-          libraryStatusValue === "none" &&
-          !hasEffectiveLibrary
-        ) {
+        if (!isBlocked && isMissingReceiveLibrary(config)) {
           isBlocked = true;
           blockReason = "missing-library";
         }
@@ -120,6 +116,12 @@ export class GraphAnalyzer {
         }
       }
 
+      if (!isBlocked && !config && reverseSecurityConfig && toNode?.isTracked) {
+        isBlocked = true;
+        blockReason = "implicit-block";
+        peerStateHint = "implicit-blocked";
+      }
+
       if (!isBlocked) {
         if (peerStateHint === "explicit-blocked") {
           isBlocked = true;
@@ -132,7 +134,7 @@ export class GraphAnalyzer {
 
       if (
         !isBlocked &&
-        ((edge.peerRaw && this.isZeroPeer(edge.peerRaw)) ||
+        ((edgeStateAppliesToDirection && edge.peerRaw && this.isZeroPeer(edge.peerRaw)) ||
           (config && config.peer && this.isZeroPeer(config.peer)))
       ) {
         isBlocked = true;
@@ -173,12 +175,6 @@ export class GraphAnalyzer {
 
       const routeFromLabel = this.resolveNodeChainLabel(fromNode, edge.from, edge.srcEid);
       const routeToLabel = this.resolveNodeChainLabel(toNode, edge.to, toNode?.localEid);
-      const reverseRouteLabel = reverseSecurityConfig
-        ? {
-            from: this.formatChainLabel(reverseSecurityConfig.srcEid),
-            to: this.formatChainLabel(reverseSecurityConfig.localEid),
-          }
-        : null;
 
       const packetCountValue = edge.routePacketCount ?? (config ? config.routePacketCount : null);
       const packetCountNumber = Number(packetCountValue);
@@ -243,7 +239,6 @@ export class GraphAnalyzer {
         synthetic: config?.synthetic ?? syntheticEdge,
         routeFromLabel,
         routeToLabel,
-        reverseRouteLabel,
         differsFromPopular: false,
         matchesPopularCombination: false,
         differenceReasons: [],
