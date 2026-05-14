@@ -53,53 +53,70 @@ export class GraphAnalyzer {
 
       let hasSecurityConfig = false;
       let config = null;
+      const edgeConfig =
+        edge.securityConfig && typeof edge.securityConfig === "object" ? edge.securityConfig : null;
+      const edgeConfigSrcEid =
+        edgeConfig?.srcEid !== undefined && edgeConfig?.srcEid !== null
+          ? String(edgeConfig.srcEid)
+          : null;
+      const edgeSrcEid =
+        edge.srcEid !== undefined && edge.srcEid !== null ? String(edge.srcEid) : null;
+      const edgeConfigMatchesDirection =
+        Boolean(edgeConfig) &&
+        (!edgeConfigSrcEid || !edgeSrcEid || edgeConfigSrcEid === edgeSrcEid);
+      let reverseSecurityConfig = null;
 
       if (toNode?.securityConfigs && toNode.securityConfigs.length > 0) {
         config = toNode.securityConfigs.find((cfg) => String(cfg.srcEid) === String(edge.srcEid));
-        if (config) {
-          hasSecurityConfig = true;
-          requiredDVNCount = config.requiredDVNCount || 0;
-          requiredDVNAddresses = config.requiredDVNs || [];
-          requiredDVNLabels = config.requiredDVNLabels || config.requiredDVNs || [];
-          optionalDVNLabels = config.optionalDVNLabels || config.optionalDVNs || [];
-          optionalDVNCount =
-            config.optionalDVNCount ||
-            (Array.isArray(optionalDVNLabels) ? optionalDVNLabels.length : 0);
-          optionalDVNThreshold = config.optionalDVNThreshold || 0;
-          usesSentinel = Boolean(config.usesRequiredDVNSentinel);
-          if (!peerStateHint && config.peerStateHint) {
-            peerStateHint = config.peerStateHint;
-          }
-          const usesDefaultLibrary = config.usesDefaultLibrary !== false;
-          const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
-          const hasEffectiveLibrary =
-            Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
-          const libraryOverrideVersionId =
-            config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
-          const hasLibraryOverride =
-            libraryOverrideVersionId !== null && libraryOverrideVersionId !== undefined;
-          const defaultLibraryFallback = usesDefaultLibrary && !hasLibraryOverride;
+      }
+      if (!config && edgeConfigMatchesDirection) {
+        config = edgeConfig;
+      } else if (!config && edgeConfig && !edgeConfigMatchesDirection) {
+        reverseSecurityConfig = edgeConfig;
+      }
+      if (config) {
+        hasSecurityConfig = true;
+        requiredDVNCount = config.requiredDVNCount || 0;
+        requiredDVNAddresses = config.requiredDVNs || [];
+        requiredDVNLabels = config.requiredDVNLabels || config.requiredDVNs || [];
+        optionalDVNLabels = config.optionalDVNLabels || config.optionalDVNs || [];
+        optionalDVNCount =
+          config.optionalDVNCount ||
+          (Array.isArray(optionalDVNLabels) ? optionalDVNLabels.length : 0);
+        optionalDVNThreshold = config.optionalDVNThreshold || 0;
+        usesSentinel = Boolean(config.usesRequiredDVNSentinel);
+        if (config.peerStateHint) {
+          peerStateHint = config.peerStateHint;
+        }
+        const usesDefaultLibrary = config.usesDefaultLibrary !== false;
+        const effectiveReceiveLibrary = config.effectiveReceiveLibrary || null;
+        const hasEffectiveLibrary =
+          Boolean(effectiveReceiveLibrary) && !AddressUtils.isZero(effectiveReceiveLibrary);
+        const libraryOverrideVersionId =
+          config.libraryOverrideVersionId !== undefined ? config.libraryOverrideVersionId : null;
+        const hasLibraryOverride =
+          libraryOverrideVersionId !== null && libraryOverrideVersionId !== undefined;
+        const defaultLibraryFallback = usesDefaultLibrary && !hasLibraryOverride;
 
-          libraryStatusValue = config.libraryStatus ?? libraryStatusEdge;
+        libraryStatusValue = config.libraryStatus ?? libraryStatusEdge;
 
-          if (
-            !isBlocked &&
-            defaultLibraryFallback &&
-            libraryStatusValue === "none" &&
-            !hasEffectiveLibrary
-          ) {
-            isBlocked = true;
-            blockReason = "missing-library";
-          }
+        if (
+          !isBlocked &&
+          defaultLibraryFallback &&
+          libraryStatusValue === "none" &&
+          !hasEffectiveLibrary
+        ) {
+          isBlocked = true;
+          blockReason = "missing-library";
+        }
 
-          if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
-            isBlocked = true;
-            blockReason = "dead-dvn";
-          }
-          if (!isBlocked && requiredDVNLabels.some((label) => this.isBlockingDvnLabel(label))) {
-            isBlocked = true;
-            blockReason = "blocking-dvn";
-          }
+        if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
+          isBlocked = true;
+          blockReason = "dead-dvn";
+        }
+        if (!isBlocked && requiredDVNLabels.some((label) => this.isBlockingDvnLabel(label))) {
+          isBlocked = true;
+          blockReason = "blocking-dvn";
         }
       }
 
@@ -156,6 +173,12 @@ export class GraphAnalyzer {
 
       const routeFromLabel = this.resolveNodeChainLabel(fromNode, edge.from, edge.srcEid);
       const routeToLabel = this.resolveNodeChainLabel(toNode, edge.to, toNode?.localEid);
+      const reverseRouteLabel = reverseSecurityConfig
+        ? {
+            from: this.formatChainLabel(reverseSecurityConfig.srcEid),
+            to: this.formatChainLabel(reverseSecurityConfig.localEid),
+          }
+        : null;
 
       const packetCountValue = edge.routePacketCount ?? (config ? config.routePacketCount : null);
       const packetCountNumber = Number(packetCountValue);
@@ -220,6 +243,7 @@ export class GraphAnalyzer {
         synthetic: config?.synthetic ?? syntheticEdge,
         routeFromLabel,
         routeToLabel,
+        reverseRouteLabel,
         differsFromPopular: false,
         matchesPopularCombination: false,
         differenceReasons: [],

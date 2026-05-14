@@ -283,6 +283,43 @@ export class SecurityGraphCrawler {
                     peerOAppId: sanitizePeerOAppId(normalizedInboundRaw.peerOAppId),
                   }
                 : normalizedInboundRaw;
+            if (normalizedInbound) {
+              const inboundLocalEid = normalizedInbound.localEid ?? cfg.localEid ?? remoteLocalEid;
+              const inboundRequiredDVNs = Array.isArray(normalizedInbound.effectiveRequiredDVNs)
+                ? normalizedInbound.effectiveRequiredDVNs
+                : Array.isArray(normalizedInbound.requiredDVNs)
+                  ? normalizedInbound.requiredDVNs
+                  : [];
+              const inboundOptionalDVNs = Array.isArray(normalizedInbound.effectiveOptionalDVNs)
+                ? normalizedInbound.effectiveOptionalDVNs
+                : Array.isArray(normalizedInbound.optionalDVNs)
+                  ? normalizedInbound.optionalDVNs
+                  : [];
+
+              normalizedInbound.requiredDVNs = inboundRequiredDVNs;
+              normalizedInbound.requiredDVNLabels = resolveDvnLabels(
+                inboundRequiredDVNs,
+                this.chainMetadata,
+                { localEid: inboundLocalEid },
+              );
+              normalizedInbound.requiredDVNCount =
+                normalizedInbound.effectiveRequiredDVNCount ??
+                normalizedInbound.requiredDVNCount ??
+                (inboundRequiredDVNs.length > 0 ? inboundRequiredDVNs.length : undefined);
+              normalizedInbound.optionalDVNs = inboundOptionalDVNs;
+              normalizedInbound.optionalDVNLabels = resolveDvnLabels(
+                inboundOptionalDVNs,
+                this.chainMetadata,
+                { localEid: inboundLocalEid },
+              );
+              normalizedInbound.optionalDVNCount =
+                normalizedInbound.effectiveOptionalDVNCount ??
+                normalizedInbound.optionalDVNCount ??
+                (inboundOptionalDVNs.length > 0 ? inboundOptionalDVNs.length : undefined);
+              normalizedInbound.optionalDVNThreshold =
+                normalizedInbound.effectiveOptionalDVNThreshold ??
+                normalizedInbound.optionalDVNThreshold;
+            }
 
             const peerDetails = buildPeerInfo(normalizedInbound);
 

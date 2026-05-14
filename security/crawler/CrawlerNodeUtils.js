@@ -18,6 +18,89 @@ const isZeroOAppId = (value) => {
   return addressPart.toLowerCase() === ZERO_ADDRESS;
 };
 
+const asArray = (value) => (Array.isArray(value) ? value.filter(Boolean) : []);
+
+const firstDefined = (...values) => values.find((value) => value !== undefined && value !== null);
+
+const isBlockingDvnLabel = (label) =>
+  label !== undefined && label !== null && String(label).trim().toLowerCase() === "lzdeaddvn";
+
+function extractSecuritySnapshot(config) {
+  if (!config || typeof config !== "object") {
+    return null;
+  }
+
+  const requiredDVNs = asArray(firstDefined(config.requiredDVNs, config.effectiveRequiredDVNs));
+  const optionalDVNs = asArray(firstDefined(config.optionalDVNs, config.effectiveOptionalDVNs));
+  const requiredDVNLabels = asArray(config.requiredDVNLabels);
+  const optionalDVNLabels = asArray(config.optionalDVNLabels);
+  const requiredCountValue = firstDefined(
+    config.requiredDVNCount,
+    config.effectiveRequiredDVNCount,
+  );
+  const optionalCountValue = firstDefined(
+    config.optionalDVNCount,
+    config.effectiveOptionalDVNCount,
+  );
+  const optionalThresholdValue = firstDefined(
+    config.optionalDVNThreshold,
+    config.effectiveOptionalDVNThreshold,
+  );
+  const requiredDVNCount = firstDefined(
+    requiredCountValue,
+    requiredDVNs.length > 0 ? requiredDVNs.length : undefined,
+  );
+  const optionalDVNCount = firstDefined(
+    optionalCountValue,
+    optionalDVNs.length > 0 ? optionalDVNs.length : undefined,
+  );
+  const optionalDVNThreshold = optionalThresholdValue;
+
+  const hasSecurityData =
+    requiredDVNs.length > 0 ||
+    optionalDVNs.length > 0 ||
+    requiredDVNLabels.length > 0 ||
+    optionalDVNLabels.length > 0 ||
+    requiredCountValue !== undefined ||
+    optionalCountValue !== undefined ||
+    optionalThresholdValue !== undefined ||
+    config.effectiveReceiveLibrary !== undefined ||
+    config.usesRequiredDVNSentinel !== undefined ||
+    config.libraryStatus !== undefined ||
+    config.peerStateHint !== undefined ||
+    config.sourceType !== undefined;
+
+  if (!hasSecurityData) {
+    return null;
+  }
+
+  return {
+    srcEid: firstDefined(config.srcEid, config.eid, config.localEid, null),
+    localEid: firstDefined(config.localEid, null),
+    requiredDVNCount,
+    requiredDVNs,
+    requiredDVNLabels,
+    optionalDVNCount,
+    optionalDVNs,
+    optionalDVNLabels,
+    optionalDVNThreshold,
+    usesRequiredDVNSentinel: Boolean(config.usesRequiredDVNSentinel),
+    libraryStatus: firstDefined(config.libraryStatus, null),
+    usesDefaultLibrary: config.usesDefaultLibrary,
+    effectiveReceiveLibrary: firstDefined(config.effectiveReceiveLibrary, null),
+    libraryOverrideVersionId: firstDefined(config.libraryOverrideVersionId, null),
+    peer: firstDefined(config.peer, null),
+    peerStateHint: firstDefined(config.peerStateHint, null),
+    synthetic: Boolean(config.synthetic),
+    sourceType: firstDefined(config.sourceType, null),
+    routePacketCount: firstDefined(config.routePacketCount, 0),
+    routePacketShare: firstDefined(config.routePacketShare, 0),
+    routePacketPercent: firstDefined(config.routePacketPercent, 0),
+    routeLastPacketBlock: firstDefined(config.routeLastPacketBlock, null),
+    routeLastPacketTimestamp: firstDefined(config.routeLastPacketTimestamp, null),
+  };
+}
+
 export function buildPeerInfo(config) {
   if (!config) {
     return null;
@@ -90,7 +173,11 @@ export function shouldIncludeSecurityEntry(entry) {
   if (synthetic) {
     const required = Array.isArray(entry.requiredDVNs) ? entry.requiredDVNs : [];
     const optional = Array.isArray(entry.optionalDVNs) ? entry.optionalDVNs : [];
-    const hasBlockingDvn = [...required, ...optional].some((addr) => AddressUtils.isDead(addr));
+    const requiredLabels = Array.isArray(entry.requiredDVNLabels) ? entry.requiredDVNLabels : [];
+    const optionalLabels = Array.isArray(entry.optionalDVNLabels) ? entry.optionalDVNLabels : [];
+    const hasBlockingDvn =
+      [...required, ...optional].some((addr) => AddressUtils.isDead(addr)) ||
+      [...requiredLabels, ...optionalLabels].some((label) => isBlockingDvnLabel(label));
 
     if (!entry.peerOAppId) {
       if (peerState === "explicit-blocked") {
@@ -273,6 +360,7 @@ export function addPeerEdges({
     const routeMetric = context.routeMetric ?? null;
     const configRouteMetric =
       contextConfig && typeof contextConfig.routePacketCount === "number" ? contextConfig : null;
+    const securitySnapshot = extractSecuritySnapshot(contextConfig);
 
     if (!existing) {
       edges.set(key, {
@@ -288,6 +376,7 @@ export function addPeerEdges({
         libraryStatus: context.libraryStatus ?? contextConfig.libraryStatus ?? null,
         synthetic: Boolean(context.synthetic ?? contextConfig.synthetic),
         sourceType: context.sourceType ?? contextConfig.sourceType ?? null,
+        securityConfig: securitySnapshot,
         routePacketCount: routeMetric?.packetCount ?? configRouteMetric?.routePacketCount ?? 0,
         routePacketShare: routeMetric?.share ?? configRouteMetric?.routePacketShare ?? 0,
         routePacketPercent: routeMetric?.percent ?? configRouteMetric?.routePacketPercent ?? 0,
@@ -320,6 +409,9 @@ export function addPeerEdges({
       }
       if (!existing.sourceType && (context.sourceType || contextConfig.sourceType)) {
         existing.sourceType = context.sourceType ?? contextConfig.sourceType ?? null;
+      }
+      if (!existing.securityConfig && securitySnapshot) {
+        existing.securityConfig = securitySnapshot;
       }
       if (context.isStalePeer) {
         existing.isStalePeer = true;
