@@ -921,7 +921,12 @@ function renderDvnSetThresholdTimeChart(stats) {
     return;
   }
 
-  renderStackedAreaChart("dvn-set-threshold-time-chart", buildDvnThresholdSeries(rollup.data), {
+  // Keep Unknown in the snapshot, but hide it here until null/unsupported configs are investigated.
+  const visibleSeries = buildDvnThresholdSeries(rollup.data).filter(
+    (series) => series.key !== DVN_THRESHOLD_UNKNOWN,
+  );
+
+  renderStackedAreaChart("dvn-set-threshold-time-chart", visibleSeries, {
     interval: rollup.interval,
     valueMode: "percent",
   });
