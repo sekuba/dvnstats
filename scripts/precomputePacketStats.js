@@ -37,9 +37,10 @@ const BATCH_SIZE = 100000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.join(__dirname, "../dashboard/data");
 const INDEXED_CHAIN_CONFIGS = readLocalChainConfigs();
-const STATS_SCHEMA_VERSION = 2;
+const STATS_SCHEMA_VERSION = 3;
 const DAY_SECONDS = 86400;
 const WEEK_SECONDS = DAY_SECONDS * 7;
+const DVN_THRESHOLD_UNKNOWN = "unknown";
 
 /**
  * Generate output filename based on lookback parameter
@@ -248,6 +249,84 @@ function createRollupBuckets(earliest, latest, interval) {
 function incrementCountObject(counts, key, amount = 1) {
   const normalizedKey = String(key);
   counts[normalizedKey] = (counts[normalizedKey] || 0) + amount;
+}
+
+function compareDvnThresholdValues(a, b) {
+  const aIsUnknown = String(a) === DVN_THRESHOLD_UNKNOWN;
+  const bIsUnknown = String(b) === DVN_THRESHOLD_UNKNOWN;
+  if (aIsUnknown && bIsUnknown) return 0;
+  if (aIsUnknown) return 1;
+  if (bIsUnknown) return -1;
+
+  const aNumber = Number(a);
+  const bNumber = Number(b);
+  if (Number.isFinite(aNumber) && Number.isFinite(bNumber)) {
+    return aNumber - bNumber;
+  }
+
+  return String(a).localeCompare(String(b), undefined, { numeric: true });
+}
+
+function classifyPacketDvnThreshold(packet, requiredDVNs, optionalDVNs) {
+  const rawRequiredCount =
+    packet.effectiveRequiredDVNCount === undefined || packet.effectiveRequiredDVNCount === null
+      ? null
+      : Number(packet.effectiveRequiredDVNCount);
+  const requiredCount = Number.isFinite(rawRequiredCount) ? rawRequiredCount : null;
+  const rawOptionalThreshold =
+    packet.effectiveOptionalDVNThreshold === undefined ||
+    packet.effectiveOptionalDVNThreshold === null
+      ? 0
+      : Number(packet.effectiveOptionalDVNThreshold);
+  const optionalThreshold = Number.isFinite(rawOptionalThreshold) ? rawOptionalThreshold : 0;
+
+  if (requiredCount === null) {
+    return {
+      dvnSetThreshold: DVN_THRESHOLD_UNKNOWN,
+      comboConfig: null,
+    };
+  }
+
+  // Only required DVNs.
+  if (requiredCount > 0 && requiredCount < 255 && optionalThreshold === 0) {
+    return {
+      dvnSetThreshold: requiredCount,
+      comboConfig: {
+        type: "required",
+        dvns: requiredDVNs,
+      },
+    };
+  }
+
+  // Required DVNs plus an optional quorum. Example: 1 required + 2 of 3 optional => 3.
+  if (requiredCount > 0 && requiredCount < 255 && optionalThreshold > 0) {
+    return {
+      dvnSetThreshold: requiredCount + optionalThreshold,
+      comboConfig: {
+        type: "required_and_optional",
+        requiredDvns: requiredDVNs,
+        optionalDvns: optionalDVNs,
+        optionalThreshold,
+      },
+    };
+  }
+
+  // Optional-only quorum. The handler normalizes requiredDVNCount sentinel 255 to effective 0.
+  if ((requiredCount === 0 || requiredCount === 255) && optionalThreshold > 0) {
+    return {
+      dvnSetThreshold: optionalThreshold,
+      comboConfig: {
+        type: "optional_only",
+        optionalDvns: optionalDVNs,
+        optionalThreshold,
+      },
+    };
+  }
+
+  return {
+    dvnSetThreshold: requiredCount,
+    comboConfig: null,
+  };
 }
 
 function ensureRollupBucket(buckets, timestamp) {
@@ -572,7 +651,7 @@ function mergeStatistics(existingStats, newStats) {
       packetCount: packets,
       percentage: (packets / total) * 100,
     }))
-    .sort((a, b) => a.dvnSetThreshold - b.dvnSetThreshold);
+    .sort((a, b) => compareDvnThresholdValues(a.dvnSetThreshold, b.dvnSetThreshold));
 
   // Merge chain breakdown
   const chainMap = new Map();
@@ -778,39 +857,11 @@ async function computeStatisticsIncremental(minTimestamp = null) {
         ? packet.effectiveOptionalDVNs
         : [];
 
-      const requiredCount = packet.effectiveRequiredDVNCount ?? requiredDVNs.length;
-      const optionalThreshold = packet.effectiveOptionalDVNThreshold ?? 0;
-
-      let dvnSetThreshold = 0;
-      let comboConfig = null;
-
-      // Case 1: Only required DVNs (most common)
-      if (requiredCount > 0 && requiredCount < 255 && optionalThreshold === 0) {
-        dvnSetThreshold = requiredCount;
-        comboConfig = {
-          type: "required",
-          dvns: requiredDVNs,
-        };
-      }
-      // Case 2: Both required and optional DVNs
-      else if (requiredCount > 0 && requiredCount < 255 && optionalThreshold > 0) {
-        dvnSetThreshold = requiredCount + optionalThreshold;
-        comboConfig = {
-          type: "required_and_optional",
-          requiredDvns: requiredDVNs,
-          optionalDvns: optionalDVNs,
-          optionalThreshold,
-        };
-      }
-      // Case 3: Only optional DVNs (required count is sentinel 255)
-      else if (requiredCount === 255 && optionalThreshold > 0) {
-        dvnSetThreshold = optionalThreshold;
-        comboConfig = {
-          type: "optional_only",
-          optionalDvns: optionalDVNs,
-          optionalThreshold,
-        };
-      }
+      const { dvnSetThreshold, comboConfig } = classifyPacketDvnThreshold(
+        packet,
+        requiredDVNs,
+        optionalDVNs,
+      );
 
       // Track DVN set threshold counts
       dvnSetThresholdCounts.set(
@@ -971,7 +1022,7 @@ async function computeStatisticsIncremental(minTimestamp = null) {
       packetCount: packets,
       percentage: (packets / total) * 100,
     }))
-    .sort((a, b) => a.dvnSetThreshold - b.dvnSetThreshold);
+    .sort((a, b) => compareDvnThresholdValues(a.dvnSetThreshold, b.dvnSetThreshold));
 
   const chainBreakdown = Array.from(chainCounts.entries())
     .map(([eid, count]) => ({

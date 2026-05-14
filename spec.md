@@ -211,6 +211,19 @@ if (oapp.requiredDVNCount === 255) {
 // Similar logic for optional DVNs
 ```
 
+### Effective DVN Quorum for Statistics
+
+The statistics page groups packets by the number of DVN approvals needed for validation:
+
+* Required-only config: `effectiveRequiredDVNCount`
+* Optional-only config: `effectiveOptionalDVNThreshold` (for example, 2 of 3 optional DVNs counts as 2)
+* Required plus optional config: `effectiveRequiredDVNCount + effectiveOptionalDVNThreshold`
+* Unsupported or untracked config with null effective DVN fields: `unknown`
+
+The handler normalizes the required-DVN sentinel `255` to `effectiveRequiredDVNCount = 0`.
+That does not mean the route has no verification when `effectiveOptionalDVNThreshold > 0`;
+it means the required set is empty and the optional quorum is the effective DVN requirement.
+
 ### Validation & Auto-Correction
 
 * **DVN Count Mismatch**: Warns if `requiredDVNCount != requiredDVNs.length` (except sentinel)
