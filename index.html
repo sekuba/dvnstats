@@ -31,7 +31,7 @@
 
       <div id="stats-content" class="hidden">
         <!-- Overview Cards -->
-        <section class="stats-grid">
+        <section id="overview" class="stats-grid">
           <div class="stat-card stat-card--primary">
             <h2>Total Packets</h2>
             <div class="stat-value" id="stat-total">—</div>
@@ -98,7 +98,7 @@
         </section>
 
         <!-- Jargon Explanation Cards -->
-        <section class="stats-grid">
+        <section id="glossary" class="stats-grid">
           <div class="stat-card stat-card--explain">
             <h2>Packet</h2>
             <div class="stat-explanation">A crosschain message in the LayerZero protocol. In most cases, it contains a single crosschain transaction between two OApps. Transfering a crosschain token generates a packet.</div>
@@ -158,10 +158,10 @@
         </section>
 
         <!-- PacketDelivered Event Flow Diagram -->
-        <img src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" class="svg-diagram" />
+        <img id="packet-flow" src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" class="svg-diagram" />
 
         <!-- DVN Set Threshold Distribution -->
-        <section class="chart-section">
+        <section id="dvn-set-threshold" class="chart-section">
           <div class="chart-title-row">
             <h2 class="chart-title">DVN Set Threshold</h2>
             <div class="chart-toggle" data-chart-toggle="dvn-threshold">
@@ -169,34 +169,34 @@
               <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
             </div>
           </div>
-          <p id="dvn-set-threshold-subtitle" class="chart-subtitle">Number of DVNs that <b>must</b> validate incoming packets. Combines required DVNs and optional DVN thresholds (0 and >4 grouped as "Other")</p>
+          <p id="dvn-set-threshold-subtitle" class="chart-subtitle">Fraction of packets by the number of DVNs that <b>must</b> validate incoming packets. Optional-only quorum 2 of 3 counts as 2; required plus optional quorum x + 2 counts as x + 2.</p>
           <div id="dvn-set-threshold-chart" class="pie-chart" data-chart-panel="dvn-threshold" data-view="snapshot"></div>
           <div id="dvn-set-threshold-time-chart" class="stacked-area-chart hidden" data-chart-panel="dvn-threshold" data-view="time"></div>
         </section>
 
         <!-- Top DVN Combinations -->
-        <section class="chart-section">
+        <section id="top-dvn-combinations" class="chart-section">
           <h2 class="chart-title">Top Required DVN Combinations</h2>
           <p class="chart-subtitle">Most common required DVN sets by packet count (top 20)</p>
           <div id="dvn-combo-chart" class="combo-chart"></div>
         </section>
 
         <!-- Time Series: Hourly Packets -->
-        <section class="chart-section">
+        <section id="packet-volume" class="chart-section">
           <h2 class="chart-title">Packet Volume Over Time</h2>
           <p id="time-series-packets-subtitle" class="chart-subtitle">Hourly packet count across entire time range</p>
           <div id="time-series-packets-chart" class="time-series-chart"></div>
         </section>
 
         <!-- Time Series: Config Changes -->
-        <section class="chart-section">
+        <section id="configuration-changes" class="chart-section">
           <h2 class="chart-title">Configuration Changes Over Time</h2>
           <p id="time-series-config-subtitle" class="chart-subtitle">Hourly config changes • <span id="total-config-changes">—</span> total config changes</p>
           <div id="time-series-config-chart" class="time-series-chart"></div>
         </section>
 
         <!-- Chain Breakdown -->
-        <section class="chart-section">
+        <section id="destination-chain" class="chart-section">
           <div class="chart-title-row">
             <h2 class="chart-title">Packets by Destination Chain</h2>
             <div class="chart-toggle" data-chart-toggle="destination-chain">
@@ -204,13 +204,13 @@
               <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
             </div>
           </div>
-          <p id="chain-chart-subtitle" class="chart-subtitle">Local EID distribution</p>
+          <p id="chain-chart-subtitle" class="chart-subtitle">Destination chain packet distribution</p>
           <div id="chain-chart" class="bar-chart" data-chart-panel="destination-chain" data-view="snapshot"></div>
           <div id="chain-time-chart" class="stacked-area-chart hidden" data-chart-panel="destination-chain" data-view="time"></div>
         </section>
 
         <!-- Source Chain Breakdown -->
-        <section class="chart-section">
+        <section id="source-chain" class="chart-section">
           <div class="chart-title-row">
             <h2 class="chart-title">Packets by Source Chain</h2>
             <div class="chart-toggle" data-chart-toggle="source-chain">
@@ -218,13 +218,13 @@
               <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
             </div>
           </div>
-          <p id="src-chain-chart-subtitle" class="chart-subtitle">Source EID distribution</p>
+          <p id="src-chain-chart-subtitle" class="chart-subtitle">Source chain packet distribution</p>
           <div id="src-chain-chart" class="bar-chart" data-chart-panel="source-chain" data-view="snapshot"></div>
           <div id="src-chain-time-chart" class="stacked-area-chart hidden" data-chart-panel="source-chain" data-view="time"></div>
         </section>
 
         <!-- Analysis Section -->
-        <section class="chart-section">
+        <section id="fragility-of-scale" class="chart-section">
           <h2 class="chart-title">Fragility of Scale</h2>
           <div class="analysis-text">
             <p>Since you are still here, i invite you to contemplate our motivation for building distributed systems and my motivation for building this website. Some of these systems aim to disintermediate, remove single points of failure, and enhance resilience through decentralization. LayerZero does the opposite by distributing their points of failure. Each added node or edge makes the network more fragile. The protocol fundamentally <b>cannot scale without compromising its security</b>.</p>
@@ -233,7 +233,7 @@
           </div>
         </section>
 
-        <img src="./configToWeb.svg" alt="Scale of fragility diagram" class="svg-diagram" />
+        <img id="fragility-diagram" src="./configToWeb.svg" alt="Scale of fragility diagram" class="svg-diagram" />
       </div>
     </main>
 

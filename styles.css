@@ -61,6 +61,30 @@ body {
   display: inline-block;
 }
 
+[id] {
+  scroll-margin-top: 1.25rem;
+}
+
+.section-permalink {
+  margin-left: 0.45rem;
+  color: inherit;
+  opacity: 0.38;
+  text-decoration: none;
+  font-size: 0.82em;
+}
+
+.section-permalink:hover,
+.section-permalink:focus {
+  opacity: 1;
+  text-decoration: underline;
+}
+
+.query-card:target,
+#results:target {
+  outline: 4px solid var(--magenta);
+  outline-offset: 6px;
+}
+
 .endpoint {
   padding: 0.1rem 0.4rem;
   border: 2px solid var(--ink);
@@ -119,6 +143,11 @@ main {
   gap: 1rem;
   padding: 1rem;
   box-shadow: 8px 8px 0 var(--ink);
+}
+
+.query-card--active {
+  border-color: var(--magenta);
+  box-shadow: 8px 8px 0 var(--magenta);
 }
 
 .card-header {

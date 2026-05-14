@@ -175,6 +175,7 @@
   box-shadow: 8px 8px 0 var(--ink);
   transition:
     transform 0.2s ease,
+    border-color 0.2s ease,
     box-shadow 0.2s ease;
   position: relative;
   cursor: help;
@@ -308,7 +309,11 @@
   width: 100%;
   height: auto;
   display: block;
+  border: 4px solid transparent;
   margin-bottom: 2.5rem;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 /* Chart Sections */
@@ -318,6 +323,21 @@
   padding: 2rem;
   margin-bottom: 2.5rem;
   box-shadow: 8px 8px 0 var(--ink);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.stats-page .stat-card:target,
+.stats-page .chart-section:target,
+.stats-page .svg-diagram:target {
+  border-color: var(--magenta);
+  box-shadow: 8px 8px 0 var(--magenta);
+  outline: none;
+}
+
+.stats-page .stat-card:target:hover {
+  box-shadow: 11px 11px 0 var(--magenta);
 }
 
 .chart-title {
@@ -891,8 +911,13 @@ button.chart-toggle-button.active:not(:disabled):hover {
 }
 
 .stacked-legend-value {
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
   font-size: 0.82rem;
+  line-height: 1.1;
   text-align: right;
+  white-space: nowrap;
 }
 
 .stacked-legend-value span {

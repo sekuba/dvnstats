@@ -11,6 +11,11 @@ const chartViewState = {
   "destination-chain": "snapshot",
   "source-chain": "snapshot",
 };
+const CHART_VIEW_PARAM_PREFIX = "view-";
+const DATASET_PARAM = "range";
+const LEGACY_DATASET_PARAM = "dataset";
+const VALID_CHART_VIEWS = new Set(["snapshot", "time"]);
+const DVN_THRESHOLD_UNKNOWN = "unknown";
 const STACKED_COLORS = [
   "#1b9c85",
   "#78bdff",
@@ -69,8 +74,19 @@ function formatNumber(num) {
   return num.toLocaleString();
 }
 
+function formatCompactNumber(num) {
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(num);
+}
+
 function formatPercent(percent) {
   return `${percent.toFixed(2)}%`;
+}
+
+function formatAxisPercent(percent) {
+  return `${Math.round(percent)}%`;
 }
 
 function formatDate(timestamp) {
@@ -91,7 +107,160 @@ function setText(id, value) {
   }
 }
 
-function setChartView(chartKey, view) {
+function getUrl() {
+  return new URL(window.location.href);
+}
+
+function updateUrl(mutator, { replace = false } = {}) {
+  const url = getUrl();
+  mutator(url);
+  window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+}
+
+function getRequestedDatasetName() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(DATASET_PARAM) || params.get(LEGACY_DATASET_PARAM) || null;
+}
+
+function getDatasetFromUrl(datasets) {
+  const requested = getRequestedDatasetName();
+  if (!requested) {
+    return null;
+  }
+  return datasets.some((dataset) => dataset.name === requested) ? requested : null;
+}
+
+function getRequestedChartView(chartKey) {
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get(`${CHART_VIEW_PARAM_PREFIX}${chartKey}`) || params.get(chartKey);
+  return VALID_CHART_VIEWS.has(view) ? view : null;
+}
+
+function applyChartViewsFromUrl() {
+  Object.keys(chartViewState).forEach((chartKey) => {
+    const view = getRequestedChartView(chartKey);
+    chartViewState[chartKey] = view || "snapshot";
+  });
+}
+
+function updateDatasetUrl(datasetName) {
+  updateUrl((url) => {
+    url.searchParams.set(DATASET_PARAM, datasetName);
+    url.searchParams.delete(LEGACY_DATASET_PARAM);
+  });
+}
+
+function updateChartViewUrl(chartKey, view) {
+  updateUrl((url) => {
+    url.searchParams.set(`${CHART_VIEW_PARAM_PREFIX}${chartKey}`, view);
+  });
+}
+
+function setLinkTarget(element) {
+  if (!element) {
+    return;
+  }
+  if (!element.hasAttribute("tabindex")) {
+    element.setAttribute("tabindex", "-1");
+  }
+}
+
+function slugifyAnchor(value) {
+  const slug = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "section";
+}
+
+function uniqueElementId(baseId) {
+  let id = baseId;
+  let suffix = 2;
+  while (document.getElementById(id)) {
+    id = `${baseId}-${suffix}`;
+    suffix += 1;
+  }
+  return id;
+}
+
+function appendPermalink(heading, targetId) {
+  if (!heading || !targetId || heading.querySelector(".section-permalink")) {
+    return;
+  }
+
+  const label = heading.textContent.trim();
+  const link = document.createElement("a");
+  link.className = "section-permalink";
+  link.href = `#${targetId}`;
+  link.textContent = "#";
+  link.setAttribute("aria-label", `Link to ${label}`);
+  heading.appendChild(link);
+}
+
+function initializeStatsAnchors() {
+  const header = document.querySelector(".stats-header");
+  if (header && !header.id) {
+    header.id = "stats-top";
+  }
+
+  const title = document.querySelector(".stats-header h1");
+  if (header && title) {
+    setLinkTarget(header);
+    appendPermalink(title, header.id);
+  }
+
+  document.querySelectorAll(".stat-card").forEach((card) => {
+    const heading = card.querySelector("h2");
+    if (!heading) {
+      return;
+    }
+    if (!card.id) {
+      card.id = uniqueElementId(`stat-${slugifyAnchor(heading.textContent)}`);
+    }
+    setLinkTarget(card);
+    appendPermalink(heading, card.id);
+  });
+
+  document.querySelectorAll(".chart-section").forEach((section) => {
+    const heading = section.querySelector(".chart-title");
+    if (!heading) {
+      return;
+    }
+    if (!section.id) {
+      section.id = uniqueElementId(slugifyAnchor(heading.textContent));
+    }
+    setLinkTarget(section);
+    appendPermalink(heading, section.id);
+  });
+
+  document.querySelectorAll(".stats-grid[id], .svg-diagram[id]").forEach(setLinkTarget);
+}
+
+function scrollToCurrentHash() {
+  const rawHash = window.location.hash.slice(1);
+  if (!rawHash) {
+    return;
+  }
+
+  const target = document.getElementById(decodeURIComponent(rawHash));
+  if (!target) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    target.scrollIntoView({ block: "start" });
+    if (typeof target.focus === "function") {
+      target.focus({ preventScroll: true });
+    }
+  });
+}
+
+function setChartView(chartKey, view, options = {}) {
+  if (!VALID_CHART_VIEWS.has(view)) {
+    return;
+  }
+
   chartViewState[chartKey] = view;
 
   document
@@ -103,6 +272,10 @@ function setChartView(chartKey, view) {
   document.querySelectorAll(`[data-chart-panel="${chartKey}"]`).forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.view !== view);
   });
+
+  if (options.updateUrl) {
+    updateChartViewUrl(chartKey, view);
+  }
 }
 
 function syncChartViews() {
@@ -117,7 +290,7 @@ function initChartToggles() {
 
     toggle.querySelectorAll(".chart-toggle-button").forEach((button) => {
       button.addEventListener("click", () => {
-        setChartView(chartKey, button.dataset.view);
+        setChartView(chartKey, button.dataset.view, { updateUrl: true });
       });
     });
   });
@@ -351,6 +524,7 @@ function renderStackedMissing(containerId) {
 }
 
 function formatDvnThresholdLabel(key) {
+  if (String(key) === DVN_THRESHOLD_UNKNOWN) return "Unknown";
   if (key.endsWith("+")) return `${key} DVNs`;
 
   const threshold = Number(key);
@@ -358,30 +532,49 @@ function formatDvnThresholdLabel(key) {
 }
 
 function makeThresholdGroupKey(threshold, shouldGroupHighThresholds) {
-  return shouldGroupHighThresholds && threshold > 5 ? "6+" : String(threshold);
+  if (String(threshold) === DVN_THRESHOLD_UNKNOWN) return DVN_THRESHOLD_UNKNOWN;
+
+  const numericThreshold = Number(threshold);
+  if (!Number.isFinite(numericThreshold)) return DVN_THRESHOLD_UNKNOWN;
+
+  return shouldGroupHighThresholds && numericThreshold > 5 ? "6+" : String(numericThreshold);
+}
+
+function compareThresholdGroupKeys(a, b) {
+  if (a === DVN_THRESHOLD_UNKNOWN && b === DVN_THRESHOLD_UNKNOWN) return 0;
+  if (a === DVN_THRESHOLD_UNKNOWN) return 1;
+  if (b === DVN_THRESHOLD_UNKNOWN) return -1;
+  if (a.endsWith("+")) return 1;
+  if (b.endsWith("+")) return -1;
+  return Number(a) - Number(b);
 }
 
 function buildDvnThresholdSeries(rollupData) {
-  const thresholds = Array.from(
+  const rawThresholds = Array.from(
     new Set(
       rollupData.flatMap((bucket) =>
-        Object.keys(bucket.dvnThresholds || {})
-          .map((threshold) => Number(threshold))
-          .filter((threshold) => Number.isFinite(threshold)),
+        Object.keys(bucket.dvnThresholds || {}).map((threshold) => String(threshold)),
       ),
     ),
+  );
+  const thresholds = Array.from(
+    new Set(
+      rawThresholds
+        .map((threshold) => Number(threshold))
+        .filter((threshold) => Number.isFinite(threshold)),
+    ),
   ).sort((a, b) => a - b);
+  const hasUnknownThreshold = rawThresholds.some(
+    (threshold) => makeThresholdGroupKey(threshold, false) === DVN_THRESHOLD_UNKNOWN,
+  );
 
   const shouldGroupHighThresholds = thresholds.length > 7;
   const groupKeys = Array.from(
-    new Set(
-      thresholds.map((threshold) => makeThresholdGroupKey(threshold, shouldGroupHighThresholds)),
-    ),
-  ).sort((a, b) => {
-    if (a.endsWith("+")) return 1;
-    if (b.endsWith("+")) return -1;
-    return Number(a) - Number(b);
-  });
+    new Set([
+      ...thresholds.map((threshold) => makeThresholdGroupKey(threshold, shouldGroupHighThresholds)),
+      ...(hasUnknownThreshold ? [DVN_THRESHOLD_UNKNOWN] : []),
+    ]),
+  ).sort(compareThresholdGroupKeys);
 
   return groupKeys.map((key, index) => ({
     key,
@@ -390,7 +583,7 @@ function buildDvnThresholdSeries(rollupData) {
     values: rollupData.map((bucket) => {
       const value = Object.entries(bucket.dvnThresholds || {}).reduce(
         (sum, [threshold, count]) =>
-          makeThresholdGroupKey(Number(threshold), shouldGroupHighThresholds) === key
+          makeThresholdGroupKey(threshold, shouldGroupHighThresholds) === key
             ? sum + Number(count || 0)
             : sum,
         0,
@@ -441,6 +634,7 @@ function buildChainSeries(rollupData, breakdown, breakdownKey, rollupKey, colorO
 function renderStackedAreaChart(containerId, series, options = {}) {
   const container = document.getElementById(containerId);
   container.innerHTML = "";
+  const isPercentMode = options.valueMode === "percent";
 
   const filteredSeries = (series || [])
     .map((entry) => ({
@@ -460,6 +654,23 @@ function renderStackedAreaChart(containerId, series, options = {}) {
     return;
   }
 
+  const rawStackedTotals = timestamps.map((_, index) =>
+    filteredSeries.reduce((sum, entry) => sum + Number(entry.values[index]?.value || 0), 0),
+  );
+  const totalPackets = rawStackedTotals.reduce((sum, count) => sum + count, 0);
+  const plotSeries = isPercentMode
+    ? filteredSeries.map((entry) => ({
+        ...entry,
+        values: entry.values.map((point, index) => ({
+          ...point,
+          value:
+            rawStackedTotals[index] > 0
+              ? (Number(point.value || 0) / rawStackedTotals[index]) * 100
+              : 0,
+        })),
+      }))
+    : filteredSeries;
+
   const chartContainer = document.createElement("div");
   chartContainer.className = "stacked-area-container";
 
@@ -473,9 +684,9 @@ function renderStackedAreaChart(containerId, series, options = {}) {
   const maxTimestamp = Math.max(...timestamps);
   const timestampRange = maxTimestamp - minTimestamp || 1;
   const stackedTotals = timestamps.map((_, index) =>
-    filteredSeries.reduce((sum, entry) => sum + entry.values[index].value, 0),
+    plotSeries.reduce((sum, entry) => sum + Number(entry.values[index]?.value || 0), 0),
   );
-  const maxStack = Math.max(1, ...stackedTotals);
+  const maxStack = isPercentMode ? 100 : Math.max(1, ...stackedTotals);
 
   const scaleX = (timestamp) =>
     padding.left + ((timestamp - minTimestamp) / timestampRange) * chartWidth;
@@ -505,7 +716,7 @@ function renderStackedAreaChart(containerId, series, options = {}) {
 
   const baseline = new Array(timestamps.length).fill(0);
 
-  filteredSeries.forEach((entry) => {
+  plotSeries.forEach((entry) => {
     const topPoints = entry.values.map((point, index) => {
       const bottom = baseline[index];
       const top = bottom + point.value;
@@ -537,7 +748,10 @@ function renderStackedAreaChart(containerId, series, options = {}) {
     area.setAttribute("class", "stacked-area-layer");
 
     const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = `${entry.label}: ${formatNumber(entry.total)} packets`;
+    const share = totalPackets > 0 ? (entry.total / totalPackets) * 100 : 0;
+    title.textContent = isPercentMode
+      ? `${entry.label}: ${formatPercent(share)} of packets (${formatNumber(entry.total)} packets)`
+      : `${entry.label}: ${formatNumber(entry.total)} packets`;
     area.appendChild(title);
 
     svg.appendChild(area);
@@ -570,7 +784,7 @@ function renderStackedAreaChart(containerId, series, options = {}) {
     text.setAttribute("y", y + 4);
     text.setAttribute("text-anchor", "end");
     text.setAttribute("class", "axis-label");
-    text.textContent = formatNumber(Math.round(value));
+    text.textContent = isPercentMode ? formatAxisPercent(value) : formatNumber(Math.round(value));
     svg.appendChild(text);
   }
 
@@ -592,11 +806,11 @@ function renderStackedAreaChart(containerId, series, options = {}) {
 
   chartContainer.appendChild(svg);
 
-  const totalPackets = filteredSeries.reduce((sum, entry) => sum + entry.total, 0);
-  const peakIndex = stackedTotals.reduce(
-    (maxIndex, value, index) => (value > stackedTotals[maxIndex] ? index : maxIndex),
+  const peakIndex = rawStackedTotals.reduce(
+    (maxIndex, value, index) => (value > rawStackedTotals[maxIndex] ? index : maxIndex),
     0,
   );
+  const peakLabel = isPercentMode ? "Peak volume:" : "Peak:";
 
   const summary = document.createElement("div");
   summary.className = "time-series-summary stacked-summary";
@@ -610,8 +824,8 @@ function renderStackedAreaChart(containerId, series, options = {}) {
       <span class="summary-value">${capitalize(options.interval || "daily")}</span>
     </div>
     <div class="summary-item">
-      <span class="summary-label">Peak:</span>
-      <span class="summary-value">${formatNumber(stackedTotals[peakIndex])} on ${formatDate(timestamps[peakIndex])}</span>
+      <span class="summary-label">${peakLabel}</span>
+      <span class="summary-value">${formatNumber(rawStackedTotals[peakIndex])} on ${formatDate(timestamps[peakIndex])}</span>
     </div>
     <div class="summary-item">
       <span class="summary-label">Series:</span>
@@ -639,7 +853,10 @@ function renderStackedAreaChart(containerId, series, options = {}) {
     const value = document.createElement("div");
     value.className = "stacked-legend-value";
     const percentage = totalPackets > 0 ? (entry.total / totalPackets) * 100 : 0;
-    value.innerHTML = `<strong>${formatNumber(entry.total)}</strong> <span>(${formatPercent(percentage)})</span>`;
+    value.title = `${entry.label}: ${formatPercent(percentage)} (${formatNumber(entry.total)} packets)`;
+    value.innerHTML = isPercentMode
+      ? `<strong>${formatPercent(percentage)}</strong> <span>${formatCompactNumber(entry.total)} pkts</span>`
+      : `<strong>${formatNumber(entry.total)}</strong> <span>(${formatPercent(percentage)})</span>`;
 
     item.appendChild(swatch);
     item.appendChild(label);
@@ -651,19 +868,23 @@ function renderStackedAreaChart(containerId, series, options = {}) {
   container.appendChild(chartContainer);
 }
 
-// Render DVN set threshold pie chart (with "Other" bucket for 0 and >4)
+// Render effective DVN quorum pie chart (with "Other" bucket for >4)
 function renderDvnSetThresholdChart(stats) {
   const buckets = new Map();
 
   stats.dvnSetThresholdBuckets.forEach((bucket) => {
-    const threshold = bucket.dvnSetThreshold;
-    if (threshold === 0 || threshold > 4) {
-      buckets.set(
-        "Other (0 or >4 DVNs)",
-        (buckets.get("Other (0 or >4 DVNs)") || 0) + bucket.packetCount,
-      );
+    const threshold = makeThresholdGroupKey(bucket.dvnSetThreshold, false);
+    const numericThreshold = Number(threshold);
+
+    if (threshold === DVN_THRESHOLD_UNKNOWN) {
+      buckets.set("Unknown", (buckets.get("Unknown") || 0) + bucket.packetCount);
+    } else if (numericThreshold > 4) {
+      buckets.set("Other (>4 DVNs)", (buckets.get("Other (>4 DVNs)") || 0) + bucket.packetCount);
     } else {
-      buckets.set(`${threshold} DVN${threshold === 1 ? "" : "s"}`, bucket.packetCount);
+      buckets.set(
+        `${numericThreshold} DVN${numericThreshold === 1 ? "" : "s"}`,
+        bucket.packetCount,
+      );
     }
   });
 
@@ -674,9 +895,12 @@ function renderDvnSetThresholdChart(stats) {
       percentage: (value / stats.total) * 100,
     }))
     .sort((a, b) => {
-      // Sort: 1, 2, 3, 4, Other
-      if (a.label.startsWith("Other")) return 1;
-      if (b.label.startsWith("Other")) return -1;
+      // Sort: 0, 1, 2, 3, 4, Other, Unknown
+      if (a.label === b.label) return 0;
+      if (a.label === "Unknown") return 1;
+      if (b.label === "Unknown") return -1;
+      if (a.label.startsWith("Other")) return b.label === "Unknown" ? -1 : 1;
+      if (b.label.startsWith("Other")) return a.label === "Unknown" ? 1 : -1;
       return a.label.localeCompare(b.label, undefined, { numeric: true });
     });
 
@@ -688,8 +912,8 @@ function renderDvnSetThresholdTimeChart(stats) {
   setText(
     "dvn-set-threshold-subtitle",
     rollup
-      ? `Effective required DVN count distribution • ${capitalize(rollup.interval)} packet history in Over Time view`
-      : 'Number of DVNs that must validate incoming packets. Combines required DVNs and optional DVN thresholds (0 and >4 grouped as "Other")',
+      ? `Fraction of packets by effective DVN quorum • ${capitalize(rollup.interval)} packet history`
+      : "Fraction of packets by the number of DVNs that must validate incoming packets. Optional-only quorum 2 of 3 counts as 2; required plus optional quorum x + 2 counts as x + 2.",
   );
 
   if (!rollup) {
@@ -699,6 +923,7 @@ function renderDvnSetThresholdTimeChart(stats) {
 
   renderStackedAreaChart("dvn-set-threshold-time-chart", buildDvnThresholdSeries(rollup.data), {
     interval: rollup.interval,
+    valueMode: "percent",
   });
 }
 
@@ -906,8 +1131,8 @@ function renderDestinationChainTimeChart(stats) {
   setText(
     "chain-chart-subtitle",
     rollup
-      ? `Destination chain packet distribution • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
-      : "Local EID distribution",
+      ? `Fraction of packets by destination chain • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
+      : "Destination chain packet distribution",
   );
 
   if (!rollup) {
@@ -918,7 +1143,7 @@ function renderDestinationChainTimeChart(stats) {
   renderStackedAreaChart(
     "chain-time-chart",
     buildChainSeries(rollup.data, stats.chainBreakdown, "localEid", "destinationChains", 3),
-    { interval: rollup.interval },
+    { interval: rollup.interval, valueMode: "percent" },
   );
 }
 
@@ -938,8 +1163,8 @@ function renderSourceChainTimeChart(stats) {
   setText(
     "src-chain-chart-subtitle",
     rollup
-      ? `Source chain packet distribution • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
-      : "Source EID distribution",
+      ? `Fraction of packets by source chain • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
+      : "Source chain packet distribution",
   );
 
   if (!rollup) {
@@ -950,7 +1175,7 @@ function renderSourceChainTimeChart(stats) {
   renderStackedAreaChart(
     "src-chain-time-chart",
     buildChainSeries(rollup.data, stats.srcChainBreakdown, "srcEid", "sourceChains", 0),
-    { interval: rollup.interval },
+    { interval: rollup.interval, valueMode: "percent" },
   );
 }
 
@@ -1350,7 +1575,7 @@ function renderDatasetButtons(datasets) {
     }
 
     button.addEventListener("click", () => {
-      loadAndRender(dataset.name);
+      loadAndRender(dataset.name, { updateUrl: true });
     });
 
     buttonGroup.appendChild(button);
@@ -1360,7 +1585,7 @@ function renderDatasetButtons(datasets) {
   header.appendChild(container);
 }
 
-async function loadAndRender(datasetName = null) {
+async function loadAndRender(datasetName = null, options = {}) {
   try {
     if (!datasetName && availableDatasets.length > 0) {
       datasetName = availableDatasets[0].name;
@@ -1393,6 +1618,10 @@ async function loadAndRender(datasetName = null) {
       throw new Error("No packet data available. Run the precomputation script first.");
     }
 
+    if (options.updateUrl) {
+      updateDatasetUrl(datasetName);
+    }
+
     renderDatasetButtons(availableDatasets);
 
     renderOverview(statsData);
@@ -1408,6 +1637,7 @@ async function loadAndRender(datasetName = null) {
     syncChartViews();
 
     showContent();
+    scrollToCurrentHash();
   } catch (error) {
     console.error("Failed to load statistics:", error);
     showError(error.message);
@@ -1460,6 +1690,8 @@ function initTooltips() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  initializeStatsAnchors();
+  applyChartViewsFromUrl();
   initChartToggles();
 
   availableDatasets = await discoverDatasets();
@@ -1471,8 +1703,23 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   renderDatasetButtons(availableDatasets);
 
-  await loadAndRender(availableDatasets[0].name);
+  await loadAndRender(getDatasetFromUrl(availableDatasets) || availableDatasets[0].name);
 
   // Initialize tooltips after content is loaded
   initTooltips();
+});
+
+window.addEventListener("hashchange", scrollToCurrentHash);
+
+window.addEventListener("popstate", async () => {
+  applyChartViewsFromUrl();
+  syncChartViews();
+
+  const requestedDataset = getDatasetFromUrl(availableDatasets);
+  if (requestedDataset && requestedDataset !== currentDataset) {
+    await loadAndRender(requestedDataset);
+    return;
+  }
+
+  scrollToCurrentHash();
 });

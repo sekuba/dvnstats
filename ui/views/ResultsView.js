@@ -14,6 +14,7 @@ export class ResultsView {
     chainMetadata,
     aliasStore,
     toastQueue,
+    options = {},
   ) {
     this.resultsTitle = resultsTitle;
     this.resultsMeta = resultsMeta;
@@ -25,6 +26,8 @@ export class ResultsView {
     this.toastQueue = toastQueue;
     this.lastRender = null;
     this.copyFeedbackTimers = new WeakMap();
+    this.onGraphCenterChange =
+      typeof options.onGraphCenterChange === "function" ? options.onGraphCenterChange : null;
   }
 
   render(rows, payload, meta) {
@@ -69,7 +72,7 @@ export class ResultsView {
     }
 
     if (metaSnapshot.renderMode === "graph") {
-      this.renderGraph(metaSnapshot.webData);
+      this.renderGraph(metaSnapshot.webData, metaSnapshot.centerNodeId || null);
       return;
     }
 
@@ -111,6 +114,9 @@ export class ResultsView {
   async renderGraph(webData, centerNodeId = null) {
     this.resultsBody.classList.remove("empty");
     this.resultsBody.innerHTML = "";
+    if (this.lastRender?.meta) {
+      this.lastRender.meta.centerNodeId = centerNodeId;
+    }
 
     const { SecurityGraphView } = await import("../../graph/SecurityGraphView.js");
     const renderer = new SecurityGraphView({
@@ -139,6 +145,9 @@ export class ResultsView {
     });
 
     renderer.onRecenter = (newCenterNodeId) => {
+      if (this.onGraphCenterChange) {
+        this.onGraphCenterChange(newCenterNodeId, webData);
+      }
       this.renderGraph(webData, newCenterNodeId);
     };
 
