@@ -336,7 +336,6 @@ export class EdgeRenderer {
       lastPacketTimestamp,
       libraryStatus,
       synthetic,
-      reverseRouteLabel,
     } = info;
 
     let blockMessage = null;
@@ -359,9 +358,6 @@ export class EdgeRenderer {
     const hasSecurityConfig = Boolean(info.hasSecurityConfig);
     const unknownMessage = info.isUnknownSecurity ? "Unknown security config (untracked)" : null;
     const routeLine = this.buildRouteLabel(info);
-    const reverseOnlyLine = reverseRouteLabel
-      ? `Reverse config only: ${reverseRouteLabel.from || "Unknown"} → ${reverseRouteLabel.to || "Unknown"}`
-      : null;
 
     const requiredLine = hasSecurityConfig
       ? requiredDVNLabels && requiredDVNLabels.length > 0
@@ -448,7 +444,6 @@ export class EdgeRenderer {
       blockMessage,
       unknownMessage,
       requiredLine,
-      reverseOnlyLine,
       optionalLine,
       sentinelLine,
       anomalyLine,

@@ -178,14 +178,21 @@ export class NodeMetricsCalculator {
             lastPacketBlock: cfg.routeLastPacketBlock ?? null,
             lastPacketTimestamp: cfg.routeLastPacketTimestamp ?? null,
             libraryStatus: cfg.libraryStatus ?? "unknown",
+            isConfigTracked: cfg.isConfigTracked ?? null,
             peerStateHint: cfg.peerStateHint ?? null,
             synthetic: Boolean(cfg.synthetic),
-            usesDefaultLibrary: cfg.usesDefaultLibrary !== false,
+            usesDefaultLibrary: cfg.usesDefaultLibrary,
+            usesDefaultConfig: cfg.usesDefaultConfig,
             effectiveReceiveLibrary: cfg.effectiveReceiveLibrary || null,
+            fallbackFields: Array.isArray(cfg.fallbackFields) ? cfg.fallbackFields : [],
             defaultLibraryVersionId:
               cfg.defaultLibraryVersionId !== undefined ? cfg.defaultLibraryVersionId : null,
+            defaultConfigVersionId:
+              cfg.defaultConfigVersionId !== undefined ? cfg.defaultConfigVersionId : null,
             libraryOverrideVersionId:
               cfg.libraryOverrideVersionId !== undefined ? cfg.libraryOverrideVersionId : null,
+            configOverrideVersionId:
+              cfg.configOverrideVersionId !== undefined ? cfg.configOverrideVersionId : null,
           };
         })
         .filter(Boolean);
