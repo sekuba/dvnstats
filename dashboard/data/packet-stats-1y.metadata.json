@@ -1,7 +1,8 @@
 {
-  "computedAt": "2026-05-13T06:49:50.484Z",
-  "lastProcessedTimestamp": 1778653518,
-  "totalRecords": 8870150,
+  "schemaVersion": 3,
+  "computedAt": "2026-05-14T10:52:37.831Z",
+  "lastProcessedTimestamp": 1778755210,
+  "totalRecords": 8836463,
   "lookback": "1y",
   "coverage": {
     "indexedChainCount": 54,
