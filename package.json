@@ -16,6 +16,7 @@
     "stats:batch": "node scripts/precomputePacketStats.js --batch",
     "stats:incremental": "node scripts/precomputePacketStats.js --incremental",
     "stats:batch-incremental": "node scripts/precomputePacketStats.js --batch --incremental",
+    "indexer:status": "node scripts/indexerStatus.js",
     "registry:build": "node scripts/buildDashboardRegistry.js"
   },
   "devDependencies": {
