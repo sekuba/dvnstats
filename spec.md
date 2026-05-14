@@ -211,6 +211,8 @@ if (oapp.requiredDVNCount === 255) {
 // Similar logic for optional DVNs
 ```
 
+Effective DVN labels are security-significant. A required DVN address resolved through chain metadata as `LZDeadDVN` is treated as a blocking DVN even when the address is chain-specific and not the literal `0x000000000000000000000000000000000000dead` sentinel.
+
 ### Effective DVN Quorum for Statistics
 
 The statistics page groups packets by the number of DVN approvals needed for validation:
@@ -286,6 +288,10 @@ oAppSecurityConfigs(where: {
 ```
 
 These flags mean the route inherits the default library/config. They intentionally exclude routes that explicitly set custom records equal to the default values.
+
+### Web of Security route rendering
+
+The web-of-security graph resolves each directional edge with the same effective route rows as the OApp security config table, including synthetic default/fallback rows. If a synthetic fallback row is blocked by an implicit peer block or by a required blocking DVN such as `LZDeadDVN`, the graph must retain it so the edge is shown as blocked instead of unknown. Edge-attached config snapshots may be used only when their `srcEid` matches the displayed edge direction; reverse-route config should not be shown as the security config for the opposite direction.
 
 ### Find explicitly blocked routes
 ```graphql
