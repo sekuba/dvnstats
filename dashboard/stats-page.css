@@ -35,6 +35,8 @@
 .header-nav {
   display: flex;
   gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
 .nav-link {
@@ -50,7 +52,11 @@
     transform 0.1s ease,
     box-shadow 0.1s ease;
   box-shadow: 5px 5px 0 var(--ink);
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  white-space: nowrap;
 }
 
 .nav-link:hover {
