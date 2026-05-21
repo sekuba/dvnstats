@@ -34,6 +34,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
+  flex-wrap: wrap;
   background: linear-gradient(135deg, var(--paper) 60%, var(--accent));
 }
 
@@ -54,11 +55,72 @@ body {
   display: flex;
   gap: 1rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .header-nav a {
   text-align: center;
-  display: inline-block;
+}
+
+.nav-link {
+  font: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0.6rem 1.1rem;
+  border: 3px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    transform 0.1s ease,
+    box-shadow 0.1s ease;
+  box-shadow: 5px 5px 0 var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.nav-link:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 7px 7px 0 var(--ink);
+}
+
+.nav-link:active {
+  transform: translate(2px, 2px);
+  box-shadow: 3px 3px 0 var(--ink);
+}
+
+.header-nav .nav-link--magenta {
+  border-color: var(--magenta);
+  color: var(--magenta);
+  box-shadow: 5px 5px 0 var(--magenta);
+}
+
+.header-nav .nav-link--magenta:hover {
+  box-shadow: 7px 7px 0 var(--magenta);
+}
+
+.header-nav .nav-link--magenta:active {
+  box-shadow: 3px 3px 0 var(--magenta);
+}
+
+.header-nav .nav-link--envio {
+  position: relative;
+  min-width: 12.5rem;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(252, 252, 252, 0.33), rgba(252, 252, 252, 0.56)),
+    url("./envio-logo-primary.png") center / 88% auto no-repeat var(--paper);
+  color: var(--ink);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.header-nav .nav-link--envio span {
+  position: relative;
+  z-index: 1;
 }
 
 [id] {
@@ -983,15 +1045,45 @@ td.meter-cell > * {
     align-items: flex-start;
   }
 
-  .header-nav {
-    flex-direction: column;
-    align-items: flex-start;
+  body .header-nav {
+    flex-direction: row;
+    align-items: stretch;
+    gap: 0.75rem;
     width: 100%;
   }
 
   .header-nav a,
   .header-nav button {
-    width: 100%;
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    min-height: 2.5rem;
+    padding: 0.55rem 0.45rem;
+    width: auto;
+  }
+
+  .header-nav .nav-link {
+    width: auto;
+  }
+
+  .header-nav .nav-link--primary {
+    order: 1;
+    flex: 1 1 100%;
+  }
+
+  #download-aliases {
+    order: 1;
+    flex: 1 1 calc(50% - 0.375rem);
+  }
+
+  .header-nav .nav-link--repo,
+  .header-nav .nav-link--envio {
+    order: 2;
+    flex: 1 1 calc(50% - 0.375rem);
+    min-width: 0;
+  }
+
+  body:not(.stats-page) .header-nav .nav-link--primary {
+    flex-basis: calc(50% - 0.375rem);
   }
 
   .results-header {
