@@ -1,6 +1,6 @@
 import requests
 
-HASURA_URL = "https://shinken.business/v1/graphql"
+HASURA_URL = "https://not.slashveto.me/v1/graphql"
 HEADERS = {
     "Content-Type": "application/json",
     # Use the right auth for your setup:

@@ -32,7 +32,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readLocalChainConfigs } from "./readLocalChainConfigs.js";
 
-const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || "https://shinken.business/v1/graphql";
+const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || "https://not.slashveto.me/v1/graphql";
 const BATCH_SIZE = 100000;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUTPUT_DIR = path.join(__dirname, "../dashboard/data");
