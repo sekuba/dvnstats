@@ -2,7 +2,7 @@ export const APP_CONFIG = Object.freeze({
   GRAPHQL_ENDPOINT:
     new URLSearchParams(window.location.search).get("endpoint") ||
     document.documentElement.dataset.graphqlEndpoint ||
-    "http://localhost:8080/v1/graphql",
+    "http://localhost:17480/v1/graphql",
 
   ADDRESSES: Object.freeze({
     DEAD: "0x000000000000000000000000000000000000dead",
