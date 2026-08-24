@@ -199,6 +199,12 @@ export const LOCAL_CHAIN_CONFIGS = [
     receiveUln302: "0xe1844c5d63a9543023008d332bd3d2e6f1fe1043",
   },
   {
+    chainId: 4663,
+    localEid: 30416n,
+    endpointV2: "0x6f475642a6e85809b1c36fa62763669b1b48dd5b",
+    receiveUln302: "0xe1844c5d63a9543023008d332bd3d2e6f1fe1043",
+  },
+  {
     chainId: 5000,
     localEid: 30181n,
     endpointV2: "0x1a44076050125825900e736c501f859c50fe728c",
@@ -311,6 +317,12 @@ export const LOCAL_CHAIN_CONFIGS = [
     localEid: 30214n,
     endpointV2: "0x1a44076050125825900e736c501f859c50fe728c",
     receiveUln302: "0x8363302080e711e0cab978c081b9e69308d49808",
+  },
+  {
+    chainId: 747474,
+    localEid: 30375n,
+    endpointV2: "0x6f475642a6e85809b1c36fa62763669b1b48dd5b",
+    receiveUln302: "0xe1844c5d63a9543023008d332bd3d2e6f1fe1043",
   },
   {
     chainId: 7777777,

@@ -724,15 +724,10 @@ const recomputeSecurityConfigsForScope = async (
   eventId: string,
   transactionHash: string,
 ) => {
-  // NOTE: compound queries not supported
-  const configsForChain = await context.OAppSecurityConfig.getWhere({
+  const configsForEid = await context.OAppSecurityConfig.getWhere({
     localEid: { _eq: localEid },
+    eid: { _eq: eid },
   });
-  if (!configsForChain || configsForChain.length === 0) {
-    return;
-  }
-
-  const configsForEid = configsForChain.filter((config) => config.eid === eid);
   if (configsForEid.length === 0) {
     return;
   }

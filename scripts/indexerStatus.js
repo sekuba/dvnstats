@@ -2,8 +2,8 @@
 
 import { execFileSync } from "node:child_process";
 
-const DEFAULT_POSTGRES_CONTAINER = "envio-postgres";
-const DEFAULT_HASURA_CONTAINER = "envio-hasura";
+const DEFAULT_POSTGRES_CONTAINER = "dvnstats-postgres";
+const DEFAULT_HASURA_CONTAINER = "dvnstats-hasura";
 const DEFAULT_DATABASE = "envio-dev";
 const DEFAULT_DB_USER = "postgres";
 const DEFAULT_CONCURRENCY = 10;

@@ -158,6 +158,15 @@ chains:
       - name: OAppOFT
   - id: 250
     start_block: 74811512
+    # Fallback sources: Fantom HyperSync served a block range with the
+    # transaction field missing (2026-08-24 10:02, blocks 103.6M-123.0M),
+    # and with no second source envio treats that as fatal. `for` defaults
+    # to "fallback" when HyperSync is available, so these stay idle
+    # otherwise. Chain source URLs are stripped from the persisted config
+    # fingerprint, so adding them never forces a re-sync.
+    rpc:
+      - url: https://fantom.drpc.org
+      - url: https://rpcapi.fantom.network
     contracts:
       - name: EndpointV2
         address:
@@ -330,6 +339,16 @@ chains:
       - name: OAppOFT
   - id: 4326
     start_block: 1557553
+    contracts:
+      - name: EndpointV2
+        address:
+          - 0x6F475642a6e85809B1c36Fa62763669b1b48DD5B
+      - name: ReceiveUln302
+        address:
+          - 0xe1844c5D63a9543023008D332Bd3d2e6f1FE1043
+      - name: OAppOFT
+  - id: 4663
+    start_block: 209
     contracts:
       - name: EndpointV2
         address:
@@ -529,6 +548,16 @@ chains:
       - name: ReceiveUln302
         address:
           - 0x8363302080e711E0CAb978C081b9e69308d49808
+      - name: OAppOFT
+  - id: 747474
+    start_block: 2845902
+    contracts:
+      - name: EndpointV2
+        address:
+          - 0x6F475642a6e85809B1c36Fa62763669b1b48DD5B
+      - name: ReceiveUln302
+        address:
+          - 0xe1844c5D63a9543023008D332Bd3d2e6f1FE1043
       - name: OAppOFT
   - id: 7777777
     start_block: 9852285

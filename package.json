@@ -7,8 +7,11 @@
     "build": "tsc --noEmit",
     "watch": "tsc --watch",
     "codegen": "envio codegen",
-    "dev": "envio dev",
-    "start": "envio start",
+    "start": "./run-indexer.sh",
+    "stop": "./stop-indexer.sh",
+    "stack:up": "docker compose up -d",
+    "stack:down": "docker compose down",
+    "db:indexes": "docker exec -i dvnstats-postgres psql -U postgres -d envio-dev -v ON_ERROR_STOP=1 -f - < scripts/indexes.sql",
     "test": "pnpm build",
     "format": "biome format --write .",
     "format:check": "biome check .",
@@ -25,7 +28,7 @@
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "envio": "3.0.0-rc.0"
+    "envio": "3.8.0"
   },
   "engines": {
     "node": ">=22.0.0"

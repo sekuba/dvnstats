@@ -1,0 +1,68 @@
+name: dvnstats
+
+# Self-managed Postgres + Hasura for this indexer.
+#
+# Deliberately NOT created by `envio dev` / `envio local docker up`: those use
+# hardcoded names (envio-postgres, envio-hasura, volume envio-postgres-data)
+# and will recreate whatever already owns them. Keeping our own names means the
+# envio CLI can never clobber this stack, and a future version upgrade can
+# backfill into a second database alongside this one before swapping over.
+#
+# Container images/env mirror what envio 3.8.0 provisions itself
+# (packages/cli/src/docker_env.rs), so Hasura behaves identically.
+#
+# Ports are deliberately off the beaten track — 8080/5432/5433 collide with
+# other things on this host — and bound to 127.0.0.1: both services
+# authenticate with the `testing` dev default, so they must not be reachable
+# from off-host. cloudflared runs as a host process, so the public endpoint is
+# unaffected. Drop the prefix if you need LAN access to the Hasura console.
+services:
+  postgres:
+    image: postgres:18.3
+    container_name: dvnstats-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: testing
+      POSTGRES_DB: envio-dev
+    ports:
+      - "127.0.0.1:17432:5432"
+    volumes:
+      # postgres:18 keeps PGDATA under /var/lib/postgresql/<version>/docker,
+      # so the whole directory is the volume target (matches envio's own setup).
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d envio-dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  hasura:
+    image: hasura/graphql-engine:v2.43.0
+    container_name: dvnstats-hasura
+    restart: always
+    user: "1001:1001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:17480:8080"
+    environment:
+      PORT: 8080
+      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:testing@postgres:5432/envio-dev
+      HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
+      HASURA_GRAPHQL_ADMIN_SECRET: testing
+      HASURA_GRAPHQL_UNAUTHORIZED_ROLE: public
+      HASURA_GRAPHQL_STRINGIFY_NUMERIC_TYPES: "true"
+      HASURA_GRAPHQL_NO_OF_RETRIES: 10
+      HASURA_GRAPHQL_ENABLED_LOG_TYPES: "startup, http-log, webhook-log, websocket-log, query-log"
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 50
+      start_period: 5s
+
+volumes:
+  pgdata:
+    name: dvnstats-pgdata
