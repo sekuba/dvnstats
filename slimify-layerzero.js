@@ -84,7 +84,9 @@ function slimifyLayerzero(data) {
   let filteredCount = 0;
 
   for (const [chainName, chain] of Object.entries(data)) {
-    if (chainName.toLowerCase().includes("testnet")) {
+    // The metadata API dropped the "-mainnet" key suffix, so testnet chains are
+    // now named like "arbitrum-sepolia" or "fuji". Check the environment field too.
+    if (chainName.toLowerCase().includes("testnet") || chain?.environment === "testnet") {
       filteredCount++;
       continue;
     }
