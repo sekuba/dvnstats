@@ -28,7 +28,7 @@
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "envio": "3.8.0"
+    "envio": "3.10.0"
   },
   "engines": {
     "node": ">=22.0.0"

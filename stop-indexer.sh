@@ -10,7 +10,7 @@
 # checkpoint ("Successfully resumed indexing state").
 #
 # Restart with `pnpm start`, or detached:
-#   setsid nohup ./run-indexer.sh >> logs/indexer-v38.log 2>&1 &
+#   setsid nohup ./run-indexer.sh >> logs/indexer-v310.log 2>&1 &
 set -euo pipefail
 cd "$(dirname "$0")"
 repo="$PWD"
