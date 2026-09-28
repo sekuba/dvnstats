@@ -718,17 +718,21 @@ function renderOverview(win) {
   setText("stat-all-default", pct(win.flags.allDefault));
   setText("stat-default-lib", pct(win.flags.defaultLibrary));
   setText("stat-tracked", pct(win.flags.tracked));
-  setText("stat-dvn-combos", formatNumber(win.dvnSets.distinct));
+  setText("stat-dvn-combos", formatNumber(win.dvnSets.distinctContractSets));
+  setText(
+    "stat-dvn-combos-label",
+    `Per chain • ${formatNumber(win.dvnSets.distinct)} by operator name`,
+  );
   setText(
     "stat-dvn-combos-note",
-    `Unique validation setups (required DVNs plus any optional quorum) after merging each chain's DVN contracts by operator name. ${formatNumber(win.dvnSets.unnamedAddresses)} DVN addresses without a public name are counted individually`,
+    `Unique validation setups (required DVNs plus any optional quorum). Every chain runs its own DVN contracts, deployed, keyed and administered separately, so the same operators on two chains count as two sets. Merged by operator name there are ${formatNumber(win.dvnSets.distinct)}: fewer parties to trust, but not fewer things that can break. ${formatNumber(win.dvnSets.unnamedAddresses)} DVN addresses have no public name`,
   );
   setText("stat-indexed-chains", formatNumber(stats.coverage.indexedChainCount));
   setText("stat-source-eids", formatNumber(win.sources.length));
 
   setText(
     "stats-subtitle",
-    `${formatNumber(win.total)} packets • ${formatNumber(win.dvnSets.distinct)} distinct DVN sets • ${stats.coverage.indexedChainCount} indexed chains`,
+    `${formatNumber(win.total)} packets • ${formatNumber(win.dvnSets.distinctContractSets)} distinct DVN sets • ${stats.coverage.indexedChainCount} indexed chains`,
   );
   setText("computed-at", new Date(stats.computedAt).toLocaleString());
   setText("time-range", `${formatDate(win.fromDay * DAY)} → ${formatDate(stats.dataThrough)}`);
@@ -825,7 +829,7 @@ function renderDvnSets(win) {
 
   setText(
     "dvn-combo-subtitle",
-    `Most common DVN sets by packet count (top ${sets.length} of ${formatNumber(win.dvnSets.distinct)}), merged by DVN name across chains`,
+    `Most common DVN sets by packet count (top ${sets.length} of ${formatNumber(win.dvnSets.distinct)} by operator name). Each row bundles separately deployed DVN contracts on every chain it is used on`,
   );
   const maxValue = sets[0].packets;
   container.replaceChildren(
@@ -841,6 +845,15 @@ function renderDvnSets(win) {
         optional.title = `${set.optionalThreshold} out of: ${set.optional.join(", ")}`;
         dvnList.appendChild(optional);
       }
+      const spread = dvnList.appendChild(
+        el(
+          "div",
+          "combo-note",
+          `${plural(set.chains, "chain")} • ${plural(set.contractSets, "contract set")}`,
+        ),
+      );
+      spread.title =
+        "The same operator names are a different set of DVN contracts on every chain, each with its own signers, admins and upgrades";
 
       const barContainer = el("div", "combo-bar-container");
       const bar = barContainer.appendChild(el("div", "combo-bar-fill"));
@@ -1156,11 +1169,12 @@ function renderScaleTop(meshes) {
       ["#", num],
       ["Web", null],
       ["Chains", num],
-      ["Open routes", num],
+      ["Routes", num],
       ["DVN sets", num],
-      ["DVN operators", num],
+      ["Operators", num],
+      ["DVN contracts", num],
       ["Weakest route", null],
-      ["LayerZero picks verifiers", num],
+      ["LZ picks verifiers", num],
       ["Packets (30d)", num],
       ["", null],
     ],
@@ -1182,6 +1196,7 @@ function renderScaleTop(meshes) {
         formatNumber(web.routes),
         formatNumber(web.dvnSets),
         formatNumber(web.operators),
+        formatNumber(web.dvnContracts),
         weakestCell,
         `${formatNumber(web.tiers.lzVerifiers)} of ${formatNumber(web.routes)}`,
         formatNumber(web.packets30d),
@@ -1289,18 +1304,58 @@ async function loadStats() {
   return data;
 }
 
-// Tap-to-toggle tooltips on touch devices.
+const TOOLTIP_MARGIN = 12;
+const TOOLTIP_GAP = 10; // matches the 10px in .stat-tooltip { bottom: calc(100% + 10px) }
+
+/**
+ * Keeps a card's tooltip inside the viewport: shift sideways, flip below if no room above.
+ * Works from the card's box and the tooltip's size rather than the tooltip's own rect,
+ * whose transform may be mid-transition.
+ */
+function placeTooltip(card) {
+  const tooltip = card.querySelector(".stat-tooltip");
+  if (!tooltip) return;
+
+  const cardRect = card.getBoundingClientRect();
+  const width = tooltip.offsetWidth;
+  const left = cardRect.left + cardRect.width / 2 - width / 2;
+  const maxRight = document.documentElement.clientWidth - TOOLTIP_MARGIN;
+  const shift =
+    left < TOOLTIP_MARGIN
+      ? TOOLTIP_MARGIN - left
+      : left + width > maxRight
+        ? maxRight - (left + width)
+        : 0;
+  tooltip.style.setProperty("--tooltip-shift", `${shift}px`);
+
+  const top = cardRect.top - TOOLTIP_GAP - tooltip.offsetHeight;
+  tooltip.classList.toggle("stat-tooltip--below", top < TOOLTIP_MARGIN);
+}
+
+// Hover tooltips on desktop, tap-to-toggle on touch devices.
 function initTooltips() {
   const statCards = document.querySelectorAll(".stat-card");
   const isMobile = () =>
     window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
 
+  // Place every tooltip up front too: hidden tooltips still count toward page overflow,
+  // so an unplaced one on an edge card would make the page scroll sideways.
+  const placeAll = () => statCards.forEach(placeTooltip);
+  placeAll();
+  let frame = 0;
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(placeAll);
+  });
+
   statCards.forEach((card) => {
+    card.addEventListener("mouseenter", () => placeTooltip(card));
     card.addEventListener("click", (event) => {
       if (!isMobile()) return;
       event.stopPropagation();
       const wasActive = card.classList.contains("tooltip-active");
       statCards.forEach((other) => other.classList.remove("tooltip-active"));
+      if (!wasActive) placeTooltip(card);
       card.classList.toggle("tooltip-active", !wasActive);
     });
   });

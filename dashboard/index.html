@@ -107,9 +107,9 @@
           <div class="stat-card">
             <h2>Distinct DVN Sets</h2>
             <div class="stat-value" id="stat-dvn-combos">—</div>
-            <div class="stat-label">Merged by DVN name across chains</div>
+            <div class="stat-label" id="stat-dvn-combos-label">Per chain, by contract</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text" id="stat-dvn-combos-note">Unique validation setups (required DVNs plus any optional quorum) after merging each chain's DVN contracts by operator name</p>
+              <p class="stat-tooltip-text" id="stat-dvn-combos-note">Unique validation setups (required DVNs plus any optional quorum). Every chain runs its own DVN contracts, deployed, keyed and administered separately, so the same operators on two chains count as two sets</p>
             </div>
           </div>
 
@@ -229,7 +229,7 @@
         <!-- Top DVN Combinations -->
         <section id="top-dvn-combinations" class="chart-section">
           <h2 class="chart-title">Top DVN Sets</h2>
-          <p id="dvn-combo-subtitle" class="chart-subtitle">Most common DVN sets by packet count (top 20), merged by DVN name across chains</p>
+          <p id="dvn-combo-subtitle" class="chart-subtitle">Most common DVN sets by packet count (top 20), grouped by operator name</p>
           <div id="dvn-combo-chart" class="combo-chart"></div>
         </section>
 
@@ -299,7 +299,7 @@
           <div id="scale-scatter" class="scatter-chart"></div>
           <div id="scale-buckets" class="table-scroll"></div>
           <h3 class="chart-subheading">Busiest webs</h3>
-          <p class="chart-subtitle">By packets received in the last 30 days. Open a web in the explorer to see every route.</p>
+          <p class="chart-subtitle">By packets received in the last 30 days. Operators counts DVN organisations; DVN contracts counts the separately deployed verifier contracts they run on each chain of the web. Routes are open inbound routes. Open a web in the explorer to see every route.</p>
           <div id="scale-top" class="table-scroll"></div>
         </section>
       </div>

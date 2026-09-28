@@ -192,6 +192,13 @@
   box-shadow: 11px 11px 0 var(--ink);
 }
 
+/* The hover transform makes the card its own stacking context, so lift the whole
+   card (tooltip included) above the header's positioned nav links. */
+.stat-card:hover,
+.stat-card.tooltip-active {
+  z-index: 10;
+}
+
 .stat-card--primary {
   background: rgba(242, 242, 0, 0.15);
 }
@@ -254,17 +261,18 @@
 }
 
 /* Stat Card Tooltips */
+/* --tooltip-shift is set by placeTooltip() in stats-page.js to keep the box on screen. */
 .stat-tooltip {
   position: absolute;
   bottom: calc(100% + 10px);
   left: 50%;
-  transform: translateX(-50%);
+  transform: translateX(calc(-50% + var(--tooltip-shift, 0px)));
   background: var(--paper);
   border: 3px solid var(--ink);
   box-shadow: 6px 6px 0 var(--ink);
   padding: 0.75rem 1rem;
-  min-width: 200px;
-  max-width: 300px;
+  width: 26rem;
+  max-width: calc(100vw - 2rem);
   z-index: 100;
   opacity: 0;
   visibility: hidden;
@@ -280,7 +288,7 @@
   content: "";
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: calc(50% - var(--tooltip-shift, 0px));
   transform: translateX(-50%);
   border: 8px solid transparent;
   border-top-color: var(--ink);
@@ -290,7 +298,7 @@
   content: "";
   position: absolute;
   top: 100%;
-  left: 50%;
+  left: calc(50% - var(--tooltip-shift, 0px));
   transform: translateX(-50%) translateY(-3px);
   border: 6px solid transparent;
   border-top-color: var(--paper);
@@ -300,7 +308,34 @@
 .stat-card.tooltip-active .stat-tooltip {
   opacity: 1;
   visibility: visible;
-  transform: translateX(-50%) translateY(-5px);
+  transform: translateX(calc(-50% + var(--tooltip-shift, 0px))) translateY(-5px);
+}
+
+/* Not enough room above the card: open below it, arrow pointing up. */
+.stat-tooltip--below {
+  bottom: auto;
+  top: calc(100% + 10px);
+}
+
+.stat-card:hover .stat-tooltip--below,
+.stat-card.tooltip-active .stat-tooltip--below {
+  transform: translateX(calc(-50% + var(--tooltip-shift, 0px))) translateY(5px);
+}
+
+.stat-tooltip--below::before,
+.stat-tooltip--below::after {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+}
+
+.stat-tooltip--below::before {
+  border-bottom-color: var(--ink);
+}
+
+.stat-tooltip--below::after {
+  transform: translateX(-50%) translateY(3px);
+  border-bottom-color: var(--paper);
 }
 
 .stat-tooltip-text {
@@ -583,6 +618,14 @@ button.chart-toggle-button.active:not(:disabled):hover {
   transform: scale(1.05);
 }
 
+.combo-note {
+  flex-basis: 100%;
+  font-size: 0.7rem;
+  opacity: 0.6;
+  letter-spacing: 0.04em;
+  cursor: help;
+}
+
 .dvn-badge-optional {
   background: var(--magenta) !important;
   color: var(--paper);
@@ -863,8 +906,7 @@ button.chart-toggle-button.active:not(:disabled):hover {
   }
 
   .stat-tooltip {
-    min-width: 180px;
-    max-width: 250px;
+    max-width: calc(100vw - 2.5rem);
     padding: 0.6rem 0.8rem;
     box-shadow: 4px 4px 0 var(--ink);
   }

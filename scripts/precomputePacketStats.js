@@ -223,17 +223,33 @@ function quorumShape(rc, ot) {
 const thresholdBucket = (threshold) =>
   threshold === "unknown" ? "unknown" : threshold >= 6 ? "6+" : String(threshold);
 
-/** Merges a per-chain address quorum into a by-name DVN set. */
+/**
+ * A per-chain DVN quorum, keyed two ways:
+ *   key          by operator name, so the same operators on every chain merge (whom you trust)
+ *   contractKey  by chain + contract address. Each chain runs its own DVN contracts, with their
+ *                own signers, admins and upgrades, so the same names on another chain are a
+ *                separate configuration that can fail on its own.
+ */
 function namedDvnSet(quorum, labels) {
   const { threshold, type } = quorumShape(quorum.rc, quorum.ot);
   if (!type) return null;
-  const names = (addresses) =>
-    (addresses ?? []).map((address) => labels.dvnLabel(address, quorum.dst)).sort();
-  const required = type === "optional_only" ? [] : names(quorum.req);
-  const optional = type === "required" ? [] : names(quorum.opt);
+  const addresses = (list) => (list ?? []).map((address) => address.toLowerCase()).sort();
+  const requiredAddresses = type === "optional_only" ? [] : addresses(quorum.req);
+  const optionalAddresses = type === "required" ? [] : addresses(quorum.opt);
+  const names = (list) => list.map((address) => labels.dvnLabel(address, quorum.dst)).sort();
+  const required = names(requiredAddresses);
+  const optional = names(optionalAddresses);
   const optionalThreshold = type === "required" ? 0 : quorum.ot;
   return {
     key: JSON.stringify([type, required, optional, optionalThreshold]),
+    contractKey: JSON.stringify([
+      quorum.dst,
+      type,
+      requiredAddresses,
+      optionalAddresses,
+      optionalThreshold,
+    ]),
+    contracts: [...requiredAddresses, ...optionalAddresses].map((a) => `${quorum.dst}:${a}`),
     type,
     threshold,
     required,
@@ -310,6 +326,7 @@ const sortedEntries = (map) => Array.from(map.entries()).sort((a, b) => b[1] - a
 
 function rankDvnSets(quorumCounts, cube, labels) {
   const sets = new Map();
+  const contractSets = new Set();
   const unnamed = new Set();
   for (const [quorumKey, packets] of quorumCounts) {
     const [dst] = quorumKey.split("|");
@@ -319,16 +336,33 @@ function rankDvnSets(quorumCounts, cube, labels) {
     for (const label of [...set.required, ...set.optional]) {
       if (isUnnamed(label)) unnamed.add(label);
     }
-    const existing = sets.get(set.key);
-    if (existing) existing.packets += packets;
-    else sets.set(set.key, { ...set, packets });
+    contractSets.add(set.contractKey);
+    let entry = sets.get(set.key);
+    if (!entry) {
+      entry = { ...set, packets: 0, contractKeys: new Set(), chains: new Set() };
+      sets.set(set.key, entry);
+    }
+    entry.packets += packets;
+    entry.contractKeys.add(set.contractKey);
+    entry.chains.add(dst);
   }
   const ranked = Array.from(sets.values()).sort((a, b) => b.packets - a.packets);
   return {
     distinct: ranked.length,
     distinctRequiredOnly: ranked.filter((set) => set.type === "required").length,
+    distinctContractSets: contractSets.size,
     unnamedAddresses: unnamed.size,
-    top: ranked.slice(0, TOP_DVN_SETS).map(({ key, threshold, ...set }) => set),
+    top: ranked
+      .slice(0, TOP_DVN_SETS)
+      .map(({ type, required, optional, optionalThreshold, packets, contractKeys, chains }) => ({
+        type,
+        required,
+        optional,
+        optionalThreshold,
+        packets,
+        contractSets: contractKeys.size,
+        chains: chains.size,
+      })),
   };
 }
 
@@ -508,6 +542,7 @@ async function buildMeshes(sql, labels, lastDay, cutoff) {
         tiers: Object.fromEntries(TIER_BY_CODE.map((tier) => [tier, 0])),
         dvnSets: new Set(),
         operators: new Set(),
+        dvnContracts: new Set(),
         weakest: null,
         weakestRoutes: 0,
       };
@@ -527,6 +562,7 @@ async function buildMeshes(sql, labels, lastDay, cutoff) {
     mesh.trackedRoutes += 1;
     mesh.dvnSets.add(set.key);
     for (const label of [...set.required, ...set.optional]) mesh.operators.add(label);
+    for (const contract of set.contracts) mesh.dvnContracts.add(contract);
     if (mesh.weakest === null || set.threshold < mesh.weakest) {
       mesh.weakest = set.threshold;
       mesh.weakestRoutes = 1;
@@ -553,6 +589,7 @@ async function buildMeshes(sql, labels, lastDay, cutoff) {
       trackedRoutes: mesh.trackedRoutes,
       dvnSets: mesh.dvnSets.size,
       operators: mesh.operators.size,
+      dvnContracts: mesh.dvnContracts.size,
       weakest: mesh.weakest,
       weakestRoutes: mesh.weakestRoutes,
       tiers: mesh.tiers,
@@ -645,7 +682,9 @@ async function main() {
     console.log(
       `  ${all.total.toLocaleString()} packets, ${isoDay(firstDay)} → ${isoDay(cube.lastDay)}`,
     );
-    console.log(`  ${all.dvnSets.distinct} named DVN sets, ${meshes.activeMeshes} active meshes`);
+    console.log(
+      `  ${all.dvnSets.distinctContractSets} DVN contract sets (${all.dvnSets.distinct} by name), ${meshes.activeMeshes} active meshes`,
+    );
   } finally {
     await sql.end();
   }
