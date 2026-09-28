@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LayerZero Packet Statistics</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./stats-page.css" />
+  </head>
+  <body class="stats-page">
+    <header class="stats-header">
+      <div>
+        <h1>LayerZero Packet Statistics</h1>
+        <p id="stats-subtitle">Loading data...</p>
+      </div>
+      <nav class="header-nav">
+        <a href="./explorer.html" class="nav-link nav-link--primary">Explorer</a>
+        <a
+          href="https://github.com/sekuba/dvnstats"
+          class="nav-link nav-link--repo"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          GitHub
+        </a>
+        <a
+          href="https://envio.dev/"
+          class="nav-link nav-link--envio"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Data powered by Envio"
+        >
+          <span>data powered by</span>
+        </a>
+      </nav>
+    </header>
+
+    <main class="stats-main">
+      <div id="loading-state" class="loading-banner">
+        <p>Loading precomputed statistics...</p>
+      </div>
+
+      <div id="error-state" class="error-banner hidden">
+        <strong>Error:</strong>
+        <span id="error-message"></span>
+      </div>
+
+      <div id="stats-content" class="hidden">
+        <!-- Overview Cards -->
+        <section id="overview" class="stats-grid">
+          <div class="stat-card stat-card--primary">
+            <h2>Total Packets</h2>
+            <div class="stat-value" id="stat-total">—</div>
+            <div class="stat-label">Analyzed packets</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Each packet is usually a single crosschain transaction, rarely a bundle of them</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--highlight">
+            <h2>LayerZero Picks Verifiers</h2>
+            <div class="stat-value" id="stat-lz-verifiers">—</div>
+            <div class="stat-label">Default library or DVN set</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets on routes where LayerZero's admin can change <b>which</b> DVNs are enough to deliver a packet: the route inherits the default library, the whole default ULN config, or the default required DVNs</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--highlight">
+            <h2>Any LayerZero Default</h2>
+            <div class="stat-value" id="stat-lz-any">—</div>
+            <div class="stat-label">Inherits at least one setting</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets on routes that inherit at least one validation setting from LayerZero, including confirmations or optional DVNs. Compare with All-Default, which requires inheriting everything</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>All-Default</h2>
+            <div class="stat-value" id="stat-all-default">—</div>
+            <div class="stat-label">No custom security</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets validated by inheriting the standard LayerZero validation library <b>and</b> settings.</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Default Library</h2>
+            <div class="stat-value" id="stat-default-lib">—</div>
+            <div class="stat-label">No custom library</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets falling back to the default smart contract (library), not packets that explicitly set the same library</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Tracked Library</h2>
+            <div class="stat-value" id="stat-tracked">—</div>
+            <div class="stat-label">Using ReceiveUln302</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets validated by a library of which we decode the validation settings (config)</p>
+            </div>
+          </div>
+
+
+          <div class="stat-card">
+            <h2>Distinct DVN Sets</h2>
+            <div class="stat-value" id="stat-dvn-combos">—</div>
+            <div class="stat-label" id="stat-dvn-combos-label">Per chain, by contract</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text" id="stat-dvn-combos-note">Unique validation setups (required DVNs plus any optional quorum). Every chain runs its own DVN contracts, deployed, keyed and administered separately, so the same operators on two chains count as two sets</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Chains indexed</h2>
+            <div class="stat-value" id="stat-indexed-chains">—</div>
+            <div class="stat-label">EVM chains</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Configured destination chains indexed by the current HyperIndex v3 setup</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <h2>Chains seen</h2>
+            <div class="stat-value" id="stat-source-eids">—</div>
+            <div class="stat-label">Unique endpoint IDs</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Unique source endpoint IDs of incoming packets, including lzRead response channels</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Jargon Explanation Cards -->
+        <section id="glossary" class="stats-grid">
+          <div class="stat-card stat-card--explain">
+            <h2>Packet</h2>
+            <div class="stat-explanation">A crosschain message in the LayerZero protocol. In most cases, it contains a single crosschain transaction between two OApps. Transfering a crosschain token generates a packet.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Packets contain a message payload, source EID and destination EID, source OApp address and destination OApp address</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>DVN</h2>
+            <div class="stat-explanation">Decentralized Verifier Network - A single smart contract that validates packets. Each DVN defines its validation logic, but the vast majority behaves like multisigs. Can be configured by the OApp owner or LayerZero (fallback).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">DVN is largely a misnomer, implying multiple validators where in reality there is always a single smart contract and often validation of a single entity's signature</p>
+            </div>
+          </div>
+
+
+          <div class="stat-card stat-card--explain">
+            <h2>OApp</h2>
+            <div class="stat-explanation">Omnichain Application - A smart contract application capable of sending and receiving crosschain messages. Usually not owned by LayerZero, but always using the LayerZero protocol for communication.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Most OApps implement token functions. There is no restriction on what an OApp can be, it just needs to include the standard LayerZero messaging interface</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>OFT</h2>
+            <div class="stat-explanation">Omnichain Fungible Token - An OApp standard that is also an ERC-20 token. Networking these tokens across chains via LayerZero allows for crosschain asset transfers.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">OFTs are the most widely used type of OApp. OFT can refer to a single token on a single chain or the abstracted set of all tokens of the same type across chains</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>EID</h2>
+            <div class="stat-explanation">Endpoint ID - A unique identifier for each blockchain in the LayerZero network. Different from chain IDs but serving the same purpose.</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">EIDs are needed because some blockchains use the same chain IDs (e.g. Aptos and Ethereum)</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>Validation Library</h2>
+            <div class="stat-explanation">The main smart contract storing the settings for validating packets. This can be a custom contract but is almost always the default LayerZero ReceiveUln302 (Ultralight Node).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">The library can be thought of like a panel of switches, allowing for fine-grained control over validation settings</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--explain">
+            <h2>ULN config</h2>
+            <div class="stat-explanation">UltraLightNode config - Security settings (validation config) stored in the validation library. These settings determine which DVNs and how many source chain confirmations are required for packet validation. Settings are managed by the OApp owner or LayerZero (fallback).</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">ULN, ReceiveUln302 and library are just other words for this specialized smart contract</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- PacketDelivered Event Flow Diagram -->
+        <img id="packet-flow" src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" class="svg-diagram" />
+
+        <!-- Who can change verification -->
+        <section id="verification-control" class="chart-section">
+          <div class="chart-title-row">
+            <h2 class="chart-title">Who Controls Verification?</h2>
+            <div class="chart-toggle" data-chart-toggle="verification-control">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="verification-control-subtitle" class="chart-subtitle">Fraction of packets by who can change the settings that validated them</p>
+          <div id="verification-control-chart" class="tier-list" data-chart-panel="verification-control" data-view="snapshot"></div>
+          <div id="verification-control-time-chart" class="stacked-area-chart hidden" data-chart-panel="verification-control" data-view="time"></div>
+          <p class="chart-footnote">
+            "LayerZero" here means the owner of the EndpointV2 and ReceiveUln302 contracts on the destination chain, who sets the default library and default ULN config. Owner-controlled is not the same as safe: the OApp owner can change its own settings just as unilaterally.
+          </p>
+        </section>
+
+        <!-- DVN Set Threshold Distribution -->
+        <section id="dvn-set-threshold" class="chart-section">
+          <div class="chart-title-row">
+            <h2 class="chart-title">DVN Set Threshold</h2>
+            <div class="chart-toggle" data-chart-toggle="dvn-threshold">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="dvn-set-threshold-subtitle" class="chart-subtitle">Fraction of packets by the number of DVNs that <b>must</b> validate incoming packets. Optional-only quorum 2 of 3 counts as 2; required plus optional quorum x + 2 counts as x + 2.</p>
+          <div id="dvn-set-threshold-chart" class="pie-chart" data-chart-panel="dvn-threshold" data-view="snapshot"></div>
+          <div id="dvn-set-threshold-time-chart" class="stacked-area-chart hidden" data-chart-panel="dvn-threshold" data-view="time"></div>
+        </section>
+
+        <!-- Top DVN Combinations -->
+        <section id="top-dvn-combinations" class="chart-section">
+          <h2 class="chart-title">Top DVN Sets</h2>
+          <p id="dvn-combo-subtitle" class="chart-subtitle">Most common DVN sets by packet count (top 20), grouped by operator name</p>
+          <div id="dvn-combo-chart" class="combo-chart"></div>
+        </section>
+
+        <!-- Time Series: Hourly Packets -->
+        <section id="packet-volume" class="chart-section">
+          <h2 class="chart-title">Packet Volume Over Time</h2>
+          <p id="time-series-packets-subtitle" class="chart-subtitle">Hourly packet count across entire time range</p>
+          <div id="time-series-packets-chart" class="time-series-chart"></div>
+        </section>
+
+        <!-- Time Series: Config Changes -->
+        <section id="configuration-changes" class="chart-section">
+          <h2 class="chart-title">Configuration Changes Over Time</h2>
+          <p id="time-series-config-subtitle" class="chart-subtitle">Receive library and ULN config changes, by LayerZero (defaults) and by OApp owners</p>
+          <div id="time-series-config-chart" class="time-series-chart"></div>
+        </section>
+
+        <!-- Chain Breakdown -->
+        <section id="destination-chain" class="chart-section">
+          <div class="chart-title-row">
+            <h2 class="chart-title">Packets by Destination Chain</h2>
+            <div class="chart-toggle" data-chart-toggle="destination-chain">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="chain-chart-subtitle" class="chart-subtitle">Destination chain packet distribution</p>
+          <div id="chain-chart" class="bar-chart" data-chart-panel="destination-chain" data-view="snapshot"></div>
+          <div id="chain-time-chart" class="stacked-area-chart hidden" data-chart-panel="destination-chain" data-view="time"></div>
+        </section>
+
+        <!-- Source Chain Breakdown -->
+        <section id="source-chain" class="chart-section">
+          <div class="chart-title-row">
+            <h2 class="chart-title">Packets by Source Chain</h2>
+            <div class="chart-toggle" data-chart-toggle="source-chain">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="src-chain-chart-subtitle" class="chart-subtitle">Source chain packet distribution</p>
+          <div id="src-chain-chart" class="bar-chart" data-chart-panel="source-chain" data-view="snapshot"></div>
+          <div id="src-chain-time-chart" class="stacked-area-chart hidden" data-chart-panel="source-chain" data-view="time"></div>
+        </section>
+
+        <!-- Analysis Section -->
+        <section id="fragility-of-scale" class="chart-section">
+          <h2 class="chart-title">Fragility of Scale</h2>
+          <div class="analysis-text">
+            <p>Since you are still here, i invite you to contemplate our motivation for building distributed systems and my motivation for building this website. Some of these systems aim to disintermediate, remove single points of failure, and enhance resilience through decentralization. LayerZero does the opposite by distributing their points of failure. Each added node or edge makes the network more fragile. The protocol fundamentally <b>cannot scale without compromising its security</b>.</p>
+            <p>LayerZero is <b>by far not the only nor the worst offender among the interop protocols</b>. It is built transparently enough to allow for a monitor like this one that hints at the magnitude of risk. Many competing interop protocols do not provide this onchain transparency. But the existence of more robust, more transparent and more scalable solutions shows that interop can actually be built, and scale, well.</p>
+            <p>Scroll further to get an intuition for LayerZero's Fragility of Scale.</p>
+          </div>
+        </section>
+
+        <img id="fragility-diagram" src="./configToWeb.svg" alt="Scale of fragility diagram" class="svg-diagram" />
+
+        <!-- Fragility of scale, from data -->
+        <section id="scale-measured" class="chart-section">
+          <h2 class="chart-title">Fragility of Scale, Measured</h2>
+          <p class="chart-subtitle">
+            An OApp on N chains is a web of up to N×(N−1) inbound routes, each with its own library and DVN settings. A forged packet only has to pass the weakest one. Webs are OApps linked by configured or observed peers, counting only webs that received packets in the last 30 days (independent of the time range above).
+          </p>
+          <div id="scale-stats" class="stats-grid"></div>
+          <h3 class="chart-subheading">Routes per web</h3>
+          <p class="chart-subtitle">Each dot is one web. Dashed line: N×(N−1), every chain talking to every other. Colour: DVNs needed on the weakest open route.</p>
+          <div id="scale-scatter" class="scatter-chart"></div>
+          <div id="scale-buckets" class="table-scroll"></div>
+          <h3 class="chart-subheading">Busiest webs</h3>
+          <p class="chart-subtitle">By packets received in the last 30 days. Operators counts DVN organisations; DVN contracts counts the separately deployed verifier contracts they run on each chain of the web. Routes are open inbound routes. Open a web in the explorer to see every route.</p>
+          <div id="scale-top" class="table-scroll"></div>
+        </section>
+      </div>
+    </main>
+
+    <footer class="stats-footer">
+      <p>
+        Data computed from PacketDelivered records •
+        <span id="computed-at">—</span> •
+        <span id="time-range">—</span>
+      </p>
+      <p>
+        Greetings go out to my boyfren, my mum and Claude Sonnet 4.5 •
+        <a href="https://github.com/sekuba/dvnstats" target="_blank" rel="noopener noreferrer">
+          Github
+        </a>
+      </p>
+    </footer>
+
+    <script type="module" src="./stats-page.js"></script>
+  </body>
+</html>
