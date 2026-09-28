@@ -1,1249 +1,657 @@
 #!/usr/bin/env node
 
 /**
- * Precompute packet statistics from all PacketDelivered records
- * Uses cursor-based pagination and incremental processing for optimal performance
+ * Builds dashboard/data/stats.json straight from the indexer's Postgres.
  *
- * Output files: dashboard/data/packet-stats-{lookback}.json
- * Metadata files: dashboard/data/packet-stats-{lookback}.metadata.json
+ * One scan of PacketDelivered is folded into two daily cubes
+ *   (day, destination eid, trust class, DVN quorum) -> packets
+ *   (day, source eid)                                -> packets
+ * cached in .cache/stats-cube.json. Later runs rescan only the last few days
+ * (reorgs and late packets from lagging chains land there), so a refresh takes
+ * about a second; --full rebuilds the cube (~1 min at 20M packets). Every time
+ * window, daily series and DVN-set ranking is then a sum over the cube, so the
+ * windows can never disagree with each other.
  *
  * Usage:
- *   npm run stats:precompute                         # Full computation, all time
- *   npm run stats:precompute -- --lookback=30d       # Full computation, last 30 days
- *   npm run stats:precompute -- --incremental        # Incremental update (only new records)
- *   npm run stats:precompute -- --lookback=30d --incremental  # Incremental for specific range
- *   npm run stats:precompute -- --batch              # Generate all supported time ranges
- *   npm run stats:precompute -- --batch --incremental  # Batch mode with incremental updates
+ *   pnpm stats              # incremental
+ *   pnpm stats -- --full    # rebuild the cube from scratch
  *
- * Supported lookback formats:
- *   30d, 90d, 180d  - Days
- *   1m, 3m, 6m      - Months (30 days each)
- *   1y, 2y          - Years (365 days each)
- *   24h, 48h        - Hours
- *
- * Performance improvements:
- *   - Cursor-based pagination (no offset scan penalty)
- *   - Incremental updates (only process new records since last run)
- *   - Expected speedup: 5-10x for full runs, 100-360x for daily incremental updates
+ * Connection: PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE, defaulting to the
+ * docker-compose stack.
  */
 
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { readLocalChainConfigs } from "./readLocalChainConfigs.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import postgres from "postgres";
 
-const GRAPHQL_ENDPOINT = process.env.GRAPHQL_ENDPOINT || "https://not.slashveto.me/v1/graphql";
-const BATCH_SIZE = 100000;
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUTPUT_DIR = path.join(__dirname, "../dashboard/data");
-const INDEXED_CHAIN_CONFIGS = readLocalChainConfigs();
-const STATS_SCHEMA_VERSION = 3;
-const DAY_SECONDS = 86400;
-const WEEK_SECONDS = DAY_SECONDS * 7;
-const DVN_THRESHOLD_UNKNOWN = "unknown";
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const OUTPUT_PATH = path.join(repoRoot, "dashboard/data/stats.json");
+const CACHE_PATH = path.join(repoRoot, ".cache/stats-cube.json");
+const METADATA_PATH = path.join(repoRoot, "dashboard/layerzero.json");
+const ALIASES_PATH = path.join(repoRoot, "dashboard/oapp-aliases.json");
+const REGISTRY_PATH = path.join(repoRoot, "dashboard/chainRegistry.js");
+
+const SCHEMA_VERSION = 4;
+const CUBE_VERSION = 1;
+const DAY = 86400;
+const HOUR = 3600;
+const REFRESH_DAYS = 7;
+const HOURLY_DAYS = 90;
+const MESH_WINDOW_DAYS = 30;
+const TOP_DVN_SETS = 20;
+const TOP_MESHES = 25;
+const SERIES_CHAIN_LIMIT = 8;
+const WINDOWS = [
+  ["7d", 7],
+  ["30d", 30],
+  ["90d", 90],
+  ["1y", 365],
+  ["all", null],
+];
+
+const ZERO_ADDRESS_PATTERN = /^0x0*$/i;
+// lzRead responses arrive on channel ids at the top of the uint32 range, not on a chain.
+const READ_CHANNEL_THRESHOLD = 4294965694;
+const DEAD_DVN_ADDRESS = "0x000000000000000000000000000000000000dead";
+const OPTIONAL_FIELDS = ["optionalDVNs", "optionalDVNCount", "optionalDVNThreshold"];
+const REQUIRED_FIELDS = ["requiredDVNs", "requiredDVNCount"];
 
 /**
- * Generate output filename based on lookback parameter
- * Examples: packet-stats-30d.json, packet-stats-1y.json, packet-stats-all.json
+ * Trust tiers: who can change how a packet on this route is verified.
+ *   lzVerifiers  LayerZero's admin can change *which* DVNs suffice: the route
+ *                inherits the default receive library, the whole default ULN
+ *                config, or the default required DVN set (spec.md §5).
+ *   lzParams     The OApp owns its required DVNs, but still inherits
+ *                confirmations or the optional-DVN settings, so LayerZero can
+ *                weaken finality or add verifiers (halt the route) — not forge.
+ *   owner        Every field is set by the OApp owner.
+ *   unknown      Custom receive library the indexer cannot decode.
+ * TIER_SQL below must classify exactly like trustTier().
  */
-function getOutputFilename(lookbackParam) {
-  const suffix = lookbackParam || "all";
-  return path.join(OUTPUT_DIR, `packet-stats-${suffix}.json`);
+const TIER_BY_CODE = ["owner", "lzParams", "lzVerifiers", "unknown"];
+
+function trustTier(route) {
+  const fallback = new Set(route.fallbackFields ?? []);
+  if (route.usesDefaultLibrary) return "lzVerifiers";
+  if (!route.isConfigTracked) return "unknown";
+  if (route.usesDefaultConfig || REQUIRED_FIELDS.some((field) => fallback.has(field))) {
+    return "lzVerifiers";
+  }
+  if (!(route.rc > 0) && OPTIONAL_FIELDS.some((field) => fallback.has(field))) {
+    return "lzVerifiers";
+  }
+  return fallback.size > 0 ? "lzParams" : "owner";
 }
 
-/**
- * Generate metadata filename based on lookback parameter
- */
-function getMetadataFilename(lookbackParam) {
-  const suffix = lookbackParam || "all";
-  return path.join(OUTPUT_DIR, `packet-stats-${suffix}.metadata.json`);
-}
+const sqlArray = (values) => `ARRAY[${values.map((value) => `'${value}'`).join(", ")}]`;
 
-/**
- * Load metadata from previous run
- */
-function loadMetadata(lookbackParam) {
-  const metadataPath = getMetadataFilename(lookbackParam);
-  if (!fs.existsSync(metadataPath)) {
-    return null;
+const TIER_SQL = `CASE
+    WHEN "usesDefaultLibrary" THEN 2
+    WHEN NOT coalesce("isConfigTracked", false) THEN 3
+    WHEN "usesDefaultConfig"
+      OR "fallbackFields" && ${sqlArray(REQUIRED_FIELDS)}
+      OR (coalesce("effectiveRequiredDVNCount", 0) = 0
+          AND "fallbackFields" && ${sqlArray(OPTIONAL_FIELDS)}) THEN 2
+    WHEN cardinality("fallbackFields") > 0 THEN 1
+    ELSE 0
+  END`;
+
+// cls bits: 1 default library, 2 default config, 4 tracked library, (tier << 3).
+const CLS_SQL = `((CASE WHEN "usesDefaultLibrary" THEN 1 ELSE 0 END)
+  | (CASE WHEN "usesDefaultConfig" THEN 2 ELSE 0 END)
+  | (CASE WHEN "isConfigTracked" THEN 4 ELSE 0 END)
+  | (8 * ${TIER_SQL}))`;
+
+// A quorum is the effective DVN setup of a packet; q is a short hash of it.
+const CUBE_SQL = `
+WITH p AS (
+  SELECT div("blockTimestamp", ${DAY})::int AS d,
+         "localEid"::int8 AS dst,
+         "srcEid"::int8 AS src,
+         ${CLS_SQL} AS cls,
+         left(md5(concat_ws('|',
+           array_to_string("effectiveRequiredDVNs", ','),
+           array_to_string("effectiveOptionalDVNs", ','),
+           coalesce("effectiveRequiredDVNCount"::text, '-'),
+           coalesce("effectiveOptionalDVNThreshold"::text, '-'))), 16) AS q,
+         "effectiveRequiredDVNs" AS req,
+         "effectiveOptionalDVNs" AS opt,
+         "effectiveRequiredDVNCount" AS rc,
+         "effectiveOptionalDVNThreshold" AS ot
+  FROM "PacketDelivered"
+  WHERE "blockTimestamp" >= $1::numeric AND "blockTimestamp" <= $2::numeric
+)
+SELECT grouping(src) AS no_src, grouping(cls) AS no_cls,
+       d, dst, src, cls, q, req, opt, rc, ot, count(*)::int AS n
+FROM p
+GROUP BY GROUPING SETS ((d, dst, cls, q), (d, src), (dst, q, req, opt, rc, ot))`;
+
+const CONFIG_CHANGE_TABLES = [
+  ["lz", "DefaultReceiveLibraryVersion"],
+  ["lz", "DefaultUlnConfigVersion"],
+  ["owner", "OAppReceiveLibraryVersion"],
+  ["owner", "OAppUlnConfigVersion"],
+];
+const CONFIG_CHANGES_SQL = CONFIG_CHANGE_TABLES.map(
+  ([
+    who,
+    table,
+  ]) => `SELECT '${who}' AS who, div("blockTimestamp", ${HOUR})::int AS h, count(*)::int AS n
+  FROM "${table}" WHERE "blockTimestamp" <= $1::numeric GROUP BY 2`,
+).join("\nUNION ALL\n");
+
+const HOURLY_PACKETS_SQL = `
+SELECT div("blockTimestamp", ${HOUR})::int AS h, count(*)::int AS n
+FROM "PacketDelivered"
+WHERE "blockTimestamp" >= $1::numeric AND "blockTimestamp" <= $2::numeric GROUP BY 1`;
+
+const ROUTES_SQL = `
+SELECT "oappId" AS "oappId", eid::int8 AS eid, peer, "peerOappId", "libraryStatus",
+       coalesce("isConfigTracked", false) AS "isConfigTracked",
+       "usesDefaultLibrary", "usesDefaultConfig", "fallbackFields",
+       "effectiveRequiredDVNCount" AS rc, "effectiveOptionalDVNThreshold" AS ot,
+       "effectiveRequiredDVNs" AS req, "effectiveOptionalDVNs" AS opt
+FROM "OAppSecurityConfig"`;
+
+const OAPP_WINDOW_PACKETS_SQL = `
+SELECT "oappId" AS "oappId", count(*)::int AS n
+FROM "PacketDelivered"
+WHERE "blockTimestamp" >= $1::numeric AND "blockTimestamp" <= $2::numeric GROUP BY 1`;
+
+const OAPP_TOTALS_SQL = `
+SELECT id, "totalPacketsReceived"::float8 AS n FROM "OAppStats" WHERE "totalPacketsReceived" > 0`;
+
+const readJson = (filePath) => JSON.parse(fs.readFileSync(filePath, "utf8"));
+
+// Same resolution rules as ChainDirectory in dashboard/core.js.
+async function loadLabels() {
+  const metadata = readJson(METADATA_PATH);
+  const { INDEXED_CHAINS } = await import(pathToFileURL(REGISTRY_PATH).href);
+  const chains = new Map();
+  const dvnsByChain = new Map();
+  const dvnFallback = new Map();
+
+  for (const [key, chain] of Object.entries(metadata)) {
+    if (!chain || typeof chain !== "object") continue;
+    const base = chain.chainDetails?.shortName || chain.chainDetails?.name || chain.chainKey || key;
+    for (const deployment of chain.deployments ?? []) {
+      if (deployment?.eid === undefined || deployment.eid === null) continue;
+      const eid = Number(deployment.eid);
+      const stage =
+        deployment.stage && deployment.stage !== "mainnet" ? ` (${deployment.stage})` : "";
+      chains.set(eid, `${base}${stage}`);
+      for (const [address, info] of Object.entries(chain.dvns ?? {})) {
+        const normalized = address.toLowerCase();
+        const label = info?.canonicalName || info?.name || info?.id || address;
+        dvnsByChain.set(`${eid}:${normalized}`, label);
+        if (!dvnFallback.has(normalized)) dvnFallback.set(normalized, label);
+      }
+    }
+  }
+  for (const chain of INDEXED_CHAINS) {
+    if (chain.label) chains.set(Number(chain.localEid), chain.label);
   }
 
+  return {
+    indexedChainCount: INDEXED_CHAINS.length,
+    chainLabel: (eid) =>
+      chains.get(Number(eid)) ??
+      (Number(eid) >= READ_CHANNEL_THRESHOLD ? "lzRead channel" : `EID ${eid}`),
+    dvnLabel: (address, eid) => {
+      const normalized = String(address).toLowerCase();
+      return dvnsByChain.get(`${eid}:${normalized}`) ?? dvnFallback.get(normalized) ?? normalized;
+    },
+  };
+}
+
+const isUnnamed = (label) => label.startsWith("0x");
+const isDeadDvn = (address, label) =>
+  String(address).toLowerCase() === DEAD_DVN_ADDRESS || label.trim().toLowerCase() === "lzdeaddvn";
+
+/** Number of DVN approvals a packet needs, and the shape of the quorum. */
+function quorumShape(rc, ot) {
+  if (rc === null || rc === undefined) return { threshold: "unknown", type: null };
+  const optionalThreshold = ot ?? 0;
+  const hasRequired = rc > 0 && rc < 255;
+  if (hasRequired && optionalThreshold === 0) return { threshold: rc, type: "required" };
+  if (hasRequired) return { threshold: rc + optionalThreshold, type: "required_and_optional" };
+  if (optionalThreshold > 0) return { threshold: optionalThreshold, type: "optional_only" };
+  return { threshold: rc, type: null };
+}
+
+const thresholdBucket = (threshold) =>
+  threshold === "unknown" ? "unknown" : threshold >= 6 ? "6+" : String(threshold);
+
+/** Merges a per-chain address quorum into a by-name DVN set. */
+function namedDvnSet(quorum, labels) {
+  const { threshold, type } = quorumShape(quorum.rc, quorum.ot);
+  if (!type) return null;
+  const names = (addresses) =>
+    (addresses ?? []).map((address) => labels.dvnLabel(address, quorum.dst)).sort();
+  const required = type === "optional_only" ? [] : names(quorum.req);
+  const optional = type === "required" ? [] : names(quorum.opt);
+  const optionalThreshold = type === "required" ? 0 : quorum.ot;
+  return {
+    key: JSON.stringify([type, required, optional, optionalThreshold]),
+    type,
+    threshold,
+    required,
+    optional,
+    optionalThreshold,
+  };
+}
+
+function loadCache() {
+  if (!fs.existsSync(CACHE_PATH)) return null;
   try {
-    const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
-    return metadata;
+    const cache = readJson(CACHE_PATH);
+    return cache.version === CUBE_VERSION ? cache : null;
   } catch (error) {
-    console.warn(`Warning: Could not read metadata file: ${error.message}`);
+    console.warn(`Ignoring unreadable cube cache: ${error.message}`);
     return null;
   }
 }
 
-/**
- * Save metadata for next run
- */
-function saveMetadata(lookbackParam, metadata) {
-  const metadataPath = getMetadataFilename(lookbackParam);
-  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-  console.log(`Metadata saved to: ${metadataPath}`);
-}
-
-function buildCoverageSummary(stats) {
-  const destinationEids = new Set(
-    (stats.chainBreakdown || []).map((chain) => String(chain.localEid)),
-  );
-  const sourceEids = new Set((stats.srcChainBreakdown || []).map((chain) => String(chain.srcEid)));
-  const indexedEids = new Set(INDEXED_CHAIN_CONFIGS.map((chain) => chain.localEid));
-
-  return {
-    indexedChainCount: INDEXED_CHAIN_CONFIGS.length,
-    indexedEidCount: indexedEids.size,
-    destinationEidCount: destinationEids.size,
-    sourceEidCount: sourceEids.size,
-    activeIndexedEidCount: Array.from(indexedEids).filter((eid) => destinationEids.has(eid)).length,
-  };
-}
-
-/**
- * Parse lookback parameter (e.g., "1y", "30d", "6m")
- * Returns timestamp (seconds) or null for all time
- */
-function parseLookback(lookbackStr) {
-  if (!lookbackStr) return null;
-
-  const match = lookbackStr.match(/^(\d+)([hdmy])$/);
-  if (!match) {
-    throw new Error("Invalid lookback format. Use: 30d, 6m, 1y, 24h");
-  }
-
-  const value = Number.parseInt(match[1], 10);
-  const unit = match[2];
-
-  const now = Math.floor(Date.now() / 1000);
-  const multipliers = {
-    h: 3600, // hours
-    d: 86400, // days
-    m: 2592000, // months (30 days)
-    y: 31536000, // years (365 days)
-  };
-
-  return now - value * multipliers[unit];
-}
-
-async function fetchPacketBatch(limit, minTimestamp = null, cursor = null) {
-  // Build WHERE clause with cursor-based pagination
-  const whereConditions = [];
-
-  if (minTimestamp !== null) {
-    whereConditions.push(`{ blockTimestamp: { _gte: ${minTimestamp} } }`);
-  }
-
-  if (cursor !== null) {
-    // Cursor pagination: fetch records before the cursor (blockTimestamp, id)
-    whereConditions.push(`{
-      _or: [
-        { blockTimestamp: { _lt: ${cursor.blockTimestamp} } },
-        {
-          _and: [
-            { blockTimestamp: { _eq: ${cursor.blockTimestamp} } },
-            { id: { _lt: "${cursor.id}" } }
-          ]
-        }
-      ]
-    }`);
-  }
-
-  const whereClause =
-    whereConditions.length > 0 ? `where: { _and: [${whereConditions.join(", ")}] }` : "";
-
-  const query = `
-    query FetchPackets($limit: Int!) {
-      PacketDelivered(
-        order_by: [{ blockTimestamp: desc }, { id: desc }]
-        limit: $limit
-        ${whereClause}
-      ) {
-        id
-        localEid
-        srcEid
-        blockTimestamp
-        usesDefaultLibrary
-        usesDefaultConfig
-        effectiveRequiredDVNs
-        effectiveOptionalDVNs
-        effectiveRequiredDVNCount
-        effectiveOptionalDVNCount
-        effectiveOptionalDVNThreshold
-        isConfigTracked
-      }
-    }
-  `;
-
-  const response = await fetch(GRAPHQL_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, variables: { limit } }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-
-  if (data.errors) {
-    throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
-  }
-
-  return data.data.PacketDelivered || [];
-}
-
-/**
- * Create hourly buckets for time-series data
- */
-function createHourlyBuckets(earliest, latest) {
-  const buckets = new Map();
-  const startHour = Math.floor(earliest / 3600) * 3600;
-  const endHour = Math.floor(latest / 3600) * 3600;
-
-  for (let hour = startHour; hour <= endHour; hour += 3600) {
-    buckets.set(hour, { packets: 0, configChanges: 0 });
-  }
-
-  return buckets;
-}
-
-function createCategorizedBucket() {
-  return {
-    packets: 0,
-    configChanges: 0,
-    dvnThresholds: {},
-    destinationChains: {},
-    sourceChains: {},
-  };
-}
-
-function getDayBucket(timestamp) {
-  return Math.floor(timestamp / DAY_SECONDS) * DAY_SECONDS;
-}
-
-function getWeekBucket(timestamp) {
-  const dayBucket = getDayBucket(timestamp);
-  const date = new Date(dayBucket * 1000);
-  const daysSinceMonday = (date.getUTCDay() + 6) % 7;
-  return dayBucket - daysSinceMonday * DAY_SECONDS;
-}
-
-function createRollupBuckets(earliest, latest, interval) {
-  const buckets = new Map();
-  const getBucket = interval === "weekly" ? getWeekBucket : getDayBucket;
-  const step = interval === "weekly" ? WEEK_SECONDS : DAY_SECONDS;
-  const start = getBucket(earliest);
-  const end = getBucket(latest);
-
-  for (let timestamp = start; timestamp <= end; timestamp += step) {
-    buckets.set(timestamp, createCategorizedBucket());
-  }
-
-  return buckets;
-}
-
-function incrementCountObject(counts, key, amount = 1) {
-  const normalizedKey = String(key);
-  counts[normalizedKey] = (counts[normalizedKey] || 0) + amount;
-}
-
-function compareDvnThresholdValues(a, b) {
-  const aIsUnknown = String(a) === DVN_THRESHOLD_UNKNOWN;
-  const bIsUnknown = String(b) === DVN_THRESHOLD_UNKNOWN;
-  if (aIsUnknown && bIsUnknown) return 0;
-  if (aIsUnknown) return 1;
-  if (bIsUnknown) return -1;
-
-  const aNumber = Number(a);
-  const bNumber = Number(b);
-  if (Number.isFinite(aNumber) && Number.isFinite(bNumber)) {
-    return aNumber - bNumber;
-  }
-
-  return String(a).localeCompare(String(b), undefined, { numeric: true });
-}
-
-function classifyPacketDvnThreshold(packet, requiredDVNs, optionalDVNs) {
-  const rawRequiredCount =
-    packet.effectiveRequiredDVNCount === undefined || packet.effectiveRequiredDVNCount === null
-      ? null
-      : Number(packet.effectiveRequiredDVNCount);
-  const requiredCount = Number.isFinite(rawRequiredCount) ? rawRequiredCount : null;
-  const rawOptionalThreshold =
-    packet.effectiveOptionalDVNThreshold === undefined ||
-    packet.effectiveOptionalDVNThreshold === null
-      ? 0
-      : Number(packet.effectiveOptionalDVNThreshold);
-  const optionalThreshold = Number.isFinite(rawOptionalThreshold) ? rawOptionalThreshold : 0;
-
-  if (requiredCount === null) {
-    return {
-      dvnSetThreshold: DVN_THRESHOLD_UNKNOWN,
-      comboConfig: null,
-    };
-  }
-
-  // Only required DVNs.
-  if (requiredCount > 0 && requiredCount < 255 && optionalThreshold === 0) {
-    return {
-      dvnSetThreshold: requiredCount,
-      comboConfig: {
-        type: "required",
-        dvns: requiredDVNs,
-      },
-    };
-  }
-
-  // Required DVNs plus an optional quorum. Example: 1 required + 2 of 3 optional => 3.
-  if (requiredCount > 0 && requiredCount < 255 && optionalThreshold > 0) {
-    return {
-      dvnSetThreshold: requiredCount + optionalThreshold,
-      comboConfig: {
-        type: "required_and_optional",
-        requiredDvns: requiredDVNs,
-        optionalDvns: optionalDVNs,
-        optionalThreshold,
-      },
-    };
-  }
-
-  // Optional-only quorum. The handler normalizes requiredDVNCount sentinel 255 to effective 0.
-  if ((requiredCount === 0 || requiredCount === 255) && optionalThreshold > 0) {
-    return {
-      dvnSetThreshold: optionalThreshold,
-      comboConfig: {
-        type: "optional_only",
-        optionalDvns: optionalDVNs,
-        optionalThreshold,
-      },
-    };
-  }
-
-  return {
-    dvnSetThreshold: requiredCount,
-    comboConfig: null,
-  };
-}
-
-function ensureRollupBucket(buckets, timestamp) {
-  if (!buckets.has(timestamp)) {
-    buckets.set(timestamp, createCategorizedBucket());
-  }
-  return buckets.get(timestamp);
-}
-
-function incrementPacketRollup(buckets, interval, timestamp, dvnSetThreshold, localEid, srcEid) {
-  const bucketTimestamp =
-    interval === "weekly" ? getWeekBucket(timestamp) : getDayBucket(timestamp);
-  const bucket = ensureRollupBucket(buckets, bucketTimestamp);
-
-  bucket.packets++;
-  incrementCountObject(bucket.dvnThresholds, dvnSetThreshold);
-  incrementCountObject(bucket.destinationChains, localEid);
-  incrementCountObject(bucket.sourceChains, srcEid);
-}
-
-function applyConfigChangesToRollups(hourlyBuckets, dailyBuckets, weeklyBuckets) {
-  for (const [timestamp, data] of hourlyBuckets.entries()) {
-    if (!data.configChanges) continue;
-
-    ensureRollupBucket(dailyBuckets, getDayBucket(timestamp)).configChanges += data.configChanges;
-    ensureRollupBucket(weeklyBuckets, getWeekBucket(timestamp)).configChanges += data.configChanges;
-  }
-}
-
-function sortCountObject(counts) {
-  return Object.fromEntries(
-    Object.entries(counts || {}).sort(([a], [b]) =>
-      a.localeCompare(b, undefined, { numeric: true }),
-    ),
-  );
-}
-
-function serializeRollupBuckets(buckets) {
-  return Array.from(buckets.entries())
-    .map(([timestamp, data]) => ({
-      timestamp,
-      packets: data.packets,
-      configChanges: data.configChanges,
-      dvnThresholds: sortCountObject(data.dvnThresholds),
-      destinationChains: sortCountObject(data.destinationChains),
-      sourceChains: sortCountObject(data.sourceChains),
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
-}
-
-function mergeCountObjects(target, source) {
-  for (const [key, count] of Object.entries(source || {})) {
-    target[key] = (target[key] || 0) + Number(count || 0);
-  }
-}
-
-function mergeCategorizedTimeSeries(existingSeries = [], newSeries = []) {
-  const buckets = new Map();
-
-  for (const series of [existingSeries, newSeries]) {
-    for (const entry of series || []) {
-      const timestamp = Number(entry.timestamp);
-      if (!Number.isFinite(timestamp)) continue;
-
-      const bucket = ensureRollupBucket(buckets, timestamp);
-      bucket.packets += Number(entry.packets || 0);
-      bucket.configChanges += Number(entry.configChanges || 0);
-      mergeCountObjects(bucket.dvnThresholds, entry.dvnThresholds);
-      mergeCountObjects(bucket.destinationChains, entry.destinationChains);
-      mergeCountObjects(bucket.sourceChains, entry.sourceChains);
-    }
-  }
-
-  return serializeRollupBuckets(buckets);
-}
-
-function hasCategorizedRollups(stats) {
-  return Boolean(
-    stats && Array.isArray(stats.timeSeries?.daily) && Array.isArray(stats.timeSeries?.weekly),
-  );
-}
-
-/**
- * Fetch earliest and latest packet timestamps efficiently
- */
-async function fetchTimeRange(minTimestamp = null) {
-  let earliestTimestamp;
-  let latestTimestamp;
-
-  if (minTimestamp !== null) {
-    // If lookback is specified, we already know the time range
-    earliestTimestamp = minTimestamp;
-    latestTimestamp = Math.floor(Date.now() / 1000);
-    console.log("Using lookback time range (no scan needed)");
-  } else {
-    // For all-time: fetch earliest and latest packets with targeted queries
-    console.log("Fetching time range with targeted queries...");
-
-    // Fetch earliest packet
-    const earliestQuery = `
-      query FetchEarliest {
-        PacketDelivered(
-          order_by: { blockTimestamp: asc }
-          limit: 1
-        ) {
-          blockTimestamp
-        }
-      }
-    `;
-
-    const earliestResponse = await fetch(GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: earliestQuery }),
-    });
-
-    const earliestData = await earliestResponse.json();
-    if (earliestData.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(earliestData.errors)}`);
-    }
-
-    // Fetch latest packet
-    const latestQuery = `
-      query FetchLatest {
-        PacketDelivered(
-          order_by: { blockTimestamp: desc }
-          limit: 1
-        ) {
-          blockTimestamp
-        }
-      }
-    `;
-
-    const latestResponse = await fetch(GRAPHQL_ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: latestQuery }),
-    });
-
-    const latestData = await latestResponse.json();
-    if (latestData.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(latestData.errors)}`);
-    }
-
-    earliestTimestamp = Number(earliestData.data.PacketDelivered[0]?.blockTimestamp);
-    latestTimestamp = Number(latestData.data.PacketDelivered[0]?.blockTimestamp);
-  }
-
-  return { earliestTimestamp, latestTimestamp };
-}
-
-/**
- * Fetch all config change events (Version entities) and populate hourly buckets
- * Includes all 4 types: DefaultReceiveLibrary, DefaultUlnConfig, OAppReceiveLibrary, OAppUlnConfig
- */
-async function fetchConfigChanges(hourlyBuckets, minTimestamp = null) {
-  console.log("\nFetching config change events...");
-
-  const versionTypes = [
-    "DefaultReceiveLibraryVersion",
-    "DefaultUlnConfigVersion",
-    "OAppReceiveLibraryVersion",
-    "OAppUlnConfigVersion",
-  ];
-
-  let totalConfigChanges = 0;
-
-  for (const versionType of versionTypes) {
-    // Build WHERE clause with cursor-based pagination
-    const whereConditions = [];
-    if (minTimestamp !== null) {
-      whereConditions.push(`{ blockTimestamp: { _gte: ${minTimestamp} } }`);
-    }
-
-    let cursor = null;
-    let hasMore = true;
-    let typeCount = 0;
-
-    while (hasMore) {
-      const cursorConditions = [...whereConditions];
-      if (cursor !== null) {
-        cursorConditions.push(`{
-          _or: [
-            { blockTimestamp: { _lt: ${cursor.blockTimestamp} } },
-            {
-              _and: [
-                { blockTimestamp: { _eq: ${cursor.blockTimestamp} } },
-                { id: { _lt: "${cursor.id}" } }
-              ]
-            }
-          ]
-        }`);
-      }
-
-      const whereClause =
-        cursorConditions.length > 0 ? `where: { _and: [${cursorConditions.join(", ")}] }` : "";
-
-      const query = `
-        query FetchVersions($limit: Int!) {
-          ${versionType}(
-            order_by: [{ blockTimestamp: desc }, { id: desc }]
-            limit: $limit
-            ${whereClause}
-          ) {
-            id
-            blockTimestamp
-          }
-        }
-      `;
-
-      const response = await fetch(GRAPHQL_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, variables: { limit: BATCH_SIZE } }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-
-      if (data.errors) {
-        throw new Error(`GraphQL errors: ${JSON.stringify(data.errors)}`);
-      }
-
-      const versions = data.data[versionType] || [];
-
-      if (versions.length === 0) {
-        hasMore = false;
-        break;
-      }
-
-      // Add to hourly buckets
-      for (const version of versions) {
-        const timestamp = Number(version.blockTimestamp);
-        if (!Number.isNaN(timestamp)) {
-          const hourBucket = Math.floor(timestamp / 3600) * 3600;
-          const bucket = hourlyBuckets.get(hourBucket);
-          if (bucket) {
-            bucket.configChanges++;
-            typeCount++;
-          }
-        }
-      }
-
-      // Update cursor to last record
-      const lastRecord = versions[versions.length - 1];
-      cursor = {
-        blockTimestamp: Number(lastRecord.blockTimestamp),
-        id: lastRecord.id,
-      };
-
-      if (versions.length < BATCH_SIZE) {
-        hasMore = false;
-      }
-
-      await new Promise((resolve) => setImmediate(resolve));
-    }
-
-    console.log(`  ${versionType}: ${typeCount.toLocaleString()} changes`);
-    totalConfigChanges += typeCount;
-  }
-
-  console.log(`Total config changes: ${totalConfigChanges.toLocaleString()}`);
-  return totalConfigChanges;
-}
-
-/**
- * Merge new statistics with existing statistics for incremental updates
- */
-function mergeStatistics(existingStats, newStats) {
-  console.log("\nMerging new statistics with existing...");
-
-  // Merge simple counts
-  const total = existingStats.total + newStats.total;
-  const allDefault = Math.round(
-    existingStats.total * (existingStats.allDefaultPercentage / 100) +
-      newStats.total * (newStats.allDefaultPercentage / 100),
-  );
-  const defaultLib = Math.round(
-    existingStats.total * (existingStats.defaultLibPercentage / 100) +
-      newStats.total * (newStats.defaultLibPercentage / 100),
-  );
-  const defaultConfig = Math.round(
-    existingStats.total * (existingStats.defaultConfigPercentage / 100) +
-      newStats.total * (newStats.defaultConfigPercentage / 100),
-  );
-  const tracked = Math.round(
-    existingStats.total * (existingStats.trackedPercentage / 100) +
-      newStats.total * (newStats.trackedPercentage / 100),
-  );
-
-  // Merge DVN combinations
-  const dvnComboMap = new Map();
-  for (const combo of existingStats.dvnCombinations) {
-    const key = JSON.stringify(combo);
-    dvnComboMap.set(key, combo);
-  }
-  for (const combo of newStats.dvnCombinations) {
-    const key = JSON.stringify(combo);
-    if (dvnComboMap.has(key)) {
-      dvnComboMap.get(key).count += combo.count;
-    } else {
-      dvnComboMap.set(key, { ...combo });
-    }
-  }
-
-  // Merge DVN set threshold buckets
-  const thresholdMap = new Map();
-  for (const bucket of existingStats.dvnSetThresholdBuckets) {
-    thresholdMap.set(bucket.dvnSetThreshold, bucket.packetCount);
-  }
-  for (const bucket of newStats.dvnSetThresholdBuckets) {
-    const existing = thresholdMap.get(bucket.dvnSetThreshold) || 0;
-    thresholdMap.set(bucket.dvnSetThreshold, existing + bucket.packetCount);
-  }
-
-  const dvnSetThresholdBuckets = Array.from(thresholdMap.entries())
-    .map(([threshold, packets]) => ({
-      dvnSetThreshold: threshold,
-      packetCount: packets,
-      percentage: (packets / total) * 100,
-    }))
-    .sort((a, b) => compareDvnThresholdValues(a.dvnSetThreshold, b.dvnSetThreshold));
-
-  // Merge chain breakdown
-  const chainMap = new Map();
-  for (const chain of existingStats.chainBreakdown) {
-    chainMap.set(chain.localEid, chain.packetCount);
-  }
-  for (const chain of newStats.chainBreakdown) {
-    const existing = chainMap.get(chain.localEid) || 0;
-    chainMap.set(chain.localEid, existing + chain.packetCount);
-  }
-
-  const chainBreakdown = Array.from(chainMap.entries())
-    .map(([eid, count]) => ({
-      localEid: eid,
-      packetCount: count,
-      percentage: (count / total) * 100,
-    }))
-    .sort((a, b) => b.packetCount - a.packetCount);
-
-  // Merge source chain breakdown
-  const srcChainMap = new Map();
-  for (const chain of existingStats.srcChainBreakdown) {
-    srcChainMap.set(chain.srcEid, chain.packetCount);
-  }
-  for (const chain of newStats.srcChainBreakdown) {
-    const existing = srcChainMap.get(chain.srcEid) || 0;
-    srcChainMap.set(chain.srcEid, existing + chain.packetCount);
-  }
-
-  const srcChainBreakdown = Array.from(srcChainMap.entries())
-    .map(([eid, count]) => ({
-      srcEid: eid,
-      packetCount: count,
-      percentage: (count / total) * 100,
-    }))
-    .sort((a, b) => b.packetCount - a.packetCount);
-
-  // Merge time series data
-  const hourlyMap = new Map();
-  for (const entry of existingStats.timeSeries.hourly) {
-    hourlyMap.set(entry.timestamp, {
-      packets: entry.packets,
-      configChanges: entry.configChanges,
-    });
-  }
-  for (const entry of newStats.timeSeries.hourly) {
-    if (hourlyMap.has(entry.timestamp)) {
-      const existing = hourlyMap.get(entry.timestamp);
-      existing.packets += entry.packets;
-      existing.configChanges += entry.configChanges;
-    } else {
-      hourlyMap.set(entry.timestamp, {
-        packets: entry.packets,
-        configChanges: entry.configChanges,
-      });
-    }
-  }
-
-  const hourlyData = Array.from(hourlyMap.entries())
-    .map(([timestamp, data]) => ({
-      timestamp,
-      packets: data.packets,
-      configChanges: data.configChanges,
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
-
-  const dailyData = mergeCategorizedTimeSeries(
-    existingStats.timeSeries?.daily || [],
-    newStats.timeSeries?.daily || [],
-  );
-  const weeklyData = mergeCategorizedTimeSeries(
-    existingStats.timeSeries?.weekly || [],
-    newStats.timeSeries?.weekly || [],
-  );
-
-  // Recalculate percentages for DVN combinations
-  const dvnCombinations = Array.from(dvnComboMap.values())
-    .map((combo) => ({
-      ...combo,
-      percentage: (combo.count / total) * 100,
-    }))
-    .sort((a, b) => b.count - a.count);
-
-  const totalConfigChanges =
-    (existingStats.timeSeries.totalConfigChanges || 0) +
-    (newStats.timeSeries.totalConfigChanges || 0);
-
-  // Determine time range
-  const earliest = Math.min(
-    existingStats.timeRange.earliest || Number.POSITIVE_INFINITY,
-    newStats.timeRange.earliest || Number.POSITIVE_INFINITY,
-  );
-  const latest = Math.max(
-    existingStats.timeRange.latest || Number.NEGATIVE_INFINITY,
-    newStats.timeRange.latest || Number.NEGATIVE_INFINITY,
-  );
-
-  return {
-    schemaVersion: STATS_SCHEMA_VERSION,
-    total,
-    computedAt: new Date().toISOString(),
-    allDefaultPercentage: (allDefault / total) * 100,
-    defaultLibPercentage: (defaultLib / total) * 100,
-    defaultConfigPercentage: (defaultConfig / total) * 100,
-    trackedPercentage: (tracked / total) * 100,
-    dvnCombinations,
-    dvnSetThresholdBuckets,
-    chainBreakdown,
-    srcChainBreakdown,
-    timeRange: {
-      earliest: earliest === Number.POSITIVE_INFINITY ? null : earliest,
-      latest: latest === Number.NEGATIVE_INFINITY ? null : latest,
-    },
-    timeSeries: {
-      hourly: hourlyData,
-      daily: dailyData,
-      weekly: weeklyData,
-      totalConfigChanges,
-    },
-  };
-}
-
-/**
- * Process packets incrementally to avoid memory overflow
- */
-async function computeStatisticsIncremental(minTimestamp = null) {
-  console.log("Computing statistics incrementally...");
-
-  // Initialize accumulators
-  let total = 0;
-  let allDefault = 0;
-  let defaultLibOnly = 0;
-  let defaultConfigOnly = 0;
-  let tracked = 0;
-
-  const dvnCombos = new Map();
-  const dvnSetThresholdCounts = new Map();
-  const chainCounts = new Map();
-  const srcChainCounts = new Map();
-
-  // Determine time range efficiently
-  const { earliestTimestamp, latestTimestamp } = await fetchTimeRange(minTimestamp);
-
+async function refreshCube(sql, { full, cutoff }) {
+  const cached = full ? null : loadCache();
+  const fromDay = cached ? cached.lastDay - REFRESH_DAYS + 1 : 0;
   console.log(
-    `Time range: ${new Date(earliestTimestamp * 1000).toISOString()} to ${new Date(latestTimestamp * 1000).toISOString()}`,
+    cached
+      ? `Refreshing cube from ${isoDay(fromDay)} (cached through ${isoDay(cached.lastDay)})`
+      : "Building cube from scratch (full scan)…",
   );
 
-  // Create hourly buckets
-  const hourlyBuckets = createHourlyBuckets(earliestTimestamp, latestTimestamp);
-  console.log(`Created ${hourlyBuckets.size.toLocaleString()} hourly buckets`);
+  const started = Date.now();
+  const rows = await sql.unsafe(CUBE_SQL, [fromDay * DAY, cutoff]);
+  console.log(`  ${rows.length.toLocaleString()} cube rows in ${Date.now() - started} ms`);
 
-  const dailyBuckets = createRollupBuckets(earliestTimestamp, latestTimestamp, "daily");
-  const weeklyBuckets = createRollupBuckets(earliestTimestamp, latestTimestamp, "weekly");
-  console.log(
-    `Created ${dailyBuckets.size.toLocaleString()} daily buckets and ${weeklyBuckets.size.toLocaleString()} weekly buckets`,
-  );
+  const cube = {
+    version: CUBE_VERSION,
+    lastDay: cached?.lastDay ?? 0,
+    dst: (cached?.dst ?? []).filter((row) => row[0] < fromDay),
+    src: (cached?.src ?? []).filter((row) => row[0] < fromDay),
+    quorums: cached?.quorums ?? {},
+  };
 
-  // Fetch actual config changes (Version events) and populate buckets
-  const totalConfigChanges = await fetchConfigChanges(hourlyBuckets, minTimestamp);
-
-  // Process all packets in a single pass
-  console.log("\nProcessing packets...");
-  let cursor = null;
-  let hasMore = true;
-  let batchCount = 0;
-
-  while (hasMore) {
-    const batch = await fetchPacketBatch(BATCH_SIZE, minTimestamp, cursor);
-
-    if (batch.length === 0) {
-      hasMore = false;
-      break;
+  for (const row of rows) {
+    if (row.no_src === 0) {
+      cube.src.push([row.d, row.src, row.n]);
+    } else if (row.no_cls === 0) {
+      cube.dst.push([row.d, row.dst, row.cls, row.q, row.n]);
+      cube.lastDay = Math.max(cube.lastDay, row.d);
+    } else {
+      cube.quorums[`${row.dst}|${row.q}`] = [row.req, row.opt, row.rc, row.ot];
     }
-
-    batchCount++;
-
-    // Process this batch
-    for (const packet of batch) {
-      total++;
-
-      // All-default configuration
-      if (packet.usesDefaultLibrary && packet.usesDefaultConfig) {
-        allDefault++;
-      }
-
-      if (packet.usesDefaultLibrary) {
-        defaultLibOnly++;
-      }
-
-      if (packet.usesDefaultConfig) {
-        defaultConfigOnly++;
-      }
-
-      if (packet.isConfigTracked) {
-        tracked++;
-      }
-
-      // Compute DVN set threshold based on required and optional DVNs
-      const requiredDVNs = Array.isArray(packet.effectiveRequiredDVNs)
-        ? packet.effectiveRequiredDVNs
-        : [];
-      const optionalDVNs = Array.isArray(packet.effectiveOptionalDVNs)
-        ? packet.effectiveOptionalDVNs
-        : [];
-
-      const { dvnSetThreshold, comboConfig } = classifyPacketDvnThreshold(
-        packet,
-        requiredDVNs,
-        optionalDVNs,
-      );
-
-      // Track DVN set threshold counts
-      dvnSetThresholdCounts.set(
-        dvnSetThreshold,
-        (dvnSetThresholdCounts.get(dvnSetThreshold) || 0) + 1,
-      );
-
-      // Track DVN combinations if we have a valid config
-      if (comboConfig) {
-        const localEid = String(packet.localEid);
-        let comboKey;
-
-        if (comboConfig.type === "required") {
-          // Standard case: just required DVNs
-          const sortedDvns = [...comboConfig.dvns].sort();
-          comboKey = `${localEid}:required:${sortedDvns.join(",")}`;
-
-          if (!dvnCombos.has(comboKey)) {
-            dvnCombos.set(comboKey, {
-              localEid,
-              type: "required",
-              dvns: sortedDvns,
-              count: 0,
-            });
-          }
-        } else if (comboConfig.type === "required_and_optional") {
-          // Hybrid case: required DVNs + optional threshold
-          const sortedRequired = [...comboConfig.requiredDvns].sort();
-          const sortedOptional = [...comboConfig.optionalDvns].sort();
-          comboKey = `${localEid}:hybrid:${sortedRequired.join(",")}:${sortedOptional.join(",")}:${comboConfig.optionalThreshold}`;
-
-          if (!dvnCombos.has(comboKey)) {
-            dvnCombos.set(comboKey, {
-              localEid,
-              type: "required_and_optional",
-              requiredDvns: sortedRequired,
-              optionalDvns: sortedOptional,
-              optionalThreshold: comboConfig.optionalThreshold,
-              count: 0,
-            });
-          }
-        } else if (comboConfig.type === "optional_only") {
-          // Optional-only case
-          const sortedOptional = [...comboConfig.optionalDvns].sort();
-          comboKey = `${localEid}:optional:${sortedOptional.join(",")}:${comboConfig.optionalThreshold}`;
-
-          if (!dvnCombos.has(comboKey)) {
-            dvnCombos.set(comboKey, {
-              localEid,
-              type: "optional_only",
-              optionalDvns: sortedOptional,
-              optionalThreshold: comboConfig.optionalThreshold,
-              count: 0,
-            });
-          }
-        }
-
-        dvnCombos.get(comboKey).count++;
-      }
-
-      // Chain tracking
-      const localEid = String(packet.localEid);
-      chainCounts.set(localEid, (chainCounts.get(localEid) || 0) + 1);
-
-      const srcEid = String(packet.srcEid);
-      srcChainCounts.set(srcEid, (srcChainCounts.get(srcEid) || 0) + 1);
-
-      // Time-series tracking (packet counts only)
-      const timestamp = Number(packet.blockTimestamp);
-      if (!Number.isNaN(timestamp)) {
-        const hourBucket = Math.floor(timestamp / 3600) * 3600;
-        const bucket = hourlyBuckets.get(hourBucket);
-        if (bucket) {
-          bucket.packets++;
-        }
-
-        incrementPacketRollup(dailyBuckets, "daily", timestamp, dvnSetThreshold, localEid, srcEid);
-        incrementPacketRollup(
-          weeklyBuckets,
-          "weekly",
-          timestamp,
-          dvnSetThreshold,
-          localEid,
-          srcEid,
-        );
-      }
-    }
-
-    // Update cursor to last record in batch
-    const lastRecord = batch[batch.length - 1];
-    cursor = {
-      blockTimestamp: Number(lastRecord.blockTimestamp),
-      id: lastRecord.id,
-    };
-
-    console.log(`  Processed batch ${batchCount}: ${total.toLocaleString()} packets total`);
-
-    if (batch.length < BATCH_SIZE) {
-      hasMore = false;
-    }
-
-    await new Promise((resolve) => setImmediate(resolve));
   }
 
-  console.log(`\nTotal packets processed: ${total.toLocaleString()}`);
+  fs.mkdirSync(path.dirname(CACHE_PATH), { recursive: true });
+  fs.writeFileSync(CACHE_PATH, JSON.stringify(cube));
+  return cube;
+}
 
-  if (total === 0) {
-    return {
-      schemaVersion: STATS_SCHEMA_VERSION,
-      total: 0,
-      computedAt: new Date().toISOString(),
-      allDefaultPercentage: 0,
-      defaultLibPercentage: 0,
-      defaultConfigPercentage: 0,
-      trackedPercentage: 0,
-      dvnCombinations: [],
-      dvnSetThresholdBuckets: [],
-      timeRange: { earliest: null, latest: null },
-      chainBreakdown: [],
-      srcChainBreakdown: [],
-      timeSeries: { hourly: [], daily: [], weekly: [], totalConfigChanges },
-    };
-  }
+const isoDay = (day) => new Date(day * DAY * 1000).toISOString().slice(0, 10);
 
-  // Convert to arrays and sort
-  console.log("Finalizing results...");
-
-  applyConfigChangesToRollups(hourlyBuckets, dailyBuckets, weeklyBuckets);
-
-  const dvnCombinations = Array.from(dvnCombos.values())
-    .map((combo) => {
-      const base = {
-        localEid: combo.localEid,
-        type: combo.type,
-        count: combo.count,
-        percentage: (combo.count / total) * 100,
-      };
-
-      // Add type-specific fields
-      if (combo.type === "required") {
-        base.dvns = combo.dvns;
-      } else if (combo.type === "required_and_optional") {
-        base.requiredDvns = combo.requiredDvns;
-        base.optionalDvns = combo.optionalDvns;
-        base.optionalThreshold = combo.optionalThreshold;
-      } else if (combo.type === "optional_only") {
-        base.optionalDvns = combo.optionalDvns;
-        base.optionalThreshold = combo.optionalThreshold;
-      }
-
-      return base;
-    })
-    .sort((a, b) => b.count - a.count);
-
-  const dvnSetThresholdBuckets = Array.from(dvnSetThresholdCounts.entries())
-    .map(([threshold, packets]) => ({
-      dvnSetThreshold: threshold,
-      packetCount: packets,
-      percentage: (packets / total) * 100,
-    }))
-    .sort((a, b) => compareDvnThresholdValues(a.dvnSetThreshold, b.dvnSetThreshold));
-
-  const chainBreakdown = Array.from(chainCounts.entries())
-    .map(([eid, count]) => ({
-      localEid: eid,
-      packetCount: count,
-      percentage: (count / total) * 100,
-    }))
-    .sort((a, b) => b.packetCount - a.packetCount);
-
-  const srcChainBreakdown = Array.from(srcChainCounts.entries())
-    .map(([eid, count]) => ({
-      srcEid: eid,
-      packetCount: count,
-      percentage: (count / total) * 100,
-    }))
-    .sort((a, b) => b.packetCount - a.packetCount);
-
-  // Time-series data
-  const hourlyData = Array.from(hourlyBuckets.entries())
-    .map(([timestamp, data]) => ({
-      timestamp,
-      packets: data.packets,
-      configChanges: data.configChanges,
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
-
-  const dailyData = serializeRollupBuckets(dailyBuckets);
-  const weeklyData = serializeRollupBuckets(weeklyBuckets);
-
+function emptyWindowStats() {
   return {
-    schemaVersion: STATS_SCHEMA_VERSION,
-    total,
-    computedAt: new Date().toISOString(),
-    allDefaultPercentage: (allDefault / total) * 100,
-    defaultLibPercentage: (defaultLibOnly / total) * 100,
-    defaultConfigPercentage: (defaultConfigOnly / total) * 100,
-    trackedPercentage: (tracked / total) * 100,
-    dvnCombinations,
-    dvnSetThresholdBuckets,
-    chainBreakdown,
-    srcChainBreakdown,
-    timeRange: {
-      earliest: earliestTimestamp === Number.POSITIVE_INFINITY ? null : earliestTimestamp,
-      latest: latestTimestamp === Number.NEGATIVE_INFINITY ? null : latestTimestamp,
-    },
-    timeSeries: {
-      hourly: hourlyData,
-      daily: dailyData,
-      weekly: weeklyData,
-      totalConfigChanges,
-    },
+    total: 0,
+    flags: { allDefault: 0, defaultLibrary: 0, defaultConfig: 0, tracked: 0 },
+    tiers: Object.fromEntries(TIER_BY_CODE.map((tier) => [tier, 0])),
+    thresholds: {},
+    destinations: new Map(),
+    sources: new Map(),
+    quorums: new Map(),
+    configChanges: { lz: 0, owner: 0 },
   };
 }
 
-/**
- * Run single precomputation for a specific lookback period
- */
-async function runPrecomputation(lookbackParam = null, incrementalMode = false) {
-  let minTimestamp = null;
+const increment = (map, key, amount) => map.set(key, (map.get(key) ?? 0) + amount);
+const sortedEntries = (map) => Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
 
-  if (lookbackParam) {
-    minTimestamp = parseLookback(lookbackParam);
-    console.log(`Lookback: ${lookbackParam} (from ${new Date(minTimestamp * 1000).toISOString()})`);
-  } else {
-    console.log("Lookback: All time");
-  }
-
-  console.log(`Endpoint: ${GRAPHQL_ENDPOINT}`);
-  console.log(`Batch size: ${BATCH_SIZE.toLocaleString()}`);
-  console.log(`Mode: ${incrementalMode ? "Incremental" : "Full"}\n`);
-
-  // Ensure output directory exists
-  if (!fs.existsSync(OUTPUT_DIR)) {
-    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
-  }
-
-  const outputPath = getOutputFilename(lookbackParam);
-  let stats;
-
-  if (incrementalMode) {
-    // Load existing stats and metadata
-    const metadata = loadMetadata(lookbackParam);
-    const existingStats = fs.existsSync(outputPath)
-      ? JSON.parse(fs.readFileSync(outputPath, "utf8"))
-      : null;
-
-    if (!metadata || !existingStats) {
-      console.log("No previous run found. Performing full computation...\n");
-      stats = await computeStatisticsIncremental(minTimestamp);
-    } else if (
-      metadata.schemaVersion !== STATS_SCHEMA_VERSION ||
-      existingStats.schemaVersion !== STATS_SCHEMA_VERSION ||
-      !hasCategorizedRollups(existingStats)
-    ) {
-      console.log(
-        `Previous stats schema is older than v${STATS_SCHEMA_VERSION}. Performing full computation...\n`,
-      );
-      stats = await computeStatisticsIncremental(minTimestamp);
-    } else {
-      console.log(`Found previous run from ${metadata.computedAt}`);
-      console.log(
-        `Last processed: ${metadata.lastProcessedTimestamp ? new Date(metadata.lastProcessedTimestamp * 1000).toISOString() : "N/A"}`,
-      );
-      console.log(`Previous total: ${metadata.totalRecords.toLocaleString()} packets\n`);
-
-      // For incremental mode, only fetch records newer than last run
-      const incrementalMinTimestamp = metadata.lastProcessedTimestamp;
-
-      console.log(
-        `Fetching new records since ${new Date(incrementalMinTimestamp * 1000).toISOString()}...`,
-      );
-      const newStats = await computeStatisticsIncremental(incrementalMinTimestamp);
-
-      if (newStats.total === 0) {
-        console.log("\nNo new records found. Skipping merge.");
-        stats = existingStats;
-        stats.computedAt = new Date().toISOString();
-      } else {
-        console.log(`\nFound ${newStats.total.toLocaleString()} new packets`);
-
-        // Load existing stats and merge
-        stats = mergeStatistics(existingStats, newStats);
-      }
+function rankDvnSets(quorumCounts, cube, labels) {
+  const sets = new Map();
+  const unnamed = new Set();
+  for (const [quorumKey, packets] of quorumCounts) {
+    const [dst] = quorumKey.split("|");
+    const [req, opt, rc, ot] = cube.quorums[quorumKey] ?? [];
+    const set = namedDvnSet({ dst: Number(dst), req, opt, rc, ot }, labels);
+    if (!set) continue;
+    for (const label of [...set.required, ...set.optional]) {
+      if (isUnnamed(label)) unnamed.add(label);
     }
-  } else {
-    // Full computation mode
-    stats = await computeStatisticsIncremental(minTimestamp);
+    const existing = sets.get(set.key);
+    if (existing) existing.packets += packets;
+    else sets.set(set.key, { ...set, packets });
+  }
+  const ranked = Array.from(sets.values()).sort((a, b) => b.packets - a.packets);
+  return {
+    distinct: ranked.length,
+    distinctRequiredOnly: ranked.filter((set) => set.type === "required").length,
+    unnamedAddresses: unnamed.size,
+    top: ranked.slice(0, TOP_DVN_SETS).map(({ key, threshold, ...set }) => set),
+  };
+}
+
+function buildWindows(cube, changes, labels) {
+  const lastDay = cube.lastDay;
+  const firstDay = cube.dst.reduce((min, row) => Math.min(min, row[0]), lastDay);
+  const windows = WINDOWS.map(([name, days]) => ({
+    name,
+    days,
+    fromDay: days ? Math.max(firstDay, lastDay - days + 1) : firstDay,
+    stats: emptyWindowStats(),
+  }));
+
+  for (const [day, dst, cls, q, n] of cube.dst) {
+    const { threshold } = quorumShapeFor(cube, dst, q);
+    for (const { fromDay, stats } of windows) {
+      if (day < fromDay) continue;
+      stats.total += n;
+      if (cls & 1) stats.flags.defaultLibrary += n;
+      if (cls & 2) stats.flags.defaultConfig += n;
+      if ((cls & 3) === 3) stats.flags.allDefault += n;
+      if (cls & 4) stats.flags.tracked += n;
+      stats.tiers[TIER_BY_CODE[cls >> 3]] += n;
+      const bucket = thresholdBucket(threshold);
+      stats.thresholds[bucket] = (stats.thresholds[bucket] ?? 0) + n;
+      increment(stats.destinations, dst, n);
+      increment(stats.quorums, `${dst}|${q}`, n);
+    }
+  }
+  for (const [day, src, n] of cube.src) {
+    for (const { fromDay, stats } of windows) {
+      if (day >= fromDay) increment(stats.sources, src, n);
+    }
+  }
+  for (const [hour, who, n] of changes) {
+    for (const { days, fromDay, stats } of windows) {
+      if (days === null || Math.floor(hour / 24) >= fromDay) stats.configChanges[who] += n;
+    }
   }
 
-  // Add lookback metadata to stats
-  stats.schemaVersion = STATS_SCHEMA_VERSION;
-  stats.lookback = lookbackParam || "all";
-  stats.coverage = buildCoverageSummary(stats);
-
-  // Save to file
-  fs.writeFileSync(outputPath, JSON.stringify(stats, null, 2));
-  console.log(`\nStatistics saved to: ${outputPath}`);
-
-  // Save metadata for next incremental run
-  const metadata = {
-    schemaVersion: STATS_SCHEMA_VERSION,
-    computedAt: stats.computedAt,
-    lastProcessedTimestamp: stats.timeRange.latest,
-    totalRecords: stats.total,
-    lookback: lookbackParam || "all",
-    coverage: stats.coverage,
+  return {
+    firstDay,
+    windows: windows.map(({ name, days, fromDay, stats }) => ({
+      name,
+      days,
+      fromDay,
+      total: stats.total,
+      flags: stats.flags,
+      tiers: stats.tiers,
+      thresholds: stats.thresholds,
+      destinations: sortedEntries(stats.destinations),
+      sources: sortedEntries(stats.sources),
+      configChanges: stats.configChanges,
+      dvnSets: rankDvnSets(stats.quorums, cube, labels),
+    })),
   };
-  saveMetadata(lookbackParam, metadata);
+}
 
-  console.log(`\nSummary:`);
-  console.log(`  Total packets: ${stats.total.toLocaleString()}`);
-  console.log(`  All-default: ${stats.allDefaultPercentage.toFixed(2)}%`);
-  console.log(`  Unique DVN combos: ${stats.dvnCombinations.length.toLocaleString()}`);
-  console.log(`  Chains: ${stats.chainBreakdown.length}`);
-  console.log(`  Config changes: ${stats.timeSeries.totalConfigChanges.toLocaleString()}`);
-  console.log(`  Hourly data points: ${stats.timeSeries.hourly.length.toLocaleString()}`);
-  console.log(`  Daily data points: ${(stats.timeSeries.daily || []).length.toLocaleString()}`);
-  console.log(`  Weekly data points: ${(stats.timeSeries.weekly || []).length.toLocaleString()}`);
+const shapeCache = new Map();
+function quorumShapeFor(cube, dst, q) {
+  const key = `${dst}|${q}`;
+  let shape = shapeCache.get(key);
+  if (!shape) {
+    const [, , rc, ot] = cube.quorums[key] ?? [];
+    shape = quorumShape(rc, ot);
+    shapeCache.set(key, shape);
+  }
+  return shape;
+}
 
-  if (stats.timeRange.earliest && stats.timeRange.latest) {
-    const days = Math.floor((stats.timeRange.latest - stats.timeRange.earliest) / 86400);
-    console.log(
-      `  Time range: ${new Date(stats.timeRange.earliest * 1000).toISOString().split("T")[0]} to ${new Date(stats.timeRange.latest * 1000).toISOString().split("T")[0]} (${days.toLocaleString()} days)`,
+/** Columnar daily series; per-chain series only for chains that rank top-N in some window. */
+function buildDailySeries(cube, changes, firstDay, windows) {
+  const length = cube.lastDay - firstDay + 1;
+  const zeros = () => new Array(length).fill(0);
+  const pickChains = (field) =>
+    Array.from(
+      new Set(windows.flatMap((w) => w[field].slice(0, SERIES_CHAIN_LIMIT).map(([eid]) => eid))),
     );
+  const series = {
+    firstDay,
+    packets: zeros(),
+    lzChanges: zeros(),
+    ownerChanges: zeros(),
+    tiers: Object.fromEntries(TIER_BY_CODE.map((tier) => [tier, zeros()])),
+    thresholds: {},
+    destinations: Object.fromEntries(pickChains("destinations").map((eid) => [eid, zeros()])),
+    sources: Object.fromEntries(pickChains("sources").map((eid) => [eid, zeros()])),
+  };
+
+  for (const [day, dst, cls, q, n] of cube.dst) {
+    const i = day - firstDay;
+    series.packets[i] += n;
+    series.tiers[TIER_BY_CODE[cls >> 3]][i] += n;
+    const bucket = thresholdBucket(quorumShapeFor(cube, dst, q).threshold);
+    (series.thresholds[bucket] ??= zeros())[i] += n;
+    if (series.destinations[dst]) series.destinations[dst][i] += n;
+  }
+  for (const [day, src, n] of cube.src) {
+    if (series.sources[src]) series.sources[src][day - firstDay] += n;
+  }
+  for (const [hour, who, n] of changes) {
+    const i = Math.floor(hour / 24) - firstDay;
+    if (i >= 0 && i < length) series[who === "lz" ? "lzChanges" : "ownerChanges"][i] += n;
+  }
+  return series;
+}
+
+async function buildHourlySeries(sql, changes, lastDay, cutoff) {
+  const firstHour = (lastDay - HOURLY_DAYS + 1) * 24;
+  const length = (lastDay + 1) * 24 - firstHour;
+  const zeros = () => new Array(length).fill(0);
+  const series = { firstHour, packets: zeros(), lzChanges: zeros(), ownerChanges: zeros() };
+  for (const { h, n } of await sql.unsafe(HOURLY_PACKETS_SQL, [firstHour * HOUR, cutoff])) {
+    if (h - firstHour < length) series.packets[h - firstHour] += n;
+  }
+  for (const [hour, who, n] of changes) {
+    const i = hour - firstHour;
+    if (i >= 0 && i < length) series[who === "lz" ? "lzChanges" : "ownerChanges"][i] += n;
+  }
+  return series;
+}
+
+/**
+ * Meshes: connected components of OApps joined by configured or observed peers
+ * (an OFT deployed on N chains is one mesh). Each open inbound route is a door
+ * with its own verifier set, and the mesh is only as strong as its weakest one.
+ */
+async function buildMeshes(sql, labels, lastDay, cutoff) {
+  const [routes, windowPackets, totals] = await Promise.all([
+    sql.unsafe(ROUTES_SQL),
+    sql.unsafe(OAPP_WINDOW_PACKETS_SQL, [(lastDay - MESH_WINDOW_DAYS + 1) * DAY, cutoff]),
+    sql.unsafe(OAPP_TOTALS_SQL),
+  ]);
+  const aliases = readJson(ALIASES_PATH);
+  const packets30d = new Map(windowPackets.map((row) => [row.oappId, row.n]));
+  const packetsAll = new Map(totals.map((row) => [row.id, row.n]));
+
+  const parent = new Map();
+  const find = (id) => {
+    if (!parent.has(id)) parent.set(id, id);
+    let root = id;
+    while (parent.get(root) !== root) root = parent.get(root);
+    while (parent.get(id) !== root) {
+      const next = parent.get(id);
+      parent.set(id, root);
+      id = next;
+    }
+    return root;
+  };
+  const union = (a, b) => parent.set(find(a), find(b));
+
+  const openRoutes = [];
+  for (const route of routes) {
+    find(route.oappId);
+    const peerId = route.peerOappId;
+    const peerAddress = peerId ? peerId.slice(peerId.indexOf("_") + 1) : null;
+    if (!peerId || !route.peer || ZERO_ADDRESS_PATTERN.test(peerAddress)) continue;
+    if (route.libraryStatus === "none") continue;
+    const requiredLabels = (route.req ?? []).map((address) =>
+      labels.dvnLabel(address, localEidOf(route.oappId)),
+    );
+    if ((route.req ?? []).some((address, i) => isDeadDvn(address, requiredLabels[i]))) continue;
+    union(route.oappId, peerId);
+    openRoutes.push(route);
+  }
+  for (const id of packetsAll.keys()) find(id);
+
+  const meshes = new Map();
+  const meshOf = (id) => {
+    const root = find(id);
+    let mesh = meshes.get(root);
+    if (!mesh) {
+      mesh = {
+        members: new Set(),
+        routes: 0,
+        trackedRoutes: 0,
+        tiers: Object.fromEntries(TIER_BY_CODE.map((tier) => [tier, 0])),
+        dvnSets: new Set(),
+        operators: new Set(),
+        weakest: null,
+        weakestRoutes: 0,
+      };
+      meshes.set(root, mesh);
+    }
+    return mesh;
+  };
+  for (const id of parent.keys()) meshOf(id).members.add(id);
+
+  for (const route of openRoutes) {
+    const mesh = meshOf(route.oappId);
+    mesh.routes += 1;
+    mesh.tiers[trustTier(route)] += 1;
+    if (!route.isConfigTracked) continue;
+    const set = namedDvnSet({ ...route, dst: localEidOf(route.oappId) }, labels);
+    if (!set) continue;
+    mesh.trackedRoutes += 1;
+    mesh.dvnSets.add(set.key);
+    for (const label of [...set.required, ...set.optional]) mesh.operators.add(label);
+    if (mesh.weakest === null || set.threshold < mesh.weakest) {
+      mesh.weakest = set.threshold;
+      mesh.weakestRoutes = 1;
+    } else if (set.threshold === mesh.weakest) {
+      mesh.weakestRoutes += 1;
+    }
   }
 
-  console.log("\n✓ Done!");
+  const summarized = [];
+  for (const mesh of meshes.values()) {
+    const members = Array.from(mesh.members);
+    const recent = members.reduce((sum, id) => sum + (packets30d.get(id) ?? 0), 0);
+    if (recent === 0) continue;
+    const seed = members.reduce((best, id) =>
+      (packets30d.get(id) ?? 0) > (packets30d.get(best) ?? 0) ? id : best,
+    );
+    summarized.push({
+      name: meshName(members, aliases),
+      seed,
+      seedChain: labels.chainLabel(localEidOf(seed)),
+      oapps: members.length,
+      chains: new Set(members.map(localEidOf)).size,
+      routes: mesh.routes,
+      trackedRoutes: mesh.trackedRoutes,
+      dvnSets: mesh.dvnSets.size,
+      operators: mesh.operators.size,
+      weakest: mesh.weakest,
+      weakestRoutes: mesh.weakestRoutes,
+      tiers: mesh.tiers,
+      packets30d: recent,
+      packetsAll: members.reduce((sum, id) => sum + (packetsAll.get(id) ?? 0), 0),
+    });
+  }
+  summarized.sort((a, b) => b.packets30d - a.packets30d);
+
+  return {
+    windowDays: MESH_WINDOW_DAYS,
+    receivingOApps: packetsAll.size,
+    activeOApps: packets30d.size,
+    activeMeshes: summarized.length,
+    top: summarized.slice(0, TOP_MESHES),
+    // [chains, routes, distinct DVN sets, weakest threshold, packets30d] for every active mesh
+    points: summarized.map((m) => [m.chains, m.routes, m.dvnSets, m.weakest, m.packets30d]),
+  };
+}
+
+const localEidOf = (oappId) => Number(String(oappId).slice(0, String(oappId).indexOf("_")));
+
+function meshName(members, aliases) {
+  const counts = new Map();
+  for (const id of members) {
+    const name = aliases[id]?.name;
+    if (name) increment(counts, name, 1);
+  }
+  return sortedEntries(counts)[0]?.[0] ?? null;
 }
 
 async function main() {
+  const full = process.argv.includes("--full");
+  const sql = postgres({
+    host: process.env.PGHOST ?? "localhost",
+    port: Number(process.env.PGPORT ?? 17432),
+    user: process.env.PGUSER ?? "postgres",
+    password: process.env.PGPASSWORD ?? "testing",
+    database: process.env.PGDATABASE ?? "envio-dev",
+    max: 4,
+    onnotice: () => {},
+    // eids and packet counts are int8 but far below 2^53
+    types: { int8: { to: 20, from: [20], serialize: String, parse: Number } },
+  });
+
   try {
-    console.log("=== Packet Statistics Precomputation ===\n");
+    const labels = await loadLabels();
+    // Every time-bounded query stops here, so all numbers describe the same snapshot
+    // even while the indexer keeps writing.
+    const [{ cutoff }] =
+      await sql`SELECT max("blockTimestamp")::float8 AS cutoff FROM "PacketDelivered"`;
+    if (cutoff === null) throw new Error("PacketDelivered is empty");
+    const cube = await refreshCube(sql, { full, cutoff });
 
-    // Parse command line arguments
-    const args = process.argv.slice(2);
-    let lookbackParam = null;
-    let batchMode = false;
-    let incrementalMode = false;
+    const changes = (await sql.unsafe(CONFIG_CHANGES_SQL, [cutoff])).map((row) => [
+      row.h,
+      row.who,
+      row.n,
+    ]);
+    const { firstDay, windows } = buildWindows(cube, changes, labels);
+    const [hourly, meshes] = await Promise.all([
+      buildHourlySeries(sql, changes, cube.lastDay, cutoff),
+      buildMeshes(sql, labels, cube.lastDay, cutoff),
+    ]);
+    const daily = buildDailySeries(cube, changes, firstDay, windows);
 
-    for (const arg of args) {
-      if (arg.startsWith("--lookback=")) {
-        lookbackParam = arg.split("=")[1];
-      } else if (arg === "--batch") {
-        batchMode = true;
-      } else if (arg === "--incremental") {
-        incrementalMode = true;
-      }
-    }
+    const chainIds = new Set([
+      ...windows.flatMap((w) => [...w.destinations, ...w.sources].map(([eid]) => eid)),
+    ]);
+    const stats = {
+      schemaVersion: SCHEMA_VERSION,
+      computedAt: new Date().toISOString(),
+      dataThrough: cutoff,
+      coverage: {
+        indexedChainCount: labels.indexedChainCount,
+        sourceEidCount: windows.at(-1).sources.length,
+      },
+      chains: Object.fromEntries(Array.from(chainIds, (eid) => [eid, labels.chainLabel(eid)])),
+      windows: Object.fromEntries(windows.map((w) => [w.name, w])),
+      series: { daily, hourly },
+      meshes,
+    };
 
-    if (batchMode) {
-      // Batch mode: generate all supported time ranges
-      const timeRanges = ["7d", "30d", "90d", "1y", null]; // null = all time
-      console.log(`Batch mode: generating ${timeRanges.length} datasets\n`);
-
-      for (let i = 0; i < timeRanges.length; i++) {
-        const range = timeRanges[i];
-        console.log(`\n${"=".repeat(60)}`);
-        console.log(`Dataset ${i + 1}/${timeRanges.length}: ${range || "all"}`);
-        console.log("=".repeat(60) + "\n");
-
-        await runPrecomputation(range, incrementalMode);
-
-        // Small delay between runs to avoid hammering the API
-        if (i < timeRanges.length - 1) {
-          console.log("\nWaiting 2 seconds before next dataset...");
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-        }
-      }
-
-      console.log(`\n${"=".repeat(60)}`);
-      console.log(`✓ Batch complete! Generated ${timeRanges.length} datasets`);
-      console.log("=".repeat(60));
-    } else {
-      // Single mode
-      await runPrecomputation(lookbackParam, incrementalMode);
-    }
-  } catch (error) {
-    console.error("\n✗ Error:", error.message);
-    console.error(error.stack);
-    process.exit(1);
+    fs.mkdirSync(path.dirname(OUTPUT_PATH), { recursive: true });
+    fs.writeFileSync(OUTPUT_PATH, JSON.stringify(stats));
+    const all = stats.windows.all;
+    console.log(
+      `Wrote ${path.relative(repoRoot, OUTPUT_PATH)} (${fs.statSync(OUTPUT_PATH).size.toLocaleString()} bytes)`,
+    );
+    console.log(
+      `  ${all.total.toLocaleString()} packets, ${isoDay(firstDay)} → ${isoDay(cube.lastDay)}`,
+    );
+    console.log(`  ${all.dvnSets.distinct} named DVN sets, ${meshes.activeMeshes} active meshes`);
+  } finally {
+    await sql.end();
   }
 }
 
-main();
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

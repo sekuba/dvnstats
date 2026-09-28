@@ -70,6 +70,7 @@ class DashboardApp {
       { chain: this.chainDirectory },
       this.aliasStore,
       (rows, payload, meta) => this.handleResultsUpdate(rows, payload, meta),
+      (message, tone) => this.toastQueue.show(message, tone),
     );
   }
 
@@ -237,7 +238,7 @@ class DashboardApp {
       this.setActiveQueryCard(linkedKey);
 
       if (this.shouldRunLinkedQuery(linkedKey, card)) {
-        await this.runQueryCard(linkedKey, card, statusEl, { updateUrl: false });
+        await this.runLinkedQuery(linkedKey, card, statusEl);
         return;
       }
 
@@ -257,14 +258,22 @@ class DashboardApp {
       return;
     }
 
-    await this.runQueryCard(
+    await this.runLinkedQuery(
       defaultKey,
       this.queryCards.get(defaultKey),
       this.queryStatusNodes.get(defaultKey),
-      {
-        updateUrl: false,
-      },
     );
+  }
+
+  // URL-driven runs have no click handler to report failures; the card status and
+  // results panel already show the error, so add the toast and keep initializing.
+  async runLinkedQuery(key, card, statusEl) {
+    try {
+      await this.runQueryCard(key, card, statusEl, { updateUrl: false });
+    } catch (error) {
+      console.warn(`[DashboardApp] Linked query failed: ${key}`, error);
+      this.toastQueue.show(error.message, "error");
+    }
   }
 
   getLinkedQueryKeyFromUrl() {

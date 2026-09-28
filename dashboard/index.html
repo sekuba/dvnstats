@@ -59,6 +59,24 @@
           </div>
 
           <div class="stat-card stat-card--highlight">
+            <h2>LayerZero Picks Verifiers</h2>
+            <div class="stat-value" id="stat-lz-verifiers">—</div>
+            <div class="stat-label">Default library or DVN set</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets on routes where LayerZero's admin can change <b>which</b> DVNs are enough to deliver a packet: the route inherits the default library, the whole default ULN config, or the default required DVNs</p>
+            </div>
+          </div>
+
+          <div class="stat-card stat-card--highlight">
+            <h2>Any LayerZero Default</h2>
+            <div class="stat-value" id="stat-lz-any">—</div>
+            <div class="stat-label">Inherits at least one setting</div>
+            <div class="stat-tooltip">
+              <p class="stat-tooltip-text">Incoming packets on routes that inherit at least one validation setting from LayerZero, including confirmations or optional DVNs. Compare with All-Default, which requires inheriting everything</p>
+            </div>
+          </div>
+
+          <div class="stat-card">
             <h2>All-Default</h2>
             <div class="stat-value" id="stat-all-default">—</div>
             <div class="stat-label">No custom security</div>
@@ -86,12 +104,12 @@
           </div>
 
 
-          <div class="stat-card stat-card--highlight">
-            <h2>Required DVN Combinations</h2>
+          <div class="stat-card">
+            <h2>Distinct DVN Sets</h2>
             <div class="stat-value" id="stat-dvn-combos">—</div>
-            <div class="stat-label">Unique DVN sets by label</div>
+            <div class="stat-label">Merged by DVN name across chains</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Number of unique DVN contract sets used for validation in the 'required' setup</p>
+              <p class="stat-tooltip-text" id="stat-dvn-combos-note">Unique validation setups (required DVNs plus any optional quorum) after merging each chain's DVN contracts by operator name</p>
             </div>
           </div>
 
@@ -109,7 +127,7 @@
             <div class="stat-value" id="stat-source-eids">—</div>
             <div class="stat-label">Unique endpoint IDs</div>
             <div class="stat-tooltip">
-              <p class="stat-tooltip-text">Unique source chains of incoming packets (with known validation settings)</p>
+              <p class="stat-tooltip-text">Unique source endpoint IDs of incoming packets, including lzRead response channels</p>
             </div>
           </div>
         </section>
@@ -177,6 +195,23 @@
         <!-- PacketDelivered Event Flow Diagram -->
         <img id="packet-flow" src="./packetDelivered.svg" alt="PacketDelivered event flow diagram" class="svg-diagram" />
 
+        <!-- Who can change verification -->
+        <section id="verification-control" class="chart-section">
+          <div class="chart-title-row">
+            <h2 class="chart-title">Who Controls Verification?</h2>
+            <div class="chart-toggle" data-chart-toggle="verification-control">
+              <button class="chart-toggle-button active" type="button" data-view="snapshot">Snapshot</button>
+              <button class="chart-toggle-button" type="button" data-view="time">Over Time</button>
+            </div>
+          </div>
+          <p id="verification-control-subtitle" class="chart-subtitle">Fraction of packets by who can change the settings that validated them</p>
+          <div id="verification-control-chart" class="tier-list" data-chart-panel="verification-control" data-view="snapshot"></div>
+          <div id="verification-control-time-chart" class="stacked-area-chart hidden" data-chart-panel="verification-control" data-view="time"></div>
+          <p class="chart-footnote">
+            "LayerZero" here means the owner of the EndpointV2 and ReceiveUln302 contracts on the destination chain, who sets the default library and default ULN config. Owner-controlled is not the same as safe: the OApp owner can change its own settings just as unilaterally.
+          </p>
+        </section>
+
         <!-- DVN Set Threshold Distribution -->
         <section id="dvn-set-threshold" class="chart-section">
           <div class="chart-title-row">
@@ -193,8 +228,8 @@
 
         <!-- Top DVN Combinations -->
         <section id="top-dvn-combinations" class="chart-section">
-          <h2 class="chart-title">Top Required DVN Combinations</h2>
-          <p class="chart-subtitle">Most common required DVN sets by packet count (top 20)</p>
+          <h2 class="chart-title">Top DVN Sets</h2>
+          <p id="dvn-combo-subtitle" class="chart-subtitle">Most common DVN sets by packet count (top 20), merged by DVN name across chains</p>
           <div id="dvn-combo-chart" class="combo-chart"></div>
         </section>
 
@@ -208,7 +243,7 @@
         <!-- Time Series: Config Changes -->
         <section id="configuration-changes" class="chart-section">
           <h2 class="chart-title">Configuration Changes Over Time</h2>
-          <p id="time-series-config-subtitle" class="chart-subtitle">Hourly config changes • <span id="total-config-changes">—</span> total config changes</p>
+          <p id="time-series-config-subtitle" class="chart-subtitle">Receive library and ULN config changes, by LayerZero (defaults) and by OApp owners</p>
           <div id="time-series-config-chart" class="time-series-chart"></div>
         </section>
 
@@ -251,6 +286,22 @@
         </section>
 
         <img id="fragility-diagram" src="./configToWeb.svg" alt="Scale of fragility diagram" class="svg-diagram" />
+
+        <!-- Fragility of scale, from data -->
+        <section id="scale-measured" class="chart-section">
+          <h2 class="chart-title">Fragility of Scale, Measured</h2>
+          <p class="chart-subtitle">
+            An OApp on N chains is a web of up to N×(N−1) inbound routes, each with its own library and DVN settings. A forged packet only has to pass the weakest one. Webs are OApps linked by configured or observed peers, counting only webs that received packets in the last 30 days (independent of the time range above).
+          </p>
+          <div id="scale-stats" class="stats-grid"></div>
+          <h3 class="chart-subheading">Routes per web</h3>
+          <p class="chart-subtitle">Each dot is one web. Dashed line: N×(N−1), every chain talking to every other. Colour: DVNs needed on the weakest open route.</p>
+          <div id="scale-scatter" class="scatter-chart"></div>
+          <div id="scale-buckets" class="table-scroll"></div>
+          <h3 class="chart-subheading">Busiest webs</h3>
+          <p class="chart-subtitle">By packets received in the last 30 days. Open a web in the explorer to see every route.</p>
+          <div id="scale-top" class="table-scroll"></div>
+        </section>
       </div>
     </main>
 

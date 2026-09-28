@@ -39,3 +39,7 @@ hyperindex-complete.mdx
 /backups
 /run
 /.claude/skills
+
+# Built by pnpm stats and published by scripts/publish.sh, never committed
+dashboard/data/
+.cache/

@@ -35,7 +35,14 @@ export class SecurityGraphCrawler {
   }
 
   async crawl(seedOAppId, options = {}) {
-    const maxDepth = options.depth || APP_CONFIG.CRAWLER.DEFAULT_DEPTH;
+    const requestedDepth = Number.parseInt(options.depth, 10);
+    const maxDepth = Math.min(
+      Math.max(
+        Number.isFinite(requestedDepth) ? requestedDepth : APP_CONFIG.CRAWLER.DEFAULT_DEPTH,
+        1,
+      ),
+      APP_CONFIG.CRAWLER.MAX_DEPTH,
+    );
     const onProgress = options.onProgress || (() => {});
     const batchSize = APP_CONFIG.CRAWLER.BATCH_SIZE || 16;
 

@@ -101,18 +101,12 @@ export class GraphAnalyzer {
         }
         libraryStatusValue = config.libraryStatus ?? libraryStatusEdge;
 
-        if (!isBlocked && isMissingReceiveLibrary(config)) {
-          isBlocked = true;
-          blockReason = "missing-library";
-        }
-
-        if (!isBlocked && requiredDVNAddresses.some((addr) => this.isDeadAddress(addr))) {
-          isBlocked = true;
-          blockReason = "dead-dvn";
-        }
-        if (!isBlocked && requiredDVNLabels.some((label) => this.isBlockingDvnLabel(label))) {
-          isBlocked = true;
-          blockReason = "blocking-dvn";
+        if (!isBlocked) {
+          const configBlockReason = this.getConfigBlockReason(config);
+          if (configBlockReason) {
+            isBlocked = true;
+            blockReason = configBlockReason;
+          }
         }
       }
 
@@ -391,6 +385,15 @@ export class GraphAnalyzer {
       info.packetWeight = invTotalPacket > 0 ? info.packetCount * invTotalPacket : 0;
     }
 
+    // Which (receiver, srcEid) routes have at least one active / blocked inbound edge.
+    // Consumed by isConfigRouteBlocked so node metrics treat routes like the edges do.
+    const routeState = { active: new Set(), blocked: new Set() };
+    for (const info of edgeSecurityInfo) {
+      const routeKey = this.buildRouteKey(info.edge.to, info.edge.srcEid);
+      if (!routeKey) continue;
+      (info.isBlocked ? routeState.blocked : routeState.active).add(routeKey);
+    }
+
     return {
       edgeSecurityInfo,
       maxRequiredDVNsInWeb,
@@ -398,17 +401,18 @@ export class GraphAnalyzer {
       dominantCombination: dominantEntry,
       maxEdgePacketCount,
       totalEdgePacketCount,
+      routeState,
     };
   }
 
-  calculateMaxMinRequiredDVNsForNodes(nodes) {
+  calculateMaxMinRequiredDVNsForNodes(nodes, routeState = null) {
     let max = 0;
 
     for (const node of nodes) {
       if (node.isDangling || !node.securityConfigs?.length) continue;
 
       const nonBlockedConfigs = node.securityConfigs.filter(
-        (cfg) => !this.configHasBlockingDvn(cfg),
+        (cfg) => !this.isConfigRouteBlocked(node.id, cfg, routeState),
       );
 
       if (nonBlockedConfigs.length > 0) {
@@ -449,6 +453,63 @@ export class GraphAnalyzer {
 
   isZeroPeer(peerAddress) {
     return AddressUtils.isZero(peerAddress);
+  }
+
+  /**
+   * Block reason that follows from a receive config alone (no edge context), or null.
+   * Used for edge classification and, via isConfigRouteBlocked, for node metrics.
+   */
+  getConfigBlockReason(config) {
+    if (!config) {
+      return null;
+    }
+    if (isMissingReceiveLibrary(config)) {
+      return "missing-library";
+    }
+    const requiredAddresses = Array.isArray(config.requiredDVNs) ? config.requiredDVNs : [];
+    const requiredLabels = Array.isArray(config.requiredDVNLabels)
+      ? config.requiredDVNLabels
+      : requiredAddresses;
+    if (requiredAddresses.some((addr) => this.isDeadAddress(addr))) {
+      return "dead-dvn";
+    }
+    if (requiredLabels.some((label) => this.isBlockingDvnLabel(label))) {
+      return "blocking-dvn";
+    }
+    if (config.peerStateHint === "explicit-blocked") {
+      return "zero-peer";
+    }
+    if (config.peerStateHint === "implicit-blocked") {
+      return "implicit-block";
+    }
+    if (config.peer && this.isZeroPeer(config.peer)) {
+      return "zero-peer";
+    }
+    return null;
+  }
+
+  /**
+   * Whether the route behind a receiver's config (nodeId receiving from config.srcEid) is
+   * blocked: either the config itself blocks, or every inbound edge for that srcEid was
+   * classified as blocked (stale peer, zero sender, peer hints, ...). routeState comes from
+   * calculateEdgeSecurityInfo; without it only config-level reasons apply.
+   */
+  isConfigRouteBlocked(nodeId, config, routeState = null) {
+    if (this.getConfigBlockReason(config)) {
+      return true;
+    }
+    const routeKey = this.buildRouteKey(nodeId, config?.srcEid);
+    if (!routeKey || !routeState) {
+      return false;
+    }
+    return routeState.blocked.has(routeKey) && !routeState.active.has(routeKey);
+  }
+
+  buildRouteKey(nodeId, srcEid) {
+    if (!nodeId || srcEid === undefined || srcEid === null || srcEid === "") {
+      return null;
+    }
+    return `${nodeId}|${String(srcEid)}`;
   }
 
   findBlockedNodes(nodes, edgeSecurityInfo) {
@@ -495,9 +556,11 @@ export class GraphAnalyzer {
     return true;
   }
 
-  getNodeSecurityMetrics(node) {
+  getNodeSecurityMetrics(node, routeState = null) {
     const configs = Array.isArray(node?.securityConfigs) ? node.securityConfigs : [];
-    const nonBlockedConfigs = configs.filter((cfg) => !this.configHasBlockingDvn(cfg));
+    const nonBlockedConfigs = configs.filter(
+      (cfg) => !this.isConfigRouteBlocked(node?.id, cfg, routeState),
+    );
 
     const minRequiredDVNs =
       nonBlockedConfigs.length > 0

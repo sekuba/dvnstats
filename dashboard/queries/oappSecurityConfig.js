@@ -56,6 +56,7 @@ export const OAPP_SECURITY_CONFIG_QUERY = `
       effectiveRequiredDVNs
       effectiveOptionalDVNs
       libraryStatus
+      isConfigTracked
       usesDefaultLibrary
       usesDefaultConfig
       usesRequiredDVNSentinel

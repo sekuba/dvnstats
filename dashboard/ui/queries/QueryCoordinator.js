@@ -5,11 +5,12 @@ import { SecurityConfigFormatter } from "./formatters/SecurityConfigFormatter.js
 import { buildQueryRegistry } from "./QueryRegistry.js";
 
 export class QueryCoordinator {
-  constructor(client, metadata, aliasStore, onResultsUpdate) {
+  constructor(client, metadata, aliasStore, onResultsUpdate, notify = null) {
     this.client = client;
     this.chainMetadata = metadata.chain;
     this.aliasStore = aliasStore;
     this.onResultsUpdate = onResultsUpdate;
+    this.notify = typeof notify === "function" ? notify : () => {};
     this.requestSeq = 0;
     this.latestRequest = 0;
     this.lastPayload = null;
@@ -87,16 +88,29 @@ export class QueryCoordinator {
         : typeof config.buildVariables === "function"
           ? config.buildVariables
           : null;
-    const buildResult = buildFn ? buildFn(card) : {};
-    if (!buildResult || typeof buildResult !== "object") {
-      throw new Error("Query builder must return an object with `variables` and optional `meta`.");
+    const hasCustomExecutor = typeof config.execute === "function";
+    let buildResult;
+    try {
+      buildResult = buildFn ? buildFn(card) : {};
+      if (!buildResult || typeof buildResult !== "object") {
+        throw new Error(
+          "Query builder must return an object with `variables` and optional `meta`.",
+        );
+      }
+      const { variables: builtVariables } = buildResult;
+      if (!hasCustomExecutor && (!builtVariables || Object.keys(builtVariables).length === 0)) {
+        throw new Error("Missing query input.");
+      }
+    } catch (error) {
+      // Input errors must not leave the card stuck on "Loading…" (URL-driven runs
+      // have no toast), so surface them in the status and results before rethrowing.
+      this.setStatus(statusEl, error.message, "error");
+      if (requestId === this.latestRequest) {
+        this.onResultsUpdate([], null, { label: config.label, error: error.message });
+      }
+      throw error;
     }
     const { variables, meta: extraMeta = {} } = buildResult;
-
-    const hasCustomExecutor = typeof config.execute === "function";
-    if (!hasCustomExecutor && (!variables || Object.keys(variables).length === 0)) {
-      throw new Error("Missing query input.");
-    }
 
     const startedAt = performance.now();
 
@@ -153,16 +167,21 @@ export class QueryCoordinator {
       this.lastVariables = variables;
       this.lastPayload = payload;
 
-      this.setStatus(
-        statusEl,
+      const statusText =
         finalMeta.renderMode === "graph"
           ? `Loaded web with ${finalMeta.webData?.nodes?.length || 0} nodes in ${elapsed.toFixed(0)} ms`
-          : `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(0)} ms`,
+          : `Fetched ${rows.length} row${rows.length === 1 ? "" : "s"} in ${elapsed.toFixed(0)} ms`;
+      this.setStatus(
+        statusEl,
+        finalMeta.warning ? `${statusText} — ${finalMeta.warning}` : statusText,
         "success",
       );
 
       if (requestId === this.latestRequest) {
         this.onResultsUpdate(rows, payload, finalMeta);
+        if (finalMeta.warning) {
+          this.notify(finalMeta.warning, "error");
+        }
       }
 
       return rows;

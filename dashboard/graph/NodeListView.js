@@ -4,11 +4,19 @@ import { coerceToNumber } from "../utils/NumberUtils.js";
 import { appendSummaryRow, describeCombination, shortenAddress } from "./utils.js";
 
 export class NodeListView {
-  constructor({ getOAppAlias, formatChainLabel, areStringArraysEqual, requestUniformAlias }) {
+  constructor({
+    getOAppAlias,
+    formatChainLabel,
+    areStringArraysEqual,
+    isConfigRouteBlocked,
+    requestUniformAlias,
+  }) {
     this.getOAppAlias = typeof getOAppAlias === "function" ? getOAppAlias : () => null;
     this.formatChainLabel = typeof formatChainLabel === "function" ? formatChainLabel : () => "";
     this.areStringArraysEqual =
       typeof areStringArraysEqual === "function" ? areStringArraysEqual : (a, b) => false;
+    this.isConfigRouteBlocked =
+      typeof isConfigRouteBlocked === "function" ? isConfigRouteBlocked : () => false;
     this.shortenAddress = shortenAddress;
     this.appendSummaryRow = appendSummaryRow;
     this.describeCombination = describeCombination;
@@ -47,6 +55,7 @@ export class NodeListView {
       : [];
     const dominantCombination = analysis?.dominantCombination || null;
     const combinationFingerprint = dominantCombination?.fingerprint ?? null;
+    const routeState = analysis?.routeState || null;
 
     const edgesByTo = new Map();
     const edgesByFrom = new Map();
@@ -139,10 +148,14 @@ export class NodeListView {
             Boolean(combinationFingerprint) &&
             !cfg.usesRequiredDVNSentinel &&
             fingerprint === combinationFingerprint;
-          const differsFromDominant = Boolean(combinationFingerprint) && !matchesDominant;
+          // Blocked routes carry no traffic, so (like GraphAnalyzer's edge anomalies) they are
+          // not reported as DVN-set or sentinel deviations.
+          const isRouteBlocked = this.isConfigRouteBlocked(node.id, cfg, routeState);
+          const differsFromDominant =
+            Boolean(combinationFingerprint) && !matchesDominant && !isRouteBlocked;
           const usesSentinel = Boolean(cfg.usesRequiredDVNSentinel);
 
-          if (usesSentinel) {
+          if (usesSentinel && !isRouteBlocked) {
             diffReasonSet.add(
               `sentinel quorum ${cfg.optionalDVNThreshold || 0}/${cfg.optionalDVNCount || 0}`,
             );
@@ -184,6 +197,7 @@ export class NodeListView {
             usesSentinel,
             matchesDominant,
             differsFromDominant,
+            isRouteBlocked,
             fingerprint,
             packetCount:
               cfg.routePacketCount !== undefined && cfg.routePacketCount !== null
@@ -222,7 +236,8 @@ export class NodeListView {
       const hasConfigDifference =
         differenceEdges.length > 0 || configDetails.some((detail) => detail.differsFromDominant);
       const hasSentinel =
-        sentinelEdges.length > 0 || configDetails.some((detail) => detail.usesSentinel);
+        sentinelEdges.length > 0 ||
+        configDetails.some((detail) => detail.usesSentinel && !detail.isRouteBlocked);
 
       const notes = new Set();
       if (blockedNodes.has(node.id)) {
@@ -911,7 +926,12 @@ export class NodeListView {
       };
 
       metric.configDetails.forEach((detail) => {
-        if (detail.matchesDominant && !detail.usesSentinel && !detail.differsFromDominant) {
+        if (
+          detail.matchesDominant &&
+          !detail.usesSentinel &&
+          !detail.differsFromDominant &&
+          !detail.isRouteBlocked
+        ) {
           const key = detail.fingerprint || "dominant";
           if (!standardGroups.has(key)) {
             standardGroups.set(key, {
@@ -969,7 +989,7 @@ export class NodeListView {
           detail.srcEid !== undefined && detail.srcEid !== null
             ? this.formatChainLabel(detail.srcEid) || `EID ${detail.srcEid}`
             : "EID —";
-        header.textContent = `${chainLabel} • ${describeRequiredLabel(detail)}`;
+        header.textContent = `${chainLabel} • ${describeRequiredLabel(detail)}${detail.isRouteBlocked ? " • blocked" : ""}`;
         line.appendChild(header);
         renderDvns(detail, line);
         stack.appendChild(line);

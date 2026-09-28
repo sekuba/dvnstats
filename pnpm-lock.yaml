@@ -11,6 +11,9 @@ importers:
       envio:
         specifier: 3.10.0
         version: 3.10.0(react-dom@19.2.6(react@19.2.5))(typescript@6.0.3)
+      postgres:
+        specifier: 3.4.8
+        version: 3.4.8
     devDependencies:
       '@biomejs/biome':
         specifier: ^2.3.1

@@ -227,18 +227,20 @@ export class SecurityConfigFormatter {
       const isZeroPeer = isZeroAddress(row.peer);
       if (peerRecord) {
         if (isZeroPeer && !peerRecord.fromPacketDelivered) {
-          peerState = "explicitly-blocked";
+          peerState = "explicit-blocked";
         } else if (peerRecord.fromPacketDelivered) {
           peerState = "auto-discovered";
         } else {
-          peerState = "explicitly-set";
+          peerState = "explicit";
         }
       } else if (isZeroPeer) {
-        peerState = "explicitly-blocked";
+        peerState = "explicit-blocked";
+      } else if (!row.peer) {
+        peerState = "implicit-blocked";
       }
     }
 
-    if (peerState === "explicit-blocked" || peerState === "explicitly-blocked") {
+    if (peerState === "explicit-blocked") {
       reasons.push({
         type: "peer-zero-explicit",
         label: "Peer blocked (explicit zero address)",
@@ -430,6 +432,9 @@ export class SecurityConfigFormatter {
     }
 
     const { localEid, address } = splitOAppId(peerOappId);
+    if (isZeroAddress(address)) {
+      return null;
+    }
     const endpointLabel =
       localEid !== null && localEid !== undefined
         ? this.getChainDisplayLabel(localEid) || `EID ${localEid}`
@@ -452,33 +457,32 @@ export class SecurityConfigFormatter {
     const peerData = peerMap?.get(String(row.eid));
     const isZeroPeer = isZeroAddress(row.peer);
 
+    // Same vocabulary as SecurityConfigNormalizer.derivePeerStateHint.
     let peerState = row.peerStateHint || null;
     if (!peerState) {
       if (peerData) {
         if (isZeroPeer && !peerData.fromPacketDelivered) {
-          peerState = "explicitly-blocked";
+          peerState = "explicit-blocked";
         } else if (peerData.fromPacketDelivered) {
           peerState = "auto-discovered";
         } else {
-          peerState = "explicitly-set";
+          peerState = "explicit";
         }
       } else if (isZeroPeer) {
-        peerState = "explicitly-blocked";
+        peerState = "explicit-blocked";
+      } else if (!row.peer) {
+        peerState = "implicit-blocked";
       } else {
         peerState = "not-configured";
       }
-    }
-
-    if (peerState === "explicit") {
-      peerState = "explicitly-set";
     }
 
     const lines = [];
     const stateLabels = {
       "not-configured": "Not configured",
       "auto-discovered": "Auto-discovered",
-      "explicitly-set": "",
-      "explicitly-blocked": "BLOCKED (zero address)",
+      explicit: "",
+      "explicit-blocked": "BLOCKED (zero address)",
       "implicit-blocked": "Assumed blocked (no peer configured)",
     };
     const primaryLabel = stateLabels[peerState] ?? peerState;
@@ -486,7 +490,7 @@ export class SecurityConfigFormatter {
       lines.push(primaryLabel);
     }
 
-    const isBlocked = peerState === "explicitly-blocked" || peerState === "implicit-blocked";
+    const isBlocked = peerState === "explicit-blocked" || peerState === "implicit-blocked";
     if (peerState === "implicit-blocked") {
       lines.push("LayerZero default; some OApps may still accept traffic.");
     }

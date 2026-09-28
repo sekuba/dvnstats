@@ -57,7 +57,7 @@ export class ResultsView {
         ? `${metaSnapshot.webData?.nodes?.length || 0} nodes, ${metaSnapshot.webData?.edges?.length || 0} edges`
         : `${rows.length} row${rows.length === 1 ? "" : "s"}`,
       metaSnapshot.summary,
-      `${Math.round(metaSnapshot.elapsed)} ms`,
+      Number.isFinite(metaSnapshot.elapsed) ? `${Math.round(metaSnapshot.elapsed)} ms` : null,
       metaSnapshot.limitLabel,
       variableHints,
       new Date().toLocaleTimeString(),

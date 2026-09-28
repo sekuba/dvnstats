@@ -17,6 +17,7 @@ const SECURITY_BATCH_QUERY = `
       effectiveRequiredDVNs
       effectiveOptionalDVNs
       libraryStatus
+      isConfigTracked
       usesDefaultLibrary
       usesDefaultConfig
       usesRequiredDVNSentinel
@@ -50,6 +51,7 @@ const SECURITY_BATCH_QUERY = `
       effectiveRequiredDVNs
       effectiveOptionalDVNs
       libraryStatus
+      isConfigTracked
       usesDefaultLibrary
       usesDefaultConfig
       usesRequiredDVNSentinel

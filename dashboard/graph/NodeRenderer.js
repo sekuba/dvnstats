@@ -20,6 +20,7 @@ export class NodeRenderer {
     showPersistentTooltip,
     centerNodeId,
     updateVisibility,
+    routeState = null,
   ) {
     const nodesGroup = document.createElementNS(svgNS, "g");
     nodesGroup.setAttribute("class", "nodes");
@@ -28,7 +29,7 @@ export class NodeRenderer {
       const pos = nodePositions.get(node.id);
       if (!pos) continue;
 
-      const { minRequiredDVNs, hasBlockedConfig } = this.getNodeSecurityMetrics(node);
+      const { minRequiredDVNs, hasBlockedConfig } = this.getNodeSecurityMetrics(node, routeState);
       const isBlocked = blockedNodes.has(node.id);
       const isCenterNode = node.id === centerNodeId;
 
@@ -82,11 +83,17 @@ export class NodeRenderer {
 
       if (node.isTracked) {
         titleLines.push(`Lifetime packets received: ${node.totalPacketsReceived}`);
-        titleLines.push(`Min required DVNs: ${minRequiredDVNs}`);
+        titleLines.push(`Min required DVNs (unblocked routes): ${minRequiredDVNs}`);
       }
 
+      // Mirrors GraphAnalyzer.findBlockedNodes: every inbound route blocked, or a dangling
+      // (not crawled) node without inbound routes.
       if (isBlocked) {
-        titleLines.push(`Blocked: Cannot send packets to monitored nodes`);
+        titleLines.push(
+          node.isDangling
+            ? `Blocked: Dangling (not crawled), no unblocked inbound routes`
+            : `Blocked: All inbound routes are blocked`,
+        );
       }
 
       if (hasBlockedConfig) {
@@ -127,7 +134,7 @@ export class NodeRenderer {
           form.style.gap = "4px";
 
           const label = document.createElement("label");
-          label.textContent = "Show unblocked path to OApp ID";
+          label.textContent = "Show unblocked packet path from this OApp to OApp ID";
           label.style.fontSize = "11px";
           label.style.fontWeight = "600";
           form.appendChild(label);
@@ -165,7 +172,7 @@ export class NodeRenderer {
             evt.preventDefault();
             const targetId = input.value.trim();
             if (!targetId) {
-              setStatus("Enter an OApp ID to inspect the connecting path.", "error");
+              setStatus("Enter the OApp ID this OApp should reach.", "error");
               return;
             }
             const result = updateVisibility(node.id, {
@@ -173,7 +180,7 @@ export class NodeRenderer {
               onSuccess: (path) => {
                 const hops = Math.max(0, path.length - 1);
                 const hopLabel = hops === 1 ? "hop" : "hops";
-                setStatus(`Showing connection (${hops} ${hopLabel}).`, "success");
+                setStatus(`Showing path from this OApp (${hops} ${hopLabel}).`, "success");
               },
               onFail: (message) => {
                 setStatus(message || "No connecting path found.", "error");

@@ -38,6 +38,10 @@ export function resolveOAppSecurityConfigs({
   let syntheticCount = 0;
   let implicitBlocks = 0;
   let explicitBlocks = 0;
+  // Routes with an indexed OAppSecurityConfig row that are still controlled by
+  // the LayerZero default library / ULN config slot (synthetic rows excluded).
+  let materializedDefaultLibraryCount = 0;
+  let materializedDefaultConfigCount = 0;
 
   for (const eid of candidateEids) {
     if (!eid) {
@@ -64,6 +68,13 @@ export function resolveOAppSecurityConfigs({
 
     if (normalized.synthetic) {
       syntheticCount += 1;
+    } else {
+      if (normalized.usesDefaultLibrary === true) {
+        materializedDefaultLibraryCount += 1;
+      }
+      if (normalized.usesDefaultConfig === true) {
+        materializedDefaultConfigCount += 1;
+      }
     }
 
     if (normalized.peerStateHint === "implicit-blocked") {
@@ -89,6 +100,9 @@ export function resolveOAppSecurityConfigs({
     summary: {
       totalRoutes: resolvedRows.length,
       syntheticCount,
+      materializedCount: resolvedRows.length - syntheticCount,
+      materializedDefaultLibraryCount,
+      materializedDefaultConfigCount,
       implicitBlocks,
       explicitBlocks,
     },

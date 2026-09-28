@@ -83,46 +83,41 @@ export class GraphLayout {
       });
     }
 
-    const distancesToProcess = Array.from(nodesByDistance.keys()).filter((d) => d !== 0 && d < 999);
-    for (const originalDistance of distancesToProcess) {
-      const distanceNodes = nodesByDistance.get(originalDistance);
-      if (!distanceNodes || distanceNodes.length <= 1) continue;
-
-      if (originalDistance === 1) {
+    // Columns are kept in explicit arrays (ordered outward from the center) rather than
+    // keyed by fractional depths, so a wide level can never overwrite the next level's column.
+    // Distance-1 tracked nodes go left of the center; everything else goes right, by distance.
+    const centerColumns = [];
+    const leftColumns = [];
+    const rightColumns = [];
+    const sortedDistances = Array.from(nodesByDistance.keys()).sort((a, b) => a - b);
+    for (const distance of sortedDistances) {
+      const distanceNodes = nodesByDistance.get(distance);
+      if (distance === 0) {
+        centerColumns.push(distanceNodes);
+      } else if (distance === 1 && distanceNodes.length > 1) {
         const trackedNodes = distanceNodes.filter((n) => n.isTracked);
         const untrackedNodes = distanceNodes.filter((n) => !n.isTracked);
-
-        if (trackedNodes.length > 0) {
-          this.splitIntoColumns(trackedNodes, nodesByDistance, -0.1, -0.1);
-        }
-
-        if (untrackedNodes.length > 0) {
-          this.splitIntoColumns(untrackedNodes, nodesByDistance, originalDistance + 0.1, 0.1);
-        }
+        leftColumns.push(...this.splitIntoColumns(trackedNodes));
+        rightColumns.push(...this.splitIntoColumns(untrackedNodes));
       } else {
-        this.splitIntoColumns(distanceNodes, nodesByDistance, originalDistance + 0.1, 0.1);
+        rightColumns.push(...this.splitIntoColumns(distanceNodes));
       }
-
-      nodesByDistance.delete(originalDistance);
     }
 
-    const distanceKeys = Array.from(nodesByDistance.keys()).sort((a, b) => a - b);
     const centerX = this.width / 2;
+    const columns = [
+      ...centerColumns.map((columnNodes) => ({ side: 0, columnNodes, columnIndex: 0 })),
+      ...leftColumns.map((columnNodes, columnIndex) => ({ side: -1, columnNodes, columnIndex })),
+      ...rightColumns.map((columnNodes, columnIndex) => ({ side: 1, columnNodes, columnIndex })),
+    ];
 
-    const leftDistances = distanceKeys.filter((d) => d < 0).sort((a, b) => b - a);
-    const rightDistances = distanceKeys.filter((d) => d > 0).sort((a, b) => a - b);
-
-    for (const distance of distanceKeys) {
-      const nodesAtDistance = nodesByDistance.get(distance);
-
+    for (const { side, columnNodes: nodesAtDistance, columnIndex } of columns) {
       let baseX;
-      if (distance === 0) {
+      if (side === 0) {
         baseX = centerX;
-      } else if (distance < 0) {
-        const columnIndex = leftDistances.indexOf(distance);
+      } else if (side < 0) {
         baseX = centerX - this.seedGap - columnIndex * this.columnSpacing;
       } else {
-        const columnIndex = rightDistances.indexOf(distance);
         baseX = centerX + this.seedGap + columnIndex * this.columnSpacing;
       }
 
@@ -152,7 +147,7 @@ export class GraphLayout {
         const yJitter =
           (nodeHash % APP_CONFIG.GRAPH_VISUAL.HASH_MOD) - APP_CONFIG.GRAPH_VISUAL.Y_JITTER_MAX;
 
-        const x = distance < 0 ? baseX + xOffset : baseX - xOffset;
+        const x = side < 0 ? baseX + xOffset : baseX - xOffset;
         const y = baseY + yJitter;
 
         positions.set(node.id, { x, y });
@@ -162,10 +157,12 @@ export class GraphLayout {
     return positions;
   }
 
-  splitIntoColumns(nodes, nodesByDepth, baseDepth, increment) {
+  splitIntoColumns(nodes) {
+    if (nodes.length === 0) {
+      return [];
+    }
     if (nodes.length <= this.maxNodesPerColumn) {
-      nodesByDepth.set(baseDepth, nodes);
-      return;
+      return [nodes];
     }
 
     const numColumns = Math.max(
@@ -174,16 +171,17 @@ export class GraphLayout {
     );
     const nodesPerColumn = Math.ceil(nodes.length / numColumns);
 
+    const columns = [];
     for (let i = 0; i < numColumns; i++) {
       const start = i * nodesPerColumn;
       const end = Math.min(start + nodesPerColumn, nodes.length);
       if (start < nodes.length) {
         const columnNodes = nodes.slice(start, end);
         if (columnNodes.length > 0) {
-          const columnDepth = baseDepth + i * increment;
-          nodesByDepth.set(columnDepth, columnNodes);
+          columns.push(columnNodes);
         }
       }
     }
+    return columns;
   }
 }

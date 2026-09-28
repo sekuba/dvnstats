@@ -1,22 +1,28 @@
-import { ChainDirectory } from "./core.js";
+const DATA_URL = "./data/stats.json";
+const SCHEMA_VERSION = 4;
+const DAY = 86400;
+const HOUR = 3600;
+const SVG_NS = "http://www.w3.org/2000/svg";
 
-const DATA_DIR = "./data";
-
-let statsData = null;
-let chainMetadata = null;
-let availableDatasets = [];
-let currentDataset = null;
+const WINDOW_NAMES = ["7d", "30d", "90d", "1y", "all"];
+const DEFAULT_WINDOW = "90d";
+const DATASET_PARAM = "range";
+const LEGACY_DATASET_PARAM = "dataset";
+const CHART_VIEW_PARAM_PREFIX = "view-";
+const VALID_CHART_VIEWS = new Set(["snapshot", "time"]);
 const chartViewState = {
+  "verification-control": "snapshot",
   "dvn-threshold": "snapshot",
   "destination-chain": "snapshot",
   "source-chain": "snapshot",
 };
-const CHART_VIEW_PARAM_PREFIX = "view-";
-const DATASET_PARAM = "range";
-const LEGACY_DATASET_PARAM = "dataset";
-const VALID_CHART_VIEWS = new Set(["snapshot", "time"]);
+
+const MAX_LINE_POINTS = 600;
+const MAX_DAILY_POINTS = 120;
+const HOURLY_WINDOW_DAYS = 90;
+const STACKED_CHAIN_LIMIT = 8;
 const DVN_THRESHOLD_UNKNOWN = "unknown";
-const STACKED_COLORS = [
+const COLORS = [
   "#1b9c85",
   "#78bdff",
   "#ff1df5",
@@ -28,71 +34,59 @@ const STACKED_COLORS = [
   "#fcbad3",
   "#95e1d3",
 ];
-const STACKED_CHAIN_LIMIT = 8;
 
-async function loadChainMetadata() {
-  const directory = new ChainDirectory();
-  await directory.load();
-  return directory;
-}
+// Must match the tier definitions in scripts/precomputePacketStats.js.
+const TIERS = [
+  {
+    key: "lzVerifiers",
+    short: "LZ picks verifiers",
+    label: "LayerZero picks the verifiers",
+    color: "#ff1df5",
+    note: "The route inherits the default receive library, the whole default ULN config, or the default required DVNs. LayerZero can change which DVNs are enough to deliver a packet.",
+  },
+  {
+    key: "lzParams",
+    short: "LZ sets other parameters",
+    label: "LayerZero sets other parameters",
+    color: "#f2f200",
+    note: "The OApp owner set its own required DVNs, but confirmations or optional-DVN settings still fall back to LayerZero defaults. LayerZero can weaken finality or add verifiers that stall the route, but cannot get a packet past the owner's required DVNs.",
+  },
+  {
+    key: "owner",
+    short: "Owner sets everything",
+    label: "OApp owner controls everything",
+    color: "#1b9c85",
+    note: "Every validation setting is set by the OApp owner.",
+  },
+  {
+    key: "unknown",
+    short: "Unknown",
+    label: "Unknown (custom library)",
+    color: "#c7c7c7",
+    note: "A receive library the indexer cannot decode.",
+  },
+];
 
-function getChainName(eid, metadata) {
-  if (!metadata) return `EID ${eid}`;
+const WEAKEST_COLORS = { 1: "#ff1df5", 2: "#f2f200", strong: "#1b9c85", unknown: "#c7c7c7" };
 
-  if (typeof metadata.getChainInfo === "function") {
-    const info = metadata.getChainInfo(eid);
-    return info?.primary || `EID ${eid}`;
-  }
+let stats = null;
+let currentWindow = null;
 
-  for (const [chainKey, chainData] of Object.entries(metadata)) {
-    if (!chainData.deployments) continue;
+// ---------------------------------------------------------------------------
+// Formatting and DOM helpers
 
-    for (const deployment of chainData.deployments) {
-      if (String(deployment.eid) === String(eid)) {
-        return (
-          chainData.chainDetails?.name ||
-          chainData.chainDetails?.shortName ||
-          chainKey.replace("-mainnet", "").replace("-", " ")
-        );
-      }
-    }
-  }
-
-  return `EID ${eid}`;
-}
-
-function resolveDvnName(address, localEid = null) {
-  if (!address) return address;
-  if (chainMetadata && typeof chainMetadata.resolveDvnName === "function") {
-    return chainMetadata.resolveDvnName(address, { localEid });
-  }
-  return address;
-}
-
-// Format numbers
-function formatNumber(num) {
-  return num.toLocaleString();
-}
-
-function formatCompactNumber(num) {
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(num);
-}
-
-function formatPercent(percent) {
-  return `${percent.toFixed(2)}%`;
-}
-
-function formatAxisPercent(percent) {
-  return `${Math.round(percent)}%`;
-}
+const formatNumber = (num) => Number(num).toLocaleString();
+const formatCompactNumber = (num) =>
+  new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(num);
+const formatPercent = (percent) => `${percent.toFixed(2)}%`;
+const formatAxisPercent = (percent) => `${Math.round(percent)}%`;
+const share = (value, total) => (total > 0 ? (value / total) * 100 : 0);
+const capitalize = (value) => value.charAt(0).toUpperCase() + value.slice(1);
+const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
 
 function formatDate(timestamp) {
   if (!timestamp) return "—";
-  const date = new Date(Number(timestamp) * 1000);
-  return date.toISOString().split("T")[0];
+  return new Date(Number(timestamp) * 1000).toISOString().split("T")[0];
 }
 
 function formatAddress(address) {
@@ -102,65 +96,70 @@ function formatAddress(address) {
 
 function setText(id, value) {
   const node = document.getElementById(id);
-  if (node) {
-    node.textContent = value;
+  if (node) node.textContent = value;
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function svgEl(tag, attrs = {}) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [name, value] of Object.entries(attrs)) node.setAttribute(name, value);
+  return node;
+}
+
+function svgTitle(node, text) {
+  node.appendChild(svgEl("title")).textContent = text;
+  return node;
+}
+
+/** "<strong>value</strong> <span class=…>(detail)</span>" built without innerHTML. */
+function valueCell(className, strong, detail, detailClass) {
+  const cell = el("div", className);
+  cell.appendChild(el("strong", null, strong));
+  if (detail !== undefined) {
+    cell.append(" ");
+    cell.appendChild(el("span", detailClass, detail));
   }
+  return cell;
 }
 
-function getUrl() {
-  return new URL(window.location.href);
+function renderEmpty(container, message) {
+  container.replaceChildren(el("p", "chart-empty", message));
 }
 
-function updateUrl(mutator, { replace = false } = {}) {
-  const url = getUrl();
+const chainName = (eid) => stats.chains[eid] ?? `EID ${eid}`;
+const windowLabel = (name) => (name === "all" ? "All Time" : name.toUpperCase());
+
+// ---------------------------------------------------------------------------
+// URL state and anchors
+
+function updateUrl(mutator) {
+  const url = new URL(window.location.href);
   mutator(url);
-  window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+  window.history.pushState({}, "", url);
 }
 
-function getRequestedDatasetName() {
+function getRequestedWindow() {
   const params = new URLSearchParams(window.location.search);
-  return params.get(DATASET_PARAM) || params.get(LEGACY_DATASET_PARAM) || null;
-}
-
-function getDatasetFromUrl(datasets) {
-  const requested = getRequestedDatasetName();
-  if (!requested) {
-    return null;
-  }
-  return datasets.some((dataset) => dataset.name === requested) ? requested : null;
-}
-
-function getRequestedChartView(chartKey) {
-  const params = new URLSearchParams(window.location.search);
-  const view = params.get(`${CHART_VIEW_PARAM_PREFIX}${chartKey}`) || params.get(chartKey);
-  return VALID_CHART_VIEWS.has(view) ? view : null;
+  const requested = params.get(DATASET_PARAM) || params.get(LEGACY_DATASET_PARAM);
+  return stats?.windows[requested] ? requested : null;
 }
 
 function applyChartViewsFromUrl() {
-  Object.keys(chartViewState).forEach((chartKey) => {
-    const view = getRequestedChartView(chartKey);
-    chartViewState[chartKey] = view || "snapshot";
-  });
-}
-
-function updateDatasetUrl(datasetName) {
-  updateUrl((url) => {
-    url.searchParams.set(DATASET_PARAM, datasetName);
-    url.searchParams.delete(LEGACY_DATASET_PARAM);
-  });
-}
-
-function updateChartViewUrl(chartKey, view) {
-  updateUrl((url) => {
-    url.searchParams.set(`${CHART_VIEW_PARAM_PREFIX}${chartKey}`, view);
-  });
+  const params = new URLSearchParams(window.location.search);
+  for (const chartKey of Object.keys(chartViewState)) {
+    const view = params.get(`${CHART_VIEW_PARAM_PREFIX}${chartKey}`) || params.get(chartKey);
+    chartViewState[chartKey] = VALID_CHART_VIEWS.has(view) ? view : "snapshot";
+  }
 }
 
 function setLinkTarget(element) {
-  if (!element) {
-    return;
-  }
-  if (!element.hasAttribute("tabindex")) {
+  if (element && !element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "-1");
   }
 }
@@ -188,13 +187,9 @@ function appendPermalink(heading, targetId) {
   if (!heading || !targetId || heading.querySelector(".section-permalink")) {
     return;
   }
-
-  const label = heading.textContent.trim();
-  const link = document.createElement("a");
-  link.className = "section-permalink";
+  const link = el("a", "section-permalink", "#");
   link.href = `#${targetId}`;
-  link.textContent = "#";
-  link.setAttribute("aria-label", `Link to ${label}`);
+  link.setAttribute("aria-label", `Link to ${heading.textContent.trim()}`);
   heading.appendChild(link);
 }
 
@@ -203,7 +198,6 @@ function initializeStatsAnchors() {
   if (header && !header.id) {
     header.id = "stats-top";
   }
-
   const title = document.querySelector(".stats-header h1");
   if (header && title) {
     setLinkTarget(header);
@@ -212,9 +206,7 @@ function initializeStatsAnchors() {
 
   document.querySelectorAll(".stat-card").forEach((card) => {
     const heading = card.querySelector("h2");
-    if (!heading) {
-      return;
-    }
+    if (!heading) return;
     if (!card.id) {
       card.id = uniqueElementId(`stat-${slugifyAnchor(heading.textContent)}`);
     }
@@ -224,9 +216,7 @@ function initializeStatsAnchors() {
 
   document.querySelectorAll(".chart-section").forEach((section) => {
     const heading = section.querySelector(".chart-title");
-    if (!heading) {
-      return;
-    }
+    if (!heading) return;
     if (!section.id) {
       section.id = uniqueElementId(slugifyAnchor(heading.textContent));
     }
@@ -239,28 +229,17 @@ function initializeStatsAnchors() {
 
 function scrollToCurrentHash() {
   const rawHash = window.location.hash.slice(1);
-  if (!rawHash) {
-    return;
-  }
-
+  if (!rawHash) return;
   const target = document.getElementById(decodeURIComponent(rawHash));
-  if (!target) {
-    return;
-  }
-
+  if (!target) return;
   requestAnimationFrame(() => {
     target.scrollIntoView({ block: "start" });
-    if (typeof target.focus === "function") {
-      target.focus({ preventScroll: true });
-    }
+    target.focus?.({ preventScroll: true });
   });
 }
 
 function setChartView(chartKey, view, options = {}) {
-  if (!VALID_CHART_VIEWS.has(view)) {
-    return;
-  }
-
+  if (!VALID_CHART_VIEWS.has(view)) return;
   chartViewState[chartKey] = view;
 
   document
@@ -268,1428 +247,1066 @@ function setChartView(chartKey, view, options = {}) {
     .forEach((button) => {
       button.classList.toggle("active", button.dataset.view === view);
     });
-
   document.querySelectorAll(`[data-chart-panel="${chartKey}"]`).forEach((panel) => {
     panel.classList.toggle("hidden", panel.dataset.view !== view);
   });
 
   if (options.updateUrl) {
-    updateChartViewUrl(chartKey, view);
+    updateUrl((url) => url.searchParams.set(`${CHART_VIEW_PARAM_PREFIX}${chartKey}`, view));
   }
 }
 
 function syncChartViews() {
-  Object.entries(chartViewState).forEach(([chartKey, view]) => {
-    setChartView(chartKey, view);
-  });
+  for (const [chartKey, view] of Object.entries(chartViewState)) setChartView(chartKey, view);
 }
 
 function initChartToggles() {
   document.querySelectorAll("[data-chart-toggle]").forEach((toggle) => {
     const chartKey = toggle.dataset.chartToggle;
-
     toggle.querySelectorAll(".chart-toggle-button").forEach((button) => {
       button.addEventListener("click", () => {
         setChartView(chartKey, button.dataset.view, { updateUrl: true });
       });
     });
   });
-
   syncChartViews();
 }
 
-function getCoverageSummary(stats) {
-  const registrySummary =
-    chainMetadata && typeof chainMetadata.getRegistrySummary === "function"
-      ? chainMetadata.getRegistrySummary()
-      : null;
+// ---------------------------------------------------------------------------
+// Time ranges over the precomputed series
 
-  const indexedChainCount =
-    stats.coverage?.indexedChainCount ??
-    registrySummary?.indexedChainCount ??
-    (chainMetadata && typeof chainMetadata.getIndexedChainCount === "function"
-      ? chainMetadata.getIndexedChainCount()
-      : null) ??
-    stats.chainBreakdown?.length ??
-    0;
-
+function dailyRange(win) {
+  const daily = stats.series.daily;
+  const start = win.fromDay - daily.firstDay;
+  const length = daily.packets.length - start;
   return {
-    indexedChainCount,
-    destinationEidCount: stats.coverage?.destinationEidCount ?? stats.chainBreakdown?.length ?? 0,
-    sourceEidCount: stats.coverage?.sourceEidCount ?? stats.srcChainBreakdown?.length ?? 0,
+    timestamps: Array.from({ length }, (_, i) => (win.fromDay + i) * DAY),
+    slice: (values) => values.slice(start),
   };
 }
 
-function renderOverview(stats) {
-  const coverage = getCoverageSummary(stats);
-
-  setText("stat-total", formatNumber(stats.total));
-  setText("stat-all-default", formatPercent(stats.allDefaultPercentage));
-  setText("stat-default-lib", formatPercent(stats.defaultLibPercentage));
-  setText("stat-tracked", formatPercent(stats.trackedPercentage));
-  setText("stat-dvn-combos", formatNumber(stats.dvnCombinations.length));
-  setText("stat-indexed-chains", formatNumber(coverage.indexedChainCount));
-  setText("stat-source-eids", formatNumber(coverage.sourceEidCount));
-
-  const subtitle = `${formatNumber(stats.total)} packets • ${stats.dvnCombinations.length} unique DVN combinations • ${coverage.indexedChainCount} indexed chains`;
-  setText("stats-subtitle", subtitle);
-
-  setText("computed-at", new Date(stats.computedAt).toLocaleString());
-
-  const timeRange = `${formatDate(stats.timeRange.earliest)} → ${formatDate(stats.timeRange.latest)}`;
-  setText("time-range", timeRange);
-}
-
-function renderPieChart(containerId, data, options = {}) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = "";
-
-  if (!data || data.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No data available</p>';
-    return;
+/** Daily buckets for short windows, Monday-aligned weeks beyond MAX_DAILY_POINTS days. */
+function rollup(win) {
+  const range = dailyRange(win);
+  if (range.timestamps.length <= MAX_DAILY_POINTS) {
+    return { interval: "daily", timestamps: range.timestamps, sum: range.slice };
   }
 
+  const weeks = [];
+  const weekOfDay = range.timestamps.map((timestamp) => {
+    const monday = timestamp - ((new Date(timestamp * 1000).getUTCDay() + 6) % 7) * DAY;
+    if (weeks.at(-1) !== monday) weeks.push(monday);
+    return weeks.length - 1;
+  });
+  return {
+    interval: "weekly",
+    timestamps: weeks,
+    sum: (values) => {
+      const out = new Array(weeks.length).fill(0);
+      range.slice(values).forEach((value, i) => {
+        out[weekOfDay[i]] += value;
+      });
+      return out;
+    },
+  };
+}
+
+/** Hourly points for windows up to 90 days, daily beyond; merged down to MAX_LINE_POINTS. */
+function lineRange(win) {
+  let timestamps;
+  let slice;
+  let baseHours;
+  if (win.days && win.days <= HOURLY_WINDOW_DAYS) {
+    const hourly = stats.series.hourly;
+    const start = Math.max(0, win.fromDay * 24 - hourly.firstHour);
+    timestamps = hourly.packets.slice(start).map((_, i) => (hourly.firstHour + start + i) * HOUR);
+    slice = (key) => hourly[key].slice(start);
+    baseHours = 1;
+  } else {
+    const range = dailyRange(win);
+    timestamps = range.timestamps;
+    slice = (key) => range.slice(stats.series.daily[key]);
+    baseHours = 24;
+  }
+
+  const mergeFactor = Math.max(1, Math.ceil(timestamps.length / MAX_LINE_POINTS));
+  const merge = (values) => {
+    const merged = [];
+    for (let i = 0; i < values.length; i += mergeFactor) {
+      merged.push(values.slice(i, i + mergeFactor).reduce((sum, value) => sum + value, 0));
+    }
+    return merged;
+  };
+  return {
+    timestamps: timestamps.filter((_, i) => i % mergeFactor === 0),
+    values: (key) => merge(slice(key)),
+    interval: intervalLabel(baseHours * mergeFactor),
+  };
+}
+
+function intervalLabel(hours) {
+  if (hours === 1) return "hourly";
+  if (hours < 24) return `every ${hours} hours`;
+  if (hours === 24) return "daily";
+  if (hours < 168) return `every ${Math.round(hours / 24)} days`;
+  const weeks = Math.round(hours / 168);
+  return weeks === 1 ? "weekly" : `every ${weeks} weeks`;
+}
+
+// ---------------------------------------------------------------------------
+// Chart primitives
+
+function renderPieChart(containerId, data) {
+  const container = document.getElementById(containerId);
+  if (!data.length) return renderEmpty(container, "No data available");
+
   const total = data.reduce((sum, item) => sum + item.value, 0);
-
-  // Create pie chart
-  const pieChart = document.createElement("div");
-  pieChart.className = "pie-chart-container";
-
-  // SVG for pie
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 200 200");
-  svg.setAttribute("class", "pie-svg");
+  const pieChart = el("div", "pie-chart-container");
+  const svg = svgEl("svg", { viewBox: "0 0 200 200", class: "pie-svg" });
+  const legend = el("div", "pie-legend");
 
   let currentAngle = 0;
-  const colors = [
-    "#1b9c85", // green
-    "#78bdff", // blue
-    "#ff1df5", // magenta
-    "#f2f200", // yellow
-    "#ff6b6b", // red
-    "#4ecdc4", // teal
-    "#95e1d3", // mint
-    "#f38181", // salmon
-    "#aa96da", // purple
-    "#fcbad3", // pink
-  ];
-
   data.forEach((item, index) => {
-    const percentage = (item.value / total) * 100;
+    const percentage = share(item.value, total);
     const angle = (item.value / total) * 360;
+    const point = (degrees) => [
+      100 + 80 * Math.cos((Math.PI * degrees) / 180),
+      100 + 80 * Math.sin((Math.PI * degrees) / 180),
+    ];
+    const [x1, y1] = point(currentAngle);
+    const [x2, y2] = point(currentAngle + angle);
+    const color = item.color ?? COLORS[index % COLORS.length];
 
-    const slice = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    const startAngle = currentAngle;
-    const endAngle = currentAngle + angle;
-
-    const x1 = 100 + 80 * Math.cos((Math.PI * startAngle) / 180);
-    const y1 = 100 + 80 * Math.sin((Math.PI * startAngle) / 180);
-    const x2 = 100 + 80 * Math.cos((Math.PI * endAngle) / 180);
-    const y2 = 100 + 80 * Math.sin((Math.PI * endAngle) / 180);
-
-    const largeArc = angle > 180 ? 1 : 0;
-
-    const pathData = [
-      `M 100 100`,
-      `L ${x1} ${y1}`,
-      `A 80 80 0 ${largeArc} 1 ${x2} ${y2}`,
-      `Z`,
-    ].join(" ");
-
-    slice.setAttribute("d", pathData);
-    slice.setAttribute("fill", colors[index % colors.length]);
-    slice.setAttribute("stroke", "#0d0d0d");
-    slice.setAttribute("stroke-width", "2");
-    slice.setAttribute("class", "pie-slice");
-
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = `${item.label}: ${formatNumber(item.value)} (${formatPercent(percentage)})`;
-    slice.appendChild(title);
-
+    const slice = svgEl("path", {
+      d: `M 100 100 L ${x1} ${y1} A 80 80 0 ${angle > 180 ? 1 : 0} 1 ${x2} ${y2} Z`,
+      fill: color,
+      stroke: "#0d0d0d",
+      "stroke-width": "2",
+      class: "pie-slice",
+    });
+    svgTitle(slice, `${item.label}: ${formatNumber(item.value)} (${formatPercent(percentage)})`);
     svg.appendChild(slice);
     currentAngle += angle;
-  });
 
-  pieChart.appendChild(svg);
-
-  // Legend
-  const legend = document.createElement("div");
-  legend.className = "pie-legend";
-
-  data.forEach((item, index) => {
-    const percentage = (item.value / total) * 100;
-
-    const legendItem = document.createElement("div");
-    legendItem.className = "pie-legend-item";
-
-    const colorBox = document.createElement("div");
-    colorBox.className = "pie-legend-color";
-    colorBox.style.backgroundColor = colors[index % colors.length];
-
-    const label = document.createElement("div");
-    label.className = "pie-legend-label";
-    label.textContent = item.label;
-
-    const value = document.createElement("div");
-    value.className = "pie-legend-value";
-    value.innerHTML = `<strong>${formatNumber(item.value)}</strong> <span>(${formatPercent(percentage)})</span>`;
-
-    legendItem.appendChild(colorBox);
-    legendItem.appendChild(label);
-    legendItem.appendChild(value);
-
+    const legendItem = el("div", "pie-legend-item");
+    legendItem.appendChild(el("div", "pie-legend-color")).style.backgroundColor = color;
+    legendItem.appendChild(el("div", "pie-legend-label", item.label));
+    legendItem.appendChild(
+      valueCell("pie-legend-value", formatNumber(item.value), `(${formatPercent(percentage)})`),
+    );
     legend.appendChild(legendItem);
   });
 
-  pieChart.appendChild(legend);
-  container.appendChild(pieChart);
+  pieChart.append(svg, legend);
+  container.replaceChildren(pieChart);
 }
 
-// Render horizontal bar chart
 function renderBarChart(containerId, data, options = {}) {
   const container = document.getElementById(containerId);
-  container.innerHTML = "";
-
-  if (!data || data.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No data available</p>';
-    return;
-  }
+  if (!data.length) return renderEmpty(container, "No data available");
 
   const maxValue = Math.max(...data.map((d) => d.value));
-
-  data.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "bar-row";
-
-    const label = document.createElement("div");
-    label.className = "bar-label";
-    label.textContent = item.label;
-
-    const barContainer = document.createElement("div");
-    barContainer.className = "bar-container-horizontal";
-
-    const bar = document.createElement("div");
-    bar.className = `bar-fill-horizontal ${options.barClass || ""}`;
-    const percentage = maxValue > 0 ? (item.value / maxValue) * 100 : 0;
-    bar.style.width = `${percentage}%`;
-
-    const valueLabel = document.createElement("div");
-    valueLabel.className = "bar-value";
-    valueLabel.innerHTML = `<strong>${formatNumber(item.value)}</strong> <span class="bar-percent">(${formatPercent(item.percentage)})</span>`;
-
-    barContainer.appendChild(bar);
-    row.appendChild(label);
-    row.appendChild(barContainer);
-    row.appendChild(valueLabel);
-
-    // Interactive hover
-    row.addEventListener("mouseenter", () => {
-      bar.style.transform = "scaleY(1.2)";
-    });
-    row.addEventListener("mouseleave", () => {
-      bar.style.transform = "scaleY(1)";
-    });
-
-    container.appendChild(row);
-  });
-}
-
-function capitalize(value) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function pickStackedRollup(stats) {
-  const daily = stats.timeSeries?.daily;
-  const weekly = stats.timeSeries?.weekly;
-
-  if (Array.isArray(daily) && daily.length > 0 && daily.length <= 120) {
-    return { data: daily, interval: "daily" };
-  }
-
-  if (Array.isArray(weekly) && weekly.length > 0) {
-    return { data: weekly, interval: "weekly" };
-  }
-
-  if (Array.isArray(daily) && daily.length > 0) {
-    return { data: daily, interval: "daily" };
-  }
-
-  return null;
-}
-
-function renderStackedMissing(containerId) {
-  const container = document.getElementById(containerId);
-  container.innerHTML =
-    '<p class="chart-empty">Regenerate packet stats to enable this time chart</p>';
-}
-
-function formatDvnThresholdLabel(key) {
-  if (String(key) === DVN_THRESHOLD_UNKNOWN) return "Unknown";
-  if (key.endsWith("+")) return `${key} DVNs`;
-
-  const threshold = Number(key);
-  return `${threshold} DVN${threshold === 1 ? "" : "s"}`;
-}
-
-function makeThresholdGroupKey(threshold, shouldGroupHighThresholds) {
-  if (String(threshold) === DVN_THRESHOLD_UNKNOWN) return DVN_THRESHOLD_UNKNOWN;
-
-  const numericThreshold = Number(threshold);
-  if (!Number.isFinite(numericThreshold)) return DVN_THRESHOLD_UNKNOWN;
-
-  return shouldGroupHighThresholds && numericThreshold > 5 ? "6+" : String(numericThreshold);
-}
-
-function compareThresholdGroupKeys(a, b) {
-  if (a === DVN_THRESHOLD_UNKNOWN && b === DVN_THRESHOLD_UNKNOWN) return 0;
-  if (a === DVN_THRESHOLD_UNKNOWN) return 1;
-  if (b === DVN_THRESHOLD_UNKNOWN) return -1;
-  if (a.endsWith("+")) return 1;
-  if (b.endsWith("+")) return -1;
-  return Number(a) - Number(b);
-}
-
-function buildDvnThresholdSeries(rollupData) {
-  const rawThresholds = Array.from(
-    new Set(
-      rollupData.flatMap((bucket) =>
-        Object.keys(bucket.dvnThresholds || {}).map((threshold) => String(threshold)),
-      ),
-    ),
-  );
-  const thresholds = Array.from(
-    new Set(
-      rawThresholds
-        .map((threshold) => Number(threshold))
-        .filter((threshold) => Number.isFinite(threshold)),
-    ),
-  ).sort((a, b) => a - b);
-  const hasUnknownThreshold = rawThresholds.some(
-    (threshold) => makeThresholdGroupKey(threshold, false) === DVN_THRESHOLD_UNKNOWN,
-  );
-
-  const shouldGroupHighThresholds = thresholds.length > 7;
-  const groupKeys = Array.from(
-    new Set([
-      ...thresholds.map((threshold) => makeThresholdGroupKey(threshold, shouldGroupHighThresholds)),
-      ...(hasUnknownThreshold ? [DVN_THRESHOLD_UNKNOWN] : []),
-    ]),
-  ).sort(compareThresholdGroupKeys);
-
-  return groupKeys.map((key, index) => ({
-    key,
-    label: formatDvnThresholdLabel(key),
-    color: STACKED_COLORS[index % STACKED_COLORS.length],
-    values: rollupData.map((bucket) => {
-      const value = Object.entries(bucket.dvnThresholds || {}).reduce(
-        (sum, [threshold, count]) =>
-          makeThresholdGroupKey(threshold, shouldGroupHighThresholds) === key
-            ? sum + Number(count || 0)
-            : sum,
-        0,
+  container.replaceChildren(
+    ...data.map((item) => {
+      const row = el("div", "bar-row");
+      const barContainer = el("div", "bar-container-horizontal");
+      const bar = barContainer.appendChild(
+        el("div", `bar-fill-horizontal ${options.barClass || ""}`),
       );
-
-      return { timestamp: bucket.timestamp, value };
+      bar.style.width = `${maxValue > 0 ? (item.value / maxValue) * 100 : 0}%`;
+      row.append(
+        el("div", "bar-label", item.label),
+        barContainer,
+        valueCell(
+          "bar-value",
+          formatNumber(item.value),
+          `(${formatPercent(item.percentage)})`,
+          "bar-percent",
+        ),
+      );
+      row.addEventListener("mouseenter", () => {
+        bar.style.transform = "scaleY(1.2)";
+      });
+      row.addEventListener("mouseleave", () => {
+        bar.style.transform = "scaleY(1)";
+      });
+      return row;
     }),
-  }));
-}
-
-function buildChainSeries(rollupData, breakdown, breakdownKey, rollupKey, colorOffset = 0) {
-  const topKeys = (breakdown || [])
-    .slice(0, STACKED_CHAIN_LIMIT)
-    .map((entry) => String(entry[breakdownKey]));
-  const topKeySet = new Set(topKeys);
-
-  const series = topKeys.map((key, index) => ({
-    key,
-    label: getChainName(key, chainMetadata),
-    color: STACKED_COLORS[(index + colorOffset) % STACKED_COLORS.length],
-    values: rollupData.map((bucket) => ({
-      timestamp: bucket.timestamp,
-      value: Number(bucket[rollupKey]?.[key] || 0),
-    })),
-  }));
-
-  const otherValues = rollupData.map((bucket) => {
-    const value = Object.entries(bucket[rollupKey] || {}).reduce(
-      (sum, [key, count]) => (topKeySet.has(key) ? sum : sum + Number(count || 0)),
-      0,
-    );
-
-    return { timestamp: bucket.timestamp, value };
-  });
-
-  if (otherValues.some((point) => point.value > 0)) {
-    series.push({
-      key: "__other",
-      label: "Other",
-      color: "#0d0d0d",
-      values: otherValues,
-    });
-  }
-
-  return series;
-}
-
-function renderStackedAreaChart(containerId, series, options = {}) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = "";
-  const isPercentMode = options.valueMode === "percent";
-
-  const filteredSeries = (series || [])
-    .map((entry) => ({
-      ...entry,
-      total: entry.values.reduce((sum, point) => sum + point.value, 0),
-    }))
-    .filter((entry) => entry.total > 0);
-
-  if (filteredSeries.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
-    return;
-  }
-
-  const timestamps = filteredSeries[0].values.map((point) => point.timestamp);
-  if (timestamps.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
-    return;
-  }
-
-  const rawStackedTotals = timestamps.map((_, index) =>
-    filteredSeries.reduce((sum, entry) => sum + Number(entry.values[index]?.value || 0), 0),
   );
-  const totalPackets = rawStackedTotals.reduce((sum, count) => sum + count, 0);
-  const plotSeries = isPercentMode
-    ? filteredSeries.map((entry) => ({
-        ...entry,
-        values: entry.values.map((point, index) => ({
-          ...point,
-          value:
-            rawStackedTotals[index] > 0
-              ? (Number(point.value || 0) / rawStackedTotals[index]) * 100
-              : 0,
-        })),
-      }))
-    : filteredSeries;
+}
 
-  const chartContainer = document.createElement("div");
-  chartContainer.className = "stacked-area-container";
+const CHART = { width: 1200, padding: { top: 20, right: 40, bottom: 60, left: 80 } };
 
-  const width = 1200;
-  const height = 340;
-  const padding = { top: 20, right: 40, bottom: 60, left: 80 };
-  const chartWidth = width - padding.left - padding.right;
+/** Grid, axes and tick labels shared by the line and stacked-area charts. */
+function drawAxes(svg, { height, maxY, yLabel, xTicks }) {
+  const { width, padding } = CHART;
   const chartHeight = height - padding.top - padding.bottom;
-
-  const minTimestamp = Math.min(...timestamps);
-  const maxTimestamp = Math.max(...timestamps);
-  const timestampRange = maxTimestamp - minTimestamp || 1;
-  const stackedTotals = timestamps.map((_, index) =>
-    plotSeries.reduce((sum, entry) => sum + Number(entry.values[index]?.value || 0), 0),
-  );
-  const maxStack = isPercentMode ? 100 : Math.max(1, ...stackedTotals);
-
-  const scaleX = (timestamp) =>
-    padding.left + ((timestamp - minTimestamp) / timestampRange) * chartWidth;
-  const scaleY = (value) => height - padding.bottom - (value / maxStack) * chartHeight;
-
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("class", "stacked-area-svg");
-
-  const gridGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  gridGroup.setAttribute("class", "grid");
+  const grid = svg.appendChild(svgEl("g", { class: "grid" }));
 
   for (let i = 0; i <= 5; i++) {
-    const y = padding.top + (chartHeight * i) / 5;
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", padding.left);
-    line.setAttribute("y1", y);
-    line.setAttribute("x2", width - padding.right);
-    line.setAttribute("y2", y);
-    line.setAttribute("stroke", "#0d0d0d");
-    line.setAttribute("stroke-width", "1");
-    line.setAttribute("stroke-opacity", "0.1");
-    gridGroup.appendChild(line);
+    const y = height - padding.bottom - (chartHeight * i) / 5;
+    grid.appendChild(
+      svgEl("line", {
+        x1: padding.left,
+        y1: y,
+        x2: width - padding.right,
+        y2: y,
+        stroke: "#0d0d0d",
+        "stroke-width": "1",
+        "stroke-opacity": "0.1",
+      }),
+    );
+    const label = svgEl("text", {
+      x: padding.left - 10,
+      y: y + 4,
+      "text-anchor": "end",
+      class: "axis-label",
+    });
+    label.textContent = yLabel((maxY * i) / 5);
+    svg.appendChild(label);
   }
 
-  svg.appendChild(gridGroup);
+  const axis = (x1, y1, x2, y2) =>
+    svgEl("line", { x1, y1, x2, y2, stroke: "#0d0d0d", "stroke-width": "3" });
+  svg.appendChild(axis(padding.left, padding.top, padding.left, height - padding.bottom));
+  svg.appendChild(
+    axis(padding.left, height - padding.bottom, width - padding.right, height - padding.bottom),
+  );
+
+  for (const { x, text } of xTicks) {
+    const label = svgEl("text", {
+      x,
+      y: height - padding.bottom + 25,
+      "text-anchor": "middle",
+      class: "axis-label",
+    });
+    label.textContent = text;
+    svg.appendChild(label);
+  }
+}
+
+function timeScale(timestamps) {
+  const { width, padding } = CHART;
+  const min = timestamps[0];
+  const range = timestamps.at(-1) - min || 1;
+  const scaleX = (t) => padding.left + ((t - min) / range) * (width - padding.left - padding.right);
+  const count = Math.min(6, timestamps.length);
+  const ticks = Array.from({ length: count }, (_, i) => {
+    const index = count === 1 ? 0 : Math.floor((i * (timestamps.length - 1)) / (count - 1));
+    return { x: scaleX(timestamps[index]), text: formatDate(timestamps[index]) };
+  });
+  return { scaleX, ticks };
+}
+
+function summaryPanel(className, items) {
+  const summary = el("div", className);
+  for (const [label, value] of items) {
+    const item = summary.appendChild(el("div", "summary-item"));
+    item.append(el("span", "summary-label", `${label}:`), " ", el("span", "summary-value", value));
+  }
+  return summary;
+}
+
+function renderLegend(className, entries) {
+  const legend = el("div", "stacked-legend");
+  for (const entry of entries) {
+    const item = legend.appendChild(el("div", "stacked-legend-item"));
+    item.appendChild(el("div", "stacked-legend-color")).style.backgroundColor = entry.color;
+    item.appendChild(el("div", "stacked-legend-label", entry.label));
+    if (entry.strong !== undefined) {
+      const value = item.appendChild(valueCell("stacked-legend-value", entry.strong, entry.detail));
+      value.title = entry.title ?? "";
+    }
+  }
+  legend.classList.add(className);
+  return legend;
+}
+
+/**
+ * Stacked area chart; series are { label, color, values[] } aligned with timestamps.
+ * In percent mode each bucket is normalised to 100%.
+ */
+function renderStackedAreaChart(containerId, timestamps, series, options = {}) {
+  const container = document.getElementById(containerId);
+  const isPercentMode = options.valueMode === "percent";
+  const visible = series
+    .map((entry) => ({ ...entry, total: entry.values.reduce((sum, v) => sum + v, 0) }))
+    .filter((entry) => entry.total > 0);
+  if (!visible.length || !timestamps.length) {
+    return renderEmpty(container, "No time-series data available");
+  }
+
+  const bucketTotals = timestamps.map((_, i) =>
+    visible.reduce((sum, entry) => sum + (entry.values[i] || 0), 0),
+  );
+  const totalPackets = bucketTotals.reduce((sum, count) => sum + count, 0);
+  const plotted = visible.map((entry) => ({
+    ...entry,
+    values: isPercentMode
+      ? entry.values.map((value, i) => share(value || 0, bucketTotals[i]))
+      : entry.values,
+  }));
+  const maxY = isPercentMode ? 100 : Math.max(1, ...bucketTotals);
+
+  const height = 340;
+  const { padding } = CHART;
+  const chartHeight = height - padding.top - padding.bottom;
+  const { scaleX, ticks } = timeScale(timestamps);
+  const scaleY = (value) => height - padding.bottom - (value / maxY) * chartHeight;
+  const svg = svgEl("svg", { viewBox: `0 0 ${CHART.width} ${height}`, class: "stacked-area-svg" });
 
   const baseline = new Array(timestamps.length).fill(0);
-
-  plotSeries.forEach((entry) => {
-    const topPoints = entry.values.map((point, index) => {
-      const bottom = baseline[index];
-      const top = bottom + point.value;
-      baseline[index] = top;
-      return {
-        timestamp: point.timestamp,
-        bottom,
-        top,
-      };
+  for (const entry of plotted) {
+    const points = entry.values.map((value, i) => {
+      const bottom = baseline[i];
+      baseline[i] = bottom + (value || 0);
+      return { x: scaleX(timestamps[i]), bottom, top: baseline[i] };
     });
-
-    const topPath = topPoints
-      .map((point, index) => {
-        const command = index === 0 ? "M" : "L";
-        return `${command} ${scaleX(point.timestamp)} ${scaleY(point.top)}`;
-      })
-      .join(" ");
-    const bottomPath = [...topPoints]
+    const top = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${scaleY(p.top)}`).join(" ");
+    const bottom = [...points]
       .reverse()
-      .map((point) => `L ${scaleX(point.timestamp)} ${scaleY(point.bottom)}`)
+      .map((p) => `L ${p.x} ${scaleY(p.bottom)}`)
       .join(" ");
-
-    const area = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    area.setAttribute("d", `${topPath} ${bottomPath} Z`);
-    area.setAttribute("fill", entry.color);
-    area.setAttribute("fill-opacity", "0.78");
-    area.setAttribute("stroke", "#0d0d0d");
-    area.setAttribute("stroke-width", "1");
-    area.setAttribute("class", "stacked-area-layer");
-
-    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-    const share = totalPackets > 0 ? (entry.total / totalPackets) * 100 : 0;
-    title.textContent = isPercentMode
-      ? `${entry.label}: ${formatPercent(share)} of packets (${formatNumber(entry.total)} packets)`
-      : `${entry.label}: ${formatNumber(entry.total)} packets`;
-    area.appendChild(title);
-
+    const area = svgEl("path", {
+      d: `${top} ${bottom} Z`,
+      fill: entry.color,
+      "fill-opacity": "0.78",
+      stroke: "#0d0d0d",
+      "stroke-width": "1",
+      class: "stacked-area-layer",
+    });
+    const entryShare = share(entry.total, totalPackets);
+    svgTitle(
+      area,
+      isPercentMode
+        ? `${entry.label}: ${formatPercent(entryShare)} of packets (${formatNumber(entry.total)} packets)`
+        : `${entry.label}: ${formatNumber(entry.total)} packets`,
+    );
     svg.appendChild(area);
+  }
+
+  drawAxes(svg, {
+    height,
+    maxY,
+    yLabel: (value) => (isPercentMode ? formatAxisPercent(value) : formatNumber(Math.round(value))),
+    xTicks: ticks,
   });
 
-  const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  yAxis.setAttribute("x1", padding.left);
-  yAxis.setAttribute("y1", padding.top);
-  yAxis.setAttribute("x2", padding.left);
-  yAxis.setAttribute("y2", height - padding.bottom);
-  yAxis.setAttribute("stroke", "#0d0d0d");
-  yAxis.setAttribute("stroke-width", "3");
-  svg.appendChild(yAxis);
-
-  const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  xAxis.setAttribute("x1", padding.left);
-  xAxis.setAttribute("y1", height - padding.bottom);
-  xAxis.setAttribute("x2", width - padding.right);
-  xAxis.setAttribute("y2", height - padding.bottom);
-  xAxis.setAttribute("stroke", "#0d0d0d");
-  xAxis.setAttribute("stroke-width", "3");
-  svg.appendChild(xAxis);
-
-  for (let i = 0; i <= 5; i++) {
-    const value = (maxStack * i) / 5;
-    const y = height - padding.bottom - (chartHeight * i) / 5;
-
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", padding.left - 10);
-    text.setAttribute("y", y + 4);
-    text.setAttribute("text-anchor", "end");
-    text.setAttribute("class", "axis-label");
-    text.textContent = isPercentMode ? formatAxisPercent(value) : formatNumber(Math.round(value));
-    svg.appendChild(text);
-  }
-
-  const numXLabels = Math.min(6, timestamps.length);
-  for (let i = 0; i < numXLabels; i++) {
-    const index =
-      numXLabels === 1 ? 0 : Math.floor((i * (timestamps.length - 1)) / (numXLabels - 1));
-    const timestamp = timestamps[index];
-    const x = scaleX(timestamp);
-
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", x);
-    text.setAttribute("y", height - padding.bottom + 25);
-    text.setAttribute("text-anchor", "middle");
-    text.setAttribute("class", "axis-label");
-    text.textContent = formatDate(timestamp);
-    svg.appendChild(text);
-  }
-
-  chartContainer.appendChild(svg);
-
-  const peakIndex = rawStackedTotals.reduce(
-    (maxIndex, value, index) => (value > rawStackedTotals[maxIndex] ? index : maxIndex),
+  const peakIndex = bucketTotals.reduce(
+    (best, value, i) => (value > bucketTotals[best] ? i : best),
     0,
   );
-  const peakLabel = isPercentMode ? "Peak volume:" : "Peak:";
-
-  const summary = document.createElement("div");
-  summary.className = "time-series-summary stacked-summary";
-  summary.innerHTML = `
-    <div class="summary-item">
-      <span class="summary-label">Total:</span>
-      <span class="summary-value">${formatNumber(totalPackets)}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">Interval:</span>
-      <span class="summary-value">${capitalize(options.interval || "daily")}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">${peakLabel}</span>
-      <span class="summary-value">${formatNumber(rawStackedTotals[peakIndex])} on ${formatDate(timestamps[peakIndex])}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">Series:</span>
-      <span class="summary-value">${formatNumber(filteredSeries.length)}</span>
-    </div>
-  `;
-
-  chartContainer.appendChild(summary);
-
-  const legend = document.createElement("div");
-  legend.className = "stacked-legend";
-
-  filteredSeries.forEach((entry) => {
-    const item = document.createElement("div");
-    item.className = "stacked-legend-item";
-
-    const swatch = document.createElement("div");
-    swatch.className = "stacked-legend-color";
-    swatch.style.backgroundColor = entry.color;
-
-    const label = document.createElement("div");
-    label.className = "stacked-legend-label";
-    label.textContent = entry.label;
-
-    const value = document.createElement("div");
-    value.className = "stacked-legend-value";
-    const percentage = totalPackets > 0 ? (entry.total / totalPackets) * 100 : 0;
-    value.title = `${entry.label}: ${formatPercent(percentage)} (${formatNumber(entry.total)} packets)`;
-    value.innerHTML = isPercentMode
-      ? `<strong>${formatPercent(percentage)}</strong> <span>${formatCompactNumber(entry.total)} pkts</span>`
-      : `<strong>${formatNumber(entry.total)}</strong> <span>(${formatPercent(percentage)})</span>`;
-
-    item.appendChild(swatch);
-    item.appendChild(label);
-    item.appendChild(value);
-    legend.appendChild(item);
-  });
-
-  chartContainer.appendChild(legend);
-  container.appendChild(chartContainer);
-}
-
-// Render effective DVN quorum pie chart (with "Other" bucket for >4)
-function renderDvnSetThresholdChart(stats) {
-  const buckets = new Map();
-
-  stats.dvnSetThresholdBuckets.forEach((bucket) => {
-    const threshold = makeThresholdGroupKey(bucket.dvnSetThreshold, false);
-    const numericThreshold = Number(threshold);
-
-    if (threshold === DVN_THRESHOLD_UNKNOWN) {
-      buckets.set("Unknown", (buckets.get("Unknown") || 0) + bucket.packetCount);
-    } else if (numericThreshold > 4) {
-      buckets.set("Other (>4 DVNs)", (buckets.get("Other (>4 DVNs)") || 0) + bucket.packetCount);
-    } else {
-      buckets.set(
-        `${numericThreshold} DVN${numericThreshold === 1 ? "" : "s"}`,
-        bucket.packetCount,
-      );
-    }
-  });
-
-  const data = Array.from(buckets.entries())
-    .map(([label, value]) => ({
-      label,
-      value,
-      percentage: (value / stats.total) * 100,
-    }))
-    .sort((a, b) => {
-      // Sort: 0, 1, 2, 3, 4, Other, Unknown
-      if (a.label === b.label) return 0;
-      if (a.label === "Unknown") return 1;
-      if (b.label === "Unknown") return -1;
-      if (a.label.startsWith("Other")) return b.label === "Unknown" ? -1 : 1;
-      if (b.label.startsWith("Other")) return a.label === "Unknown" ? 1 : -1;
-      return a.label.localeCompare(b.label, undefined, { numeric: true });
-    });
-
-  renderPieChart("dvn-set-threshold-chart", data);
-}
-
-function renderDvnSetThresholdTimeChart(stats) {
-  const rollup = pickStackedRollup(stats);
-  setText(
-    "dvn-set-threshold-subtitle",
-    rollup
-      ? `Fraction of packets by effective DVN quorum • ${capitalize(rollup.interval)} packet history`
-      : "Fraction of packets by the number of DVNs that must validate incoming packets. Optional-only quorum 2 of 3 counts as 2; required plus optional quorum x + 2 counts as x + 2.",
+  const chartContainer = el("div", "stacked-area-container");
+  chartContainer.append(
+    svg,
+    summaryPanel("time-series-summary stacked-summary", [
+      ["Total", formatNumber(totalPackets)],
+      ["Interval", capitalize(options.interval || "daily")],
+      [
+        isPercentMode ? "Peak volume" : "Peak",
+        `${formatNumber(bucketTotals[peakIndex])} on ${formatDate(timestamps[peakIndex])}`,
+      ],
+      ["Series", formatNumber(visible.length)],
+    ]),
+    renderLegend(
+      "stacked-legend",
+      visible.map((entry) => {
+        const entryShare = share(entry.total, totalPackets);
+        return {
+          color: entry.color,
+          label: entry.label,
+          strong: isPercentMode ? formatPercent(entryShare) : formatNumber(entry.total),
+          detail: isPercentMode
+            ? `${formatCompactNumber(entry.total)} pkts`
+            : `(${formatPercent(entryShare)})`,
+          title: `${entry.label}: ${formatPercent(entryShare)} (${formatNumber(entry.total)} packets)`,
+        };
+      }),
+    ),
   );
+  container.replaceChildren(chartContainer);
+}
 
-  if (!rollup) {
-    renderStackedMissing("dvn-set-threshold-time-chart");
-    return;
+/** Line chart with area fill; series are { label, color, values[] } aligned with timestamps. */
+function renderLineChart(containerId, timestamps, series, options = {}) {
+  const container = document.getElementById(containerId);
+  const totals = series.map((entry) => entry.values.reduce((sum, v) => sum + v, 0));
+  if (!timestamps.length || totals.every((total) => total === 0)) {
+    return renderEmpty(container, "No time-series data available");
   }
 
-  // Keep Unknown in the snapshot, but hide it here until null/unsupported configs are investigated.
-  const visibleSeries = buildDvnThresholdSeries(rollup.data).filter(
-    (series) => series.key !== DVN_THRESHOLD_UNKNOWN,
+  const height = 300;
+  const { padding } = CHART;
+  const chartHeight = height - padding.top - padding.bottom;
+  const maxY = Math.max(1, ...series.flatMap((entry) => entry.values));
+  const { scaleX, ticks } = timeScale(timestamps);
+  const scaleY = (value) => height - padding.bottom - (value / maxY) * chartHeight;
+  const svg = svgEl("svg", { viewBox: `0 0 ${CHART.width} ${height}`, class: "time-series-svg" });
+
+  drawAxes(svg, {
+    height,
+    maxY,
+    yLabel: (value) => formatNumber(Math.round(value)),
+    xTicks: ticks,
+  });
+
+  for (const entry of series) {
+    const points = entry.values.map((value, i) => `${scaleX(timestamps[i])} ${scaleY(value)}`);
+    const baseY = height - padding.bottom;
+    svg.appendChild(
+      svgEl("path", {
+        d: `M ${scaleX(timestamps[0])} ${baseY} L ${points.join(" L ")} L ${scaleX(timestamps.at(-1))} ${baseY} Z`,
+        fill: entry.color,
+        "fill-opacity": "0.15",
+      }),
+    );
+    svg.appendChild(
+      svgTitle(
+        svgEl("path", {
+          d: `M ${points.join(" L ")}`,
+          fill: "none",
+          stroke: entry.color,
+          "stroke-width": "3",
+          "stroke-linejoin": "round",
+          "stroke-linecap": "round",
+        }),
+        entry.label,
+      ),
+    );
+  }
+
+  const combined = timestamps.map((_, i) =>
+    series.reduce((sum, entry) => sum + entry.values[i], 0),
+  );
+  const total = combined.reduce((sum, value) => sum + value, 0);
+  const peak = combined.reduce((best, value, i) => (value > combined[best] ? i : best), 0);
+
+  const chartContainer = el("div", "time-series-container");
+  chartContainer.append(
+    svg,
+    summaryPanel("time-series-summary", [
+      ["Total", formatNumber(total)],
+      ["Average", formatNumber(Math.round(total / timestamps.length))],
+      ["Peak", `${formatNumber(combined[peak])} on ${formatDate(timestamps[peak])}`],
+      ["Data Points", `${formatNumber(timestamps.length)} (${options.interval})`],
+    ]),
+  );
+  if (series.length > 1) {
+    chartContainer.appendChild(
+      renderLegend(
+        "line-legend",
+        series.map((entry, i) => ({
+          color: entry.color,
+          label: entry.label,
+          strong: formatNumber(totals[i]),
+          detail: `(${formatPercent(share(totals[i], total))})`,
+        })),
+      ),
+    );
+  }
+  container.replaceChildren(chartContainer);
+}
+
+// ---------------------------------------------------------------------------
+// Sections
+
+function renderOverview(win) {
+  const pct = (value) => formatPercent(share(value, win.total));
+  setText("stat-total", formatNumber(win.total));
+  setText("stat-lz-verifiers", pct(win.tiers.lzVerifiers));
+  setText("stat-lz-any", pct(win.tiers.lzVerifiers + win.tiers.lzParams));
+  setText("stat-all-default", pct(win.flags.allDefault));
+  setText("stat-default-lib", pct(win.flags.defaultLibrary));
+  setText("stat-tracked", pct(win.flags.tracked));
+  setText("stat-dvn-combos", formatNumber(win.dvnSets.distinct));
+  setText(
+    "stat-dvn-combos-note",
+    `Unique validation setups (required DVNs plus any optional quorum) after merging each chain's DVN contracts by operator name. ${formatNumber(win.dvnSets.unnamedAddresses)} DVN addresses without a public name are counted individually`,
+  );
+  setText("stat-indexed-chains", formatNumber(stats.coverage.indexedChainCount));
+  setText("stat-source-eids", formatNumber(win.sources.length));
+
+  setText(
+    "stats-subtitle",
+    `${formatNumber(win.total)} packets • ${formatNumber(win.dvnSets.distinct)} distinct DVN sets • ${stats.coverage.indexedChainCount} indexed chains`,
+  );
+  setText("computed-at", new Date(stats.computedAt).toLocaleString());
+  setText("time-range", `${formatDate(win.fromDay * DAY)} → ${formatDate(stats.dataThrough)}`);
+}
+
+function renderVerificationControl(win) {
+  const container = document.getElementById("verification-control-chart");
+  const rows = TIERS.filter((tier) => win.tiers[tier.key] > 0 || tier.key !== "unknown").map(
+    (tier) => {
+      const value = win.tiers[tier.key];
+      const percentage = share(value, win.total);
+      const row = el("div", "tier-row");
+      const text = row.appendChild(el("div", "tier-text"));
+      text.append(el("div", "tier-label", tier.label), el("p", "tier-note", tier.note));
+      const bar = row.appendChild(el("div", "tier-bar"));
+      const fill = bar.appendChild(el("div", "tier-bar-fill"));
+      fill.style.width = `${percentage}%`;
+      fill.style.backgroundColor = tier.color;
+      row.appendChild(
+        valueCell("tier-value", formatPercent(percentage), `${formatNumber(value)} packets`),
+      );
+      return row;
+    },
+  );
+  container.replaceChildren(...rows);
+
+  const r = rollup(win);
+  setText(
+    "verification-control-subtitle",
+    `Fraction of packets by who can change the settings that validated them • ${capitalize(r.interval)} history in the time view`,
+  );
+  renderStackedAreaChart(
+    "verification-control-time-chart",
+    r.timestamps,
+    TIERS.map((tier) => ({
+      label: tier.short,
+      color: tier.color,
+      values: r.sum(stats.series.daily.tiers[tier.key]),
+    })),
+    { interval: r.interval, valueMode: "percent" },
+  );
+}
+
+function compareThresholdKeys(a, b) {
+  const rank = (key) =>
+    key === DVN_THRESHOLD_UNKNOWN ? Number.POSITIVE_INFINITY : Number.parseInt(key, 10);
+  return rank(a) - rank(b) || a.localeCompare(b);
+}
+
+function thresholdLabel(key) {
+  if (key === DVN_THRESHOLD_UNKNOWN) return "Unknown (custom or read library)";
+  if (key.endsWith("+")) return `${key} DVNs`;
+  return plural(Number(key), "DVN");
+}
+
+function renderDvnThreshold(win) {
+  const keys = Object.keys(win.thresholds).sort(compareThresholdKeys);
+  renderPieChart(
+    "dvn-set-threshold-chart",
+    keys.map((key) => ({ label: thresholdLabel(key), value: win.thresholds[key] })),
   );
 
-  renderStackedAreaChart("dvn-set-threshold-time-chart", visibleSeries, {
-    interval: rollup.interval,
+  const r = rollup(win);
+  setText(
+    "dvn-set-threshold-subtitle",
+    `Fraction of packets by effective DVN quorum: required DVNs plus the optional threshold (2 of 3 optional counts as 2) • ${capitalize(r.interval)} history in the time view excludes unknown`,
+  );
+  // Unknown stays in the snapshot but is left out of the time view.
+  const seriesKeys = Object.keys(stats.series.daily.thresholds)
+    .filter((key) => key !== DVN_THRESHOLD_UNKNOWN)
+    .sort(compareThresholdKeys);
+  renderStackedAreaChart(
+    "dvn-set-threshold-time-chart",
+    r.timestamps,
+    seriesKeys.map((key, index) => ({
+      label: thresholdLabel(key),
+      color: COLORS[index % COLORS.length],
+      values: r.sum(stats.series.daily.thresholds[key]),
+    })),
+    { interval: r.interval, valueMode: "percent" },
+  );
+}
+
+function dvnBadge(label, className = "dvn-badge-small") {
+  const badge = el("span", className, label.startsWith("0x") ? formatAddress(label) : label);
+  badge.title = label;
+  return badge;
+}
+
+function renderDvnSets(win) {
+  const container = document.getElementById("dvn-combo-chart");
+  const sets = win.dvnSets.top;
+  if (!sets.length) return renderEmpty(container, "No DVN sets found");
+
+  setText(
+    "dvn-combo-subtitle",
+    `Most common DVN sets by packet count (top ${sets.length} of ${formatNumber(win.dvnSets.distinct)}), merged by DVN name across chains`,
+  );
+  const maxValue = sets[0].packets;
+  container.replaceChildren(
+    ...sets.map((set, index) => {
+      const row = el("div", "combo-row");
+      const dvnList = el("div", "combo-dvn-list");
+      for (const label of set.required) dvnList.appendChild(dvnBadge(label));
+      if (set.type !== "required") {
+        const optional = dvnBadge(
+          `+${set.optionalThreshold} of ${set.optional.length} optional`,
+          "dvn-badge-small dvn-badge-optional",
+        );
+        optional.title = `${set.optionalThreshold} out of: ${set.optional.join(", ")}`;
+        dvnList.appendChild(optional);
+      }
+
+      const barContainer = el("div", "combo-bar-container");
+      const bar = barContainer.appendChild(el("div", "combo-bar-fill"));
+      bar.style.width = `${(set.packets / maxValue) * 100}%`;
+      row.append(
+        el("div", "combo-rank", `#${index + 1}`),
+        dvnList,
+        barContainer,
+        valueCell(
+          "combo-value",
+          formatNumber(set.packets),
+          `(${formatPercent(share(set.packets, win.total))})`,
+          "combo-percent",
+        ),
+      );
+      row.addEventListener("mouseenter", () => {
+        bar.style.opacity = "1";
+        bar.style.transform = "scaleY(1.15)";
+      });
+      row.addEventListener("mouseleave", () => {
+        bar.style.opacity = "0.85";
+        bar.style.transform = "scaleY(1)";
+      });
+      return row;
+    }),
+  );
+}
+
+function renderPacketVolume(win) {
+  const range = lineRange(win);
+  setText("time-series-packets-subtitle", `${capitalize(range.interval)} packet count`);
+  renderLineChart(
+    "time-series-packets-chart",
+    range.timestamps,
+    [{ label: "Packets", color: "#1b9c85", values: range.values("packets") }],
+    { interval: range.interval },
+  );
+}
+
+function renderConfigChanges(win) {
+  const range = lineRange(win);
+  const { lz, owner } = win.configChanges;
+  setText(
+    "time-series-config-subtitle",
+    `${capitalize(range.interval)} receive library and ULN config changes • ${formatNumber(lz)} by LayerZero (defaults), ${formatNumber(owner)} by OApp owners`,
+  );
+  renderLineChart(
+    "time-series-config-chart",
+    range.timestamps,
+    [
+      { label: "OApp owners", color: "#1b9c85", values: range.values("ownerChanges") },
+      { label: "LayerZero defaults", color: "#ff1df5", values: range.values("lzChanges") },
+    ],
+    { interval: range.interval },
+  );
+}
+
+function renderChainSection(win, { field, chartId, timeChartId, subtitleId, barClass, noun }) {
+  const breakdown = win[field];
+  renderBarChart(
+    chartId,
+    breakdown.slice(0, 20).map(([eid, packets]) => ({
+      label: chainName(eid),
+      value: packets,
+      percentage: share(packets, win.total),
+    })),
+    { barClass },
+  );
+
+  const r = rollup(win);
+  setText(
+    subtitleId,
+    `${capitalize(noun)} chain packet distribution • time view: top ${STACKED_CHAIN_LIMIT} plus Other in ${r.interval} buckets`,
+  );
+  const top = breakdown.slice(0, STACKED_CHAIN_LIMIT);
+  const series = top.map(([eid], index) => ({
+    label: chainName(eid),
+    color: COLORS[(index + (field === "destinations" ? 3 : 0)) % COLORS.length],
+    values: r.sum(stats.series.daily[field][eid]),
+  }));
+  const totals = r.sum(stats.series.daily.packets);
+  series.push({
+    label: "Other",
+    color: "#0d0d0d",
+    values: totals.map((total, i) => total - series.reduce((sum, s) => sum + s.values[i], 0)),
+  });
+  renderStackedAreaChart(timeChartId, r.timestamps, series, {
+    interval: r.interval,
     valueMode: "percent",
   });
 }
 
-// Render top DVN combinations with resolved names (deduplicated by resolved names)
-function renderDvnComboChart(stats) {
-  const container = document.getElementById("dvn-combo-chart");
-  container.innerHTML = "";
+// ---------------------------------------------------------------------------
+// Fragility of scale (window-independent, last 30 days)
 
-  if (!stats.dvnCombinations || stats.dvnCombinations.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No DVN combinations found</p>';
-    return;
-  }
+const weakestColor = (weakest) =>
+  weakest === null
+    ? WEAKEST_COLORS.unknown
+    : weakest <= 1
+      ? WEAKEST_COLORS[1]
+      : weakest === 2
+        ? WEAKEST_COLORS[2]
+        : WEAKEST_COLORS.strong;
 
-  // Deduplicate by resolved names
-  const mergedCombos = new Map();
+const webName = (web) =>
+  web.name || `${formatAddress(web.seed.slice(web.seed.indexOf("_") + 1))} on ${web.seedChain}`;
 
-  stats.dvnCombinations.forEach((combo) => {
-    let resolvedDvns = [];
-    let comboKey;
-    let optionalInfo = null;
+const median = (values) => {
+  if (!values.length) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
 
-    if (combo.type === "required") {
-      // Standard case: just required DVNs
-      resolvedDvns = combo.dvns.map((dvn) => {
-        const resolved = resolveDvnName(dvn, combo.localEid);
-        return {
-          address: dvn,
-          name: resolved,
-          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
-        };
-      });
-
-      const sorted = [...resolvedDvns].sort((a, b) => {
-        const aKey = a.isResolved ? a.name : a.address;
-        const bKey = b.isResolved ? b.name : b.address;
-        return aKey.localeCompare(bKey);
-      });
-
-      comboKey = sorted.map((d) => (d.isResolved ? d.name : d.address)).join("|||");
-      resolvedDvns = sorted;
-    } else if (combo.type === "required_and_optional") {
-      // Hybrid case: required DVNs + optional threshold
-      const resolvedRequired = combo.requiredDvns.map((dvn) => {
-        const resolved = resolveDvnName(dvn, combo.localEid);
-        return {
-          address: dvn,
-          name: resolved,
-          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
-        };
-      });
-
-      const sortedRequired = [...resolvedRequired].sort((a, b) => {
-        const aKey = a.isResolved ? a.name : a.address;
-        const bKey = b.isResolved ? b.name : b.address;
-        return aKey.localeCompare(bKey);
-      });
-
-      const resolvedOptional = combo.optionalDvns.map((dvn) => {
-        const resolved = resolveDvnName(dvn, combo.localEid);
-        return {
-          address: dvn,
-          name: resolved,
-          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
-        };
-      });
-
-      comboKey =
-        sortedRequired.map((d) => (d.isResolved ? d.name : d.address)).join("|||") +
-        `:+${combo.optionalThreshold}optional`;
-      resolvedDvns = sortedRequired;
-      optionalInfo = {
-        threshold: combo.optionalThreshold,
-        dvns: resolvedOptional,
-      };
-    } else if (combo.type === "optional_only") {
-      // Optional-only case
-      const resolvedOptional = combo.optionalDvns.map((dvn) => {
-        const resolved = resolveDvnName(dvn, combo.localEid);
-        return {
-          address: dvn,
-          name: resolved,
-          isResolved: resolved !== dvn && !resolved.startsWith("0x"),
-        };
-      });
-
-      comboKey = `optional:${combo.optionalThreshold}`;
-      resolvedDvns = [];
-      optionalInfo = {
-        threshold: combo.optionalThreshold,
-        dvns: resolvedOptional,
-      };
-    }
-
-    if (mergedCombos.has(comboKey)) {
-      // Merge with existing
-      const existing = mergedCombos.get(comboKey);
-      existing.count += combo.count;
-    } else {
-      // Add new
-      mergedCombos.set(comboKey, {
-        dvns: resolvedDvns,
-        optionalInfo,
-        count: combo.count,
-        comboKey,
-      });
-    }
-  });
-
-  // Convert to array and recalculate percentages
-  const deduplicatedCombos = Array.from(mergedCombos.values())
-    .map((combo) => ({
-      ...combo,
-      percentage: (combo.count / stats.total) * 100,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 20); // Top 20
-
-  if (deduplicatedCombos.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No DVN combinations found</p>';
-    return;
-  }
-
-  const maxValue = deduplicatedCombos[0]?.count || 0;
-
-  deduplicatedCombos.forEach((combo, index) => {
-    const row = document.createElement("div");
-    row.className = "combo-row";
-
-    const rank = document.createElement("div");
-    rank.className = "combo-rank";
-    rank.textContent = `#${index + 1}`;
-
-    const dvnList = document.createElement("div");
-    dvnList.className = "combo-dvn-list";
-
-    // Render resolved DVN names (required DVNs)
-    combo.dvns.forEach((dvn) => {
-      const badge = document.createElement("span");
-      badge.className = "dvn-badge-small";
-
-      badge.textContent = dvn.isResolved ? dvn.name : formatAddress(dvn.address);
-      badge.title = dvn.isResolved ? `${dvn.name} - ${dvn.address}` : dvn.address;
-      dvnList.appendChild(badge);
-    });
-
-    // Add optional DVN information if present
-    if (combo.optionalInfo) {
-      const optionalBadge = document.createElement("span");
-      optionalBadge.className = "dvn-badge-small dvn-badge-optional";
-      optionalBadge.textContent = `+${combo.optionalInfo.threshold} of ${combo.optionalInfo.dvns.length} optional`;
-
-      const optionalDvnNames = combo.optionalInfo.dvns
-        .map((dvn) => (dvn.isResolved ? dvn.name : dvn.address))
-        .join(", ");
-      optionalBadge.title = `${combo.optionalInfo.threshold} out of: ${optionalDvnNames}`;
-
-      dvnList.appendChild(optionalBadge);
-    }
-
-    const barContainer = document.createElement("div");
-    barContainer.className = "combo-bar-container";
-
-    const bar = document.createElement("div");
-    bar.className = "combo-bar-fill";
-    const percentage = maxValue > 0 ? (combo.count / maxValue) * 100 : 0;
-    bar.style.width = `${percentage}%`;
-
-    const value = document.createElement("div");
-    value.className = "combo-value";
-    value.innerHTML = `<strong>${formatNumber(combo.count)}</strong> <span class="combo-percent">(${formatPercent(combo.percentage)})</span>`;
-
-    barContainer.appendChild(bar);
-    row.appendChild(rank);
-    row.appendChild(dvnList);
-    row.appendChild(barContainer);
-    row.appendChild(value);
-
-    // Interactive hover
-    row.addEventListener("mouseenter", () => {
-      bar.style.opacity = "1";
-      bar.style.transform = "scaleY(1.15)";
-    });
-    row.addEventListener("mouseleave", () => {
-      bar.style.opacity = "0.85";
-      bar.style.transform = "scaleY(1)";
-    });
-
-    container.appendChild(row);
-  });
-}
-
-// Render chain breakdown
-function renderChainChart(stats) {
-  const data = stats.chainBreakdown.slice(0, 20).map((item) => ({
-    label: getChainName(item.localEid, chainMetadata),
-    value: item.packetCount,
-    percentage: item.percentage,
-  }));
-
-  renderBarChart("chain-chart", data, { barClass: "bar-fill--accent" });
-}
-
-function renderDestinationChainTimeChart(stats) {
-  const rollup = pickStackedRollup(stats);
-  setText(
-    "chain-chart-subtitle",
-    rollup
-      ? `Fraction of packets by destination chain • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
-      : "Destination chain packet distribution",
-  );
-
-  if (!rollup) {
-    renderStackedMissing("chain-time-chart");
-    return;
-  }
-
-  renderStackedAreaChart(
-    "chain-time-chart",
-    buildChainSeries(rollup.data, stats.chainBreakdown, "localEid", "destinationChains", 3),
-    { interval: rollup.interval, valueMode: "percent" },
+function renderScaleStats(meshes) {
+  const largest = meshes.top.reduce((best, web) => (web.routes > best.routes ? web : best));
+  const cards = [
+    [
+      "OApp Webs",
+      formatNumber(meshes.activeMeshes),
+      `With packets in the last ${meshes.windowDays} days`,
+    ],
+    ["Receiving OApps", formatNumber(meshes.receivingOApps), "Contracts that ever got a packet"],
+    [
+      "Largest Web",
+      `${formatNumber(largest.routes)} routes`,
+      `${webName(largest)}, ${largest.chains} chains`,
+    ],
+  ];
+  document.getElementById("scale-stats").replaceChildren(
+    ...cards.map(([title, value, label]) => {
+      const card = el("div", "stat-card stat-card--static");
+      card.append(
+        el("h2", null, title),
+        el("div", "stat-value", value),
+        el("div", "stat-label", label),
+      );
+      return card;
+    }),
   );
 }
 
-// Render source chain breakdown
-function renderSrcChainChart(stats) {
-  const data = stats.srcChainBreakdown.slice(0, 20).map((item) => ({
-    label: getChainName(item.srcEid, chainMetadata),
-    value: item.packetCount,
-    percentage: item.percentage,
-  }));
+function renderScaleScatter(meshes) {
+  const container = document.getElementById("scale-scatter");
+  const points = meshes.points;
+  if (!points.length) return renderEmpty(container, "No active webs");
 
-  renderBarChart("src-chain-chart", data, { barClass: "bar-fill--magenta" });
-}
-
-function renderSourceChainTimeChart(stats) {
-  const rollup = pickStackedRollup(stats);
-  setText(
-    "src-chain-chart-subtitle",
-    rollup
-      ? `Fraction of packets by source chain • top ${STACKED_CHAIN_LIMIT} plus Other in ${rollup.interval} buckets`
-      : "Source chain packet distribution",
-  );
-
-  if (!rollup) {
-    renderStackedMissing("src-chain-time-chart");
-    return;
-  }
-
-  renderStackedAreaChart(
-    "src-chain-time-chart",
-    buildChainSeries(rollup.data, stats.srcChainBreakdown, "srcEid", "sourceChains", 0),
-    { interval: rollup.interval, valueMode: "percent" },
-  );
-}
-
-// Render time-series line chart
-function renderTimeSeriesChart(containerId, data, options = {}) {
-  const container = document.getElementById(containerId);
-  container.innerHTML = "";
-
-  if (!data || data.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
-    return;
-  }
-
-  // Filter out zero values for better visualization
-  const filteredData = data.filter((d) => d.value > 0);
-
-  if (filteredData.length === 0) {
-    container.innerHTML = '<p class="chart-empty">No time-series data available</p>';
-    return;
-  }
-
-  const {
-    color = "#1b9c85",
-    label = "Value",
-    showPoints = false,
-    timeInterval = "hourly",
-  } = options;
-
-  // Create chart container
-  const chartContainer = document.createElement("div");
-  chartContainer.className = "time-series-container";
-
-  // Calculate dimensions and scales
   const width = 1200;
-  const height = 300;
+  const height = 420;
   const padding = { top: 20, right: 40, bottom: 60, left: 80 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
+  const maxChains = Math.max(...points.map(([chains]) => chains));
+  const maxRoutes = Math.max(10, ...points.map(([, routes]) => routes));
+  const maxPackets = Math.max(...points.map((p) => p[4]));
+  const logMax = Math.log10(maxRoutes + 1);
+  const scaleX = (chains) =>
+    padding.left +
+    ((chains - 1) / Math.max(1, maxChains - 1)) * (width - padding.left - padding.right);
+  const scaleY = (routes) =>
+    height -
+    padding.bottom -
+    (Math.log10(routes + 1) / logMax) * (height - padding.top - padding.bottom);
 
-  const minTimestamp = Math.min(...filteredData.map((d) => d.timestamp));
-  const maxTimestamp = Math.max(...filteredData.map((d) => d.timestamp));
-  const minValue = 0;
-  const maxValue = Math.max(...filteredData.map((d) => d.value));
-
-  // Scale functions
-  const scaleX = (timestamp) => {
-    return padding.left + ((timestamp - minTimestamp) / (maxTimestamp - minTimestamp)) * chartWidth;
+  const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, class: "scatter-svg" });
+  const axis = (x1, y1, x2, y2) =>
+    svgEl("line", { x1, y1, x2, y2, stroke: "#0d0d0d", "stroke-width": "3" });
+  const label = (x, y, text, anchor = "middle") => {
+    const node = svgEl("text", { x, y, "text-anchor": anchor, class: "axis-label" });
+    node.textContent = text;
+    return node;
   };
 
-  const scaleY = (value) => {
-    return height - padding.bottom - ((value - minValue) / (maxValue - minValue)) * chartHeight;
-  };
-
-  // Create SVG
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.setAttribute("class", "time-series-svg");
-
-  // Background grid (optional)
-  const gridGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-  gridGroup.setAttribute("class", "grid");
-
-  // Horizontal grid lines (5 lines)
-  for (let i = 0; i <= 5; i++) {
-    const y = padding.top + (chartHeight * i) / 5;
-    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-    line.setAttribute("x1", padding.left);
-    line.setAttribute("y1", y);
-    line.setAttribute("x2", width - padding.right);
-    line.setAttribute("y2", y);
-    line.setAttribute("stroke", "#0d0d0d");
-    line.setAttribute("stroke-width", "1");
-    line.setAttribute("stroke-opacity", "0.1");
-    gridGroup.appendChild(line);
+  for (let routes = 1; routes <= maxRoutes; routes *= 10) {
+    const y = scaleY(routes);
+    svg.appendChild(
+      svgEl("line", {
+        x1: padding.left,
+        y1: y,
+        x2: width - padding.right,
+        y2: y,
+        stroke: "#0d0d0d",
+        "stroke-opacity": "0.1",
+      }),
+    );
+    svg.appendChild(label(padding.left - 10, y + 4, formatNumber(routes), "end"));
   }
-  svg.appendChild(gridGroup);
+  svg.appendChild(label(padding.left - 10, scaleY(0) + 4, "0", "end"));
 
-  // Build path for line chart
-  const pathData = filteredData
-    .map((d, i) => {
-      const x = scaleX(d.timestamp);
-      const y = scaleY(d.value);
-      return `${i === 0 ? "M" : "L"} ${x} ${y}`;
-    })
-    .join(" ");
-
-  // Area fill under line
-  const areaPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  const areaData = [
-    `M ${scaleX(filteredData[0].timestamp)} ${height - padding.bottom}`,
-    ...filteredData.map((d) => `L ${scaleX(d.timestamp)} ${scaleY(d.value)}`),
-    `L ${scaleX(filteredData[filteredData.length - 1].timestamp)} ${height - padding.bottom}`,
-    "Z",
-  ].join(" ");
-  areaPath.setAttribute("d", areaData);
-  areaPath.setAttribute("fill", color);
-  areaPath.setAttribute("fill-opacity", "0.15");
-  svg.appendChild(areaPath);
-
-  // Line
-  const line = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  line.setAttribute("d", pathData);
-  line.setAttribute("fill", "none");
-  line.setAttribute("stroke", color);
-  line.setAttribute("stroke-width", "3");
-  line.setAttribute("stroke-linejoin", "round");
-  line.setAttribute("stroke-linecap", "round");
-  svg.appendChild(line);
-
-  // Points (optional)
-  if (showPoints && filteredData.length < 200) {
-    filteredData.forEach((d) => {
-      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-      circle.setAttribute("cx", scaleX(d.timestamp));
-      circle.setAttribute("cy", scaleY(d.value));
-      circle.setAttribute("r", "4");
-      circle.setAttribute("fill", color);
-      circle.setAttribute("stroke", "#0d0d0d");
-      circle.setAttribute("stroke-width", "2");
-
-      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
-      title.textContent = `${formatDate(d.timestamp)}: ${formatNumber(d.value)}`;
-      circle.appendChild(title);
-
-      svg.appendChild(circle);
-    });
+  const curve = [];
+  for (let chains = 1; chains <= maxChains && chains * (chains - 1) <= maxRoutes; chains += 0.25) {
+    curve.push(`${scaleX(chains)} ${scaleY(chains * (chains - 1))}`);
   }
-
-  // Y-axis
-  const yAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  yAxis.setAttribute("x1", padding.left);
-  yAxis.setAttribute("y1", padding.top);
-  yAxis.setAttribute("x2", padding.left);
-  yAxis.setAttribute("y2", height - padding.bottom);
-  yAxis.setAttribute("stroke", "#0d0d0d");
-  yAxis.setAttribute("stroke-width", "3");
-  svg.appendChild(yAxis);
-
-  // X-axis
-  const xAxis = document.createElementNS("http://www.w3.org/2000/svg", "line");
-  xAxis.setAttribute("x1", padding.left);
-  xAxis.setAttribute("y1", height - padding.bottom);
-  xAxis.setAttribute("x2", width - padding.right);
-  xAxis.setAttribute("y2", height - padding.bottom);
-  xAxis.setAttribute("stroke", "#0d0d0d");
-  xAxis.setAttribute("stroke-width", "3");
-  svg.appendChild(xAxis);
-
-  // Y-axis labels (5 ticks)
-  for (let i = 0; i <= 5; i++) {
-    const value = minValue + ((maxValue - minValue) * i) / 5;
-    const y = height - padding.bottom - (chartHeight * i) / 5;
-
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", padding.left - 10);
-    text.setAttribute("y", y + 4);
-    text.setAttribute("text-anchor", "end");
-    text.setAttribute("class", "axis-label");
-    text.textContent = formatNumber(Math.round(value));
-    svg.appendChild(text);
-  }
-
-  // X-axis labels (show ~6 time points)
-  const numXLabels = Math.min(6, filteredData.length);
-  for (let i = 0; i < numXLabels; i++) {
-    const index = Math.floor((i * (filteredData.length - 1)) / (numXLabels - 1));
-    const d = filteredData[index];
-    const x = scaleX(d.timestamp);
-
-    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-    text.setAttribute("x", x);
-    text.setAttribute("y", height - padding.bottom + 25);
-    text.setAttribute("text-anchor", "middle");
-    text.setAttribute("class", "axis-label");
-    text.textContent = formatDate(d.timestamp);
-    svg.appendChild(text);
-  }
-
-  chartContainer.appendChild(svg);
-
-  // Summary stats
-  const summary = document.createElement("div");
-  summary.className = "time-series-summary";
-
-  const totalValue = filteredData.reduce((sum, d) => sum + d.value, 0);
-  const avgValue = totalValue / filteredData.length;
-  const maxPoint = filteredData.reduce(
-    (max, d) => (d.value > max.value ? d : max),
-    filteredData[0],
+  svg.appendChild(
+    svgTitle(
+      svgEl("path", {
+        d: `M ${curve.join(" L ")}`,
+        fill: "none",
+        stroke: "#0d0d0d",
+        "stroke-width": "2",
+        "stroke-dasharray": "8,6",
+      }),
+      "N × (N − 1): every chain connected to every other",
+    ),
   );
 
-  summary.innerHTML = `
-    <div class="summary-item">
-      <span class="summary-label">Total:</span>
-      <span class="summary-value">${formatNumber(Math.round(totalValue))}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">Average:</span>
-      <span class="summary-value">${formatNumber(Math.round(avgValue))}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">Peak:</span>
-      <span class="summary-value">${formatNumber(maxPoint.value)} on ${formatDate(maxPoint.timestamp)}</span>
-    </div>
-    <div class="summary-item">
-      <span class="summary-label">Data Points:</span>
-      <span class="summary-value">${formatNumber(filteredData.length)} (${timeInterval})</span>
-    </div>
-  `;
-
-  chartContainer.appendChild(summary);
-  container.appendChild(chartContainer);
-}
-
-// Merge datapoints to reduce total count to below maxDatapoints
-function mergeDatapoints(data, maxDatapoints = 600) {
-  if (data.length <= maxDatapoints) {
-    return { data, mergeFactor: 1 };
-  }
-
-  // Calculate how many points to merge into one
-  const mergeFactor = Math.ceil(data.length / maxDatapoints);
-  const mergedData = [];
-
-  for (let i = 0; i < data.length; i += mergeFactor) {
-    const group = data.slice(i, i + mergeFactor);
-
-    // Use the first timestamp in the group
-    const timestamp = group[0].timestamp;
-
-    // Sum the values in the group
-    const value = group.reduce((sum, point) => sum + point.value, 0);
-
-    mergedData.push({ timestamp, value });
-  }
-
-  return { data: mergedData, mergeFactor };
-}
-
-// Get human-readable time interval description
-function getTimeIntervalLabel(mergeFactor) {
-  if (mergeFactor === 1) {
-    return "hourly";
-  } else if (mergeFactor < 24) {
-    return `every ${mergeFactor} hours`;
-  } else if (mergeFactor === 24) {
-    return "daily";
-  } else if (mergeFactor < 168) {
-    const days = Math.round(mergeFactor / 24);
-    return `every ${days} days`;
-  } else {
-    const weeks = Math.round(mergeFactor / 168);
-    return weeks === 1 ? "weekly" : `every ${weeks} weeks`;
-  }
-}
-
-// Render hourly packet volume time series
-function renderPacketTimeSeries(stats) {
-  if (!stats.timeSeries || !stats.timeSeries.hourly) {
-    document.getElementById("time-series-packets-chart").innerHTML =
-      '<p class="chart-empty">No time-series data available</p>';
-    return;
-  }
-
-  const data = stats.timeSeries.hourly.map((d) => ({
-    timestamp: d.timestamp,
-    value: d.packets,
-  }));
-
-  // Merge datapoints if we have more than 600
-  const { data: mergedData, mergeFactor } = mergeDatapoints(data, 600);
-  const timeInterval = getTimeIntervalLabel(mergeFactor);
-
-  // Update subtitle with actual time interval
-  const intervalCapitalized = timeInterval.charAt(0).toUpperCase() + timeInterval.slice(1);
-  document.getElementById("time-series-packets-subtitle").textContent =
-    `${intervalCapitalized} packet count across entire time range`;
-
-  renderTimeSeriesChart("time-series-packets-chart", mergedData, {
-    color: "#1b9c85",
-    label: "Packets",
-    showPoints: false,
-    timeInterval: timeInterval,
-  });
-}
-
-// Render config changes time series
-function renderConfigChangesTimeSeries(stats) {
-  if (!stats.timeSeries || !stats.timeSeries.hourly) {
-    document.getElementById("time-series-config-chart").innerHTML =
-      '<p class="chart-empty">No time-series data available</p>';
-    return;
-  }
-
-  // Update total config changes label
-  if (stats.timeSeries.totalConfigChanges !== undefined) {
-    document.getElementById("total-config-changes").textContent = formatNumber(
-      stats.timeSeries.totalConfigChanges,
+  // Busy webs last so they sit on top.
+  for (const [chains, routes, dvnSets, weakest, packets] of [...points].sort(
+    (a, b) => a[4] - b[4],
+  )) {
+    const dot = svgEl("circle", {
+      cx: scaleX(chains),
+      cy: scaleY(routes),
+      r: 4 + 14 * Math.sqrt(packets / maxPackets),
+      fill: weakestColor(weakest),
+      "fill-opacity": "0.8",
+      stroke: "#0d0d0d",
+      "stroke-width": "1.5",
+    });
+    svgTitle(
+      dot,
+      `${chains} chains • ${formatNumber(routes)} open routes • ${plural(dvnSets, "DVN set")} • weakest route ${weakest === null ? "unknown" : plural(weakest, "DVN")} • ${formatNumber(packets)} packets (30d)`,
     );
+    svg.appendChild(dot);
   }
 
-  const data = stats.timeSeries.hourly.map((d) => ({
-    timestamp: d.timestamp,
-    value: d.configChanges,
-  }));
+  svg.appendChild(axis(padding.left, padding.top, padding.left, height - padding.bottom));
+  svg.appendChild(
+    axis(padding.left, height - padding.bottom, width - padding.right, height - padding.bottom),
+  );
+  const xStep = maxChains > 30 ? 10 : 5;
+  for (let chains = 0; chains <= maxChains; chains += xStep) {
+    if (chains >= 1) svg.appendChild(label(scaleX(chains), height - padding.bottom + 25, chains));
+  }
+  svg.appendChild(
+    label(padding.left + (width - padding.left - padding.right) / 2, height - 12, "chains in web"),
+  );
 
-  // Merge datapoints if we have more than 600
-  const { data: mergedData, mergeFactor } = mergeDatapoints(data, 600);
-  const timeInterval = getTimeIntervalLabel(mergeFactor);
-
-  // Update subtitle with actual time interval
-  const intervalCapitalized = timeInterval.charAt(0).toUpperCase() + timeInterval.slice(1);
-  const totalConfigChanges =
-    stats.timeSeries.totalConfigChanges !== undefined
-      ? formatNumber(stats.timeSeries.totalConfigChanges)
-      : document.getElementById("total-config-changes").textContent;
-  document.getElementById("time-series-config-subtitle").innerHTML =
-    `${intervalCapitalized} config changes • <span id="total-config-changes">${totalConfigChanges}</span> total config changes`;
-
-  renderTimeSeriesChart("time-series-config-chart", mergedData, {
-    color: "#ff1df5",
-    label: "Config Changes",
-    showPoints: false,
-    timeInterval: timeInterval,
-  });
+  const legend = renderLegend(
+    "scatter-legend",
+    [
+      [WEAKEST_COLORS[1], "Weakest route: 1 DVN"],
+      [WEAKEST_COLORS[2], "Weakest route: 2 DVNs"],
+      [WEAKEST_COLORS.strong, "Weakest route: 3+ DVNs"],
+    ].map(([color, text]) => ({ color, label: text })),
+  );
+  const note = el(
+    "p",
+    "chart-footnote",
+    "Dot size: packets in the last 30 days. Y axis: open inbound routes (log scale).",
+  );
+  container.replaceChildren(svg, legend, note);
 }
 
-// Show error
+function renderTable(containerId, headers, rows) {
+  const table = el("table", "stats-table");
+  const headRow = table.appendChild(el("thead")).appendChild(el("tr"));
+  for (const [text, className] of headers) headRow.appendChild(el("th", className, text));
+  const body = table.appendChild(el("tbody"));
+  for (const cells of rows) {
+    const row = body.appendChild(el("tr"));
+    cells.forEach((cell, i) => {
+      const td = row.appendChild(el("td", headers[i][1]));
+      if (cell instanceof Node) td.appendChild(cell);
+      else td.textContent = cell;
+    });
+  }
+  document.getElementById(containerId).replaceChildren(table);
+}
+
+function renderScaleBuckets(meshes) {
+  const buckets = [
+    [1, 2, "1–2"],
+    [3, 5, "3–5"],
+    [6, 10, "6–10"],
+    [11, 20, "11–20"],
+    [21, Number.POSITIVE_INFINITY, "21+"],
+  ];
+  const num = "num";
+  renderTable(
+    "scale-buckets",
+    [
+      ["Chains in web", null],
+      ["Webs", num],
+      ["Median open routes", num],
+      ["Median DVN sets", num],
+      ["Webs with a 1-DVN route", num],
+      ["Packets (30d)", num],
+    ],
+    buckets
+      .map(([lo, hi, label]) => {
+        const group = meshes.points.filter(([chains]) => chains >= lo && chains <= hi);
+        if (!group.length) return null;
+        const singleDvn = group.filter(
+          ([, , , weakest]) => weakest !== null && weakest <= 1,
+        ).length;
+        return [
+          label,
+          formatNumber(group.length),
+          formatNumber(median(group.map(([, routes]) => routes))),
+          formatNumber(median(group.map(([, , dvnSets]) => dvnSets))),
+          `${formatPercent(share(singleDvn, group.length))}`,
+          formatNumber(group.reduce((sum, point) => sum + point[4], 0)),
+        ];
+      })
+      .filter(Boolean),
+  );
+}
+
+function renderScaleTop(meshes) {
+  const num = "num";
+  renderTable(
+    "scale-top",
+    [
+      ["#", num],
+      ["Web", null],
+      ["Chains", num],
+      ["Open routes", num],
+      ["DVN sets", num],
+      ["DVN operators", num],
+      ["Weakest route", null],
+      ["LayerZero picks verifiers", num],
+      ["Packets (30d)", num],
+      ["", null],
+    ],
+    meshes.top.map((web, index) => {
+      const link = el("a", "table-link", "crawl →");
+      link.href = `./explorer.html?view=web-of-security&seedOAppId=${encodeURIComponent(web.seed)}#results`;
+      const weakest =
+        web.weakest === null
+          ? "unknown"
+          : `${plural(web.weakest, "DVN")} (${formatNumber(web.weakestRoutes)} of ${formatNumber(web.trackedRoutes)})`;
+      const swatch = el("span", "weakest-swatch");
+      swatch.style.backgroundColor = weakestColor(web.weakest);
+      const weakestCell = el("span", "weakest-cell");
+      weakestCell.append(swatch, weakest);
+      return [
+        String(index + 1),
+        webName(web),
+        formatNumber(web.chains),
+        formatNumber(web.routes),
+        formatNumber(web.dvnSets),
+        formatNumber(web.operators),
+        weakestCell,
+        `${formatNumber(web.tiers.lzVerifiers)} of ${formatNumber(web.routes)}`,
+        formatNumber(web.packets30d),
+        link,
+      ];
+    }),
+  );
+}
+
+function renderScale() {
+  const { meshes } = stats;
+  if (!meshes?.top?.length) {
+    renderEmpty(document.getElementById("scale-scatter"), "No web data available");
+    return;
+  }
+  renderScaleStats(meshes);
+  renderScaleScatter(meshes);
+  renderScaleBuckets(meshes);
+  renderScaleTop(meshes);
+}
+
+// ---------------------------------------------------------------------------
+// Page lifecycle
+
 function showError(message) {
   document.getElementById("loading-state").classList.add("hidden");
   document.getElementById("stats-content").classList.add("hidden");
-  const errorState = document.getElementById("error-state");
-  errorState.classList.remove("hidden");
-  document.getElementById("error-message").textContent = message;
+  document.getElementById("error-state").classList.remove("hidden");
+  setText("error-message", message);
 }
 
-// Show content
 function showContent() {
   document.getElementById("loading-state").classList.add("hidden");
   document.getElementById("error-state").classList.add("hidden");
   document.getElementById("stats-content").classList.remove("hidden");
 }
 
-// Discover available datasets by trying common lookback patterns
-async function discoverDatasets() {
-  const patterns = ["90d", "7d", "30d", "1y", "all"];
-  const found = [];
+function renderWindowButtons() {
+  document.getElementById("dataset-selector")?.remove();
+  const names = WINDOW_NAMES.filter((name) => stats.windows[name]);
+  if (names.length <= 1) return;
 
-  for (const pattern of patterns) {
-    try {
-      const filename = `packet-stats-${pattern}.json`;
-      const response = await fetch(`${DATA_DIR}/${filename}`, {
-        method: "HEAD",
-        cache: "no-store",
-      });
-      if (response.ok) {
-        found.push({ name: pattern, filename });
-      }
-    } catch (error) {
-      // File doesn't exist, skip
-    }
-  }
-
-  return found;
-}
-
-function renderDatasetButtons(datasets) {
-  const header = document.querySelector(".stats-header");
-
-  const existing = document.getElementById("dataset-selector");
-  if (existing) existing.remove();
-
-  if (datasets.length <= 1) {
-    return;
-  }
-
-  const container = document.createElement("div");
+  const container = el("div", "dataset-selector");
   container.id = "dataset-selector";
-  container.className = "dataset-selector";
-
-  const label = document.createElement("span");
-  label.className = "dataset-label";
-  label.textContent = "Time Range:";
-  container.appendChild(label);
-
-  const buttonGroup = document.createElement("div");
-  buttonGroup.className = "dataset-buttons";
-
-  datasets.forEach((dataset) => {
-    const button = document.createElement("button");
-    button.className = "dataset-button";
-    button.textContent = dataset.name === "all" ? "All Time" : dataset.name.toUpperCase();
-    button.dataset.name = dataset.name;
-
-    if (currentDataset === dataset.name) {
-      button.classList.add("active");
-    }
-
+  container.appendChild(el("span", "dataset-label", "Time Range:"));
+  const buttons = container.appendChild(el("div", "dataset-buttons"));
+  for (const name of names) {
+    const button = buttons.appendChild(el("button", "dataset-button", windowLabel(name)));
+    button.type = "button";
+    button.dataset.name = name;
+    button.classList.toggle("active", name === currentWindow);
     button.addEventListener("click", () => {
-      loadAndRender(dataset.name, { updateUrl: true });
+      if (name === currentWindow) return;
+      updateUrl((url) => {
+        url.searchParams.set(DATASET_PARAM, name);
+        url.searchParams.delete(LEGACY_DATASET_PARAM);
+      });
+      renderWindow(name);
     });
-
-    buttonGroup.appendChild(button);
-  });
-
-  container.appendChild(buttonGroup);
-  header.appendChild(container);
-}
-
-async function loadAndRender(datasetName = null, options = {}) {
-  try {
-    if (!datasetName && availableDatasets.length > 0) {
-      datasetName = availableDatasets[0].name;
-    }
-
-    currentDataset = datasetName;
-
-    const loadingBanner = document.getElementById("loading-state");
-    loadingBanner.classList.remove("hidden");
-    document.getElementById("stats-content").classList.add("hidden");
-    document.getElementById("error-state").classList.add("hidden");
-
-    const datasetLabel = datasetName === "all" ? "All Time" : datasetName.toUpperCase();
-    loadingBanner.querySelector("p").textContent = `Loading ${datasetLabel} statistics...`;
-
-    if (!chainMetadata) {
-      chainMetadata = await loadChainMetadata();
-    }
-
-    const dataPath = `${DATA_DIR}/packet-stats-${datasetName}.json`;
-
-    const response = await fetch(dataPath, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Failed to load statistics: ${response.status} ${response.statusText}`);
-    }
-
-    statsData = await response.json();
-
-    if (!statsData || statsData.total === 0) {
-      throw new Error("No packet data available. Run the precomputation script first.");
-    }
-
-    if (options.updateUrl) {
-      updateDatasetUrl(datasetName);
-    }
-
-    renderDatasetButtons(availableDatasets);
-
-    renderOverview(statsData);
-    renderDvnSetThresholdChart(statsData);
-    renderDvnSetThresholdTimeChart(statsData);
-    renderDvnComboChart(statsData);
-    renderChainChart(statsData);
-    renderDestinationChainTimeChart(statsData);
-    renderSrcChainChart(statsData);
-    renderSourceChainTimeChart(statsData);
-    renderPacketTimeSeries(statsData);
-    renderConfigChangesTimeSeries(statsData);
-    syncChartViews();
-
-    showContent();
-    scrollToCurrentHash();
-  } catch (error) {
-    console.error("Failed to load statistics:", error);
-    showError(error.message);
   }
+  document.querySelector(".stats-header").appendChild(container);
 }
 
-// Initialize tooltip functionality for mobile tap handling
+function renderWindow(name) {
+  currentWindow = name;
+  const win = stats.windows[name];
+  renderWindowButtons();
+  renderOverview(win);
+  renderVerificationControl(win);
+  renderDvnThreshold(win);
+  renderDvnSets(win);
+  renderPacketVolume(win);
+  renderConfigChanges(win);
+  renderChainSection(win, {
+    field: "destinations",
+    chartId: "chain-chart",
+    timeChartId: "chain-time-chart",
+    subtitleId: "chain-chart-subtitle",
+    barClass: "bar-fill--accent",
+    noun: "destination",
+  });
+  renderChainSection(win, {
+    field: "sources",
+    chartId: "src-chain-chart",
+    timeChartId: "src-chain-time-chart",
+    subtitleId: "src-chain-chart-subtitle",
+    barClass: "bar-fill--magenta",
+    noun: "source",
+  });
+  syncChartViews();
+}
+
+async function loadStats() {
+  const response = await fetch(DATA_URL);
+  if (!response.ok) {
+    throw new Error(`Failed to load statistics: ${response.status} ${response.statusText}`);
+  }
+  const data = await response.json();
+  if (data.schemaVersion !== SCHEMA_VERSION) {
+    throw new Error(`Unsupported stats schema v${data.schemaVersion}; regenerate with pnpm stats.`);
+  }
+  if (!data.windows?.all?.total) {
+    throw new Error("No packet data available. Run the precomputation script first.");
+  }
+  return data;
+}
+
+// Tap-to-toggle tooltips on touch devices.
 function initTooltips() {
   const statCards = document.querySelectorAll(".stat-card");
+  const isMobile = () =>
+    window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
 
   statCards.forEach((card) => {
-    card.addEventListener("click", (e) => {
-      // Check if we're on a touch device or small screen
-      const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
-
-      if (isMobile) {
-        // Prevent the click from immediately closing the tooltip
-        e.stopPropagation();
-
-        // Toggle tooltip-active class
-        const wasActive = card.classList.contains("tooltip-active");
-
-        // Close all other tooltips
-        statCards.forEach((otherCard) => {
-          if (otherCard !== card) {
-            otherCard.classList.remove("tooltip-active");
-          }
-        });
-
-        // Toggle this tooltip
-        if (wasActive) {
-          card.classList.remove("tooltip-active");
-        } else {
-          card.classList.add("tooltip-active");
-        }
-      }
+    card.addEventListener("click", (event) => {
+      if (!isMobile()) return;
+      event.stopPropagation();
+      const wasActive = card.classList.contains("tooltip-active");
+      statCards.forEach((other) => other.classList.remove("tooltip-active"));
+      card.classList.toggle("tooltip-active", !wasActive);
     });
   });
-
-  // Close tooltips when clicking outside on mobile
-  document.addEventListener("click", (e) => {
-    const isMobile = window.matchMedia("(max-width: 768px)").matches || "ontouchstart" in window;
-
-    if (isMobile && !e.target.closest(".stat-card")) {
-      statCards.forEach((card) => {
-        card.classList.remove("tooltip-active");
-      });
+  document.addEventListener("click", (event) => {
+    if (isMobile() && !event.target.closest(".stat-card")) {
+      statCards.forEach((card) => card.classList.remove("tooltip-active"));
     }
   });
 }
@@ -1699,32 +1316,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   applyChartViewsFromUrl();
   initChartToggles();
 
-  availableDatasets = await discoverDatasets();
-
-  if (availableDatasets.length === 0) {
-    showError("No precomputed statistics found. Run the precomputation script first.");
+  try {
+    stats = await loadStats();
+    renderWindow(getRequestedWindow() || DEFAULT_WINDOW);
+    renderScale();
+    showContent();
+    scrollToCurrentHash();
+  } catch (error) {
+    console.error("Failed to load statistics:", error);
+    showError(error.message);
     return;
   }
-
-  renderDatasetButtons(availableDatasets);
-
-  await loadAndRender(getDatasetFromUrl(availableDatasets) || availableDatasets[0].name);
-
-  // Initialize tooltips after content is loaded
   initTooltips();
 });
 
 window.addEventListener("hashchange", scrollToCurrentHash);
 
-window.addEventListener("popstate", async () => {
+window.addEventListener("popstate", () => {
+  if (!stats) return;
   applyChartViewsFromUrl();
-  syncChartViews();
-
-  const requestedDataset = getDatasetFromUrl(availableDatasets);
-  if (requestedDataset && requestedDataset !== currentDataset) {
-    await loadAndRender(requestedDataset);
-    return;
-  }
-
+  const requested = getRequestedWindow() || DEFAULT_WINDOW;
+  if (requested !== currentWindow) renderWindow(requested);
+  else syncChartViews();
   scrollToCurrentHash();
 });

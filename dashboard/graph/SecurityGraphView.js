@@ -6,7 +6,7 @@ import { GraphInteractions } from "./GraphInteractions.js";
 import { GraphLayout } from "./GraphLayout.js";
 import { NodeListView } from "./NodeListView.js";
 import { NodeRenderer } from "./NodeRenderer.js";
-import { findMostConnectedNode } from "./utils.js";
+import { appendSummaryRow, findMostConnectedNode } from "./utils.js";
 
 const SVG_NS = APP_CONFIG.SVG.NAMESPACE;
 
@@ -54,6 +54,7 @@ export class SecurityGraphView {
       getOAppAlias: this.getOAppAlias,
       formatChainLabel: this.formatChainLabel.bind(this),
       areStringArraysEqual: this.analyzer.areStringArraysEqual.bind(this.analyzer),
+      isConfigRouteBlocked: this.analyzer.isConfigRouteBlocked.bind(this.analyzer),
       requestUniformAlias: this.requestUniformAlias,
     });
   }
@@ -68,6 +69,7 @@ export class SecurityGraphView {
     const edgeAnalysis = this.analyzer.calculateEdgeSecurityInfo(webData.edges, nodesById);
     const maxMinRequiredDVNsForNodes = this.analyzer.calculateMaxMinRequiredDVNsForNodes(
       webData.nodes,
+      edgeAnalysis.routeState,
     );
     const blockedNodes = this.analyzer.findBlockedNodes(
       webData.nodes,
@@ -87,6 +89,7 @@ export class SecurityGraphView {
       maxMinRequiredDVNsForNodes,
       blockedNodes,
       centerNodeId,
+      routeState: edgeAnalysis.routeState,
     };
 
     container.append(
@@ -112,29 +115,22 @@ export class SecurityGraphView {
       ? this.getOAppAlias(centerNode.id) || centerNode.id
       : centerNodeId || "—";
 
+    // Built with textContent: seed, crawlDepth and aliases can come from URL params,
+    // uploaded JSON or localStorage.
     const summary = document.createElement("div");
     summary.className = "summary-panel";
-    summary.innerHTML = `
-      <h3>Web of Security Overview</h3>
-      <dl>
-        <dt>Seed OApp</dt>
-        <dd>${webData.seed || "—"}</dd>
-        <dt>Center Node</dt>
-        <dd>${centerAlias}</dd>
-        <dt>Crawl Depth</dt>
-        <dd>${webData.crawlDepth || 0}</dd>
-        <dt>Total Nodes</dt>
-        <dd>${webData.nodes.length}</dd>
-        <dt>Tracked Nodes</dt>
-        <dd>${webData.nodes.filter((n) => n.isTracked).length}</dd>
-        <dt>Dangling Nodes</dt>
-        <dd>${webData.nodes.filter((n) => n.isDangling).length}</dd>
-        <dt>Total Edges</dt>
-        <dd>${webData.edges.length}</dd>
-        <dt>Crawled At</dt>
-        <dd>${new Date(webData.timestamp).toLocaleString()}</dd>
-      </dl>
-    `;
+    const heading = document.createElement("h3");
+    heading.textContent = "Web of Security Overview";
+    const list = document.createElement("dl");
+    appendSummaryRow(list, "Seed OApp", webData.seed || "—");
+    appendSummaryRow(list, "Center Node", centerAlias);
+    appendSummaryRow(list, "Crawl Depth", webData.crawlDepth || 0);
+    appendSummaryRow(list, "Total Nodes", webData.nodes.length);
+    appendSummaryRow(list, "Tracked Nodes", webData.nodes.filter((n) => n.isTracked).length);
+    appendSummaryRow(list, "Dangling Nodes", webData.nodes.filter((n) => n.isDangling).length);
+    appendSummaryRow(list, "Total Edges", webData.edges.length);
+    appendSummaryRow(list, "Crawled At", new Date(webData.timestamp).toLocaleString());
+    summary.append(heading, list);
     return summary;
   }
 
@@ -162,6 +158,7 @@ export class SecurityGraphView {
       blockedNodes,
       centerNodeId,
       maxEdgePacketCount,
+      routeState,
     } = context;
 
     const nodePositions = this.layout.layoutNodes(
@@ -178,12 +175,16 @@ export class SecurityGraphView {
     let visibleEdgeKeys = null;
 
     const adjacencyMap = new Map();
+    // Directed: edge.from -> edge.to, i.e. the direction packets travel on that route.
+    const outgoingMap = new Map();
     for (const node of webData.nodes) {
       adjacencyMap.set(node.id, new Set());
+      outgoingMap.set(node.id, new Set());
     }
     for (const edge of webData.edges) {
       if (adjacencyMap.has(edge.from)) adjacencyMap.get(edge.from).add(edge.to);
       if (adjacencyMap.has(edge.to)) adjacencyMap.get(edge.to).add(edge.from);
+      if (outgoingMap.has(edge.from)) outgoingMap.get(edge.from).add(edge.to);
     }
 
     const blockedIncomingByTarget = new Map();
@@ -252,8 +253,9 @@ export class SecurityGraphView {
       return blockedSources ? blockedSources.has(sourceId) : false;
     };
 
+    // BFS along unblocked edges in packet direction (startId sends, targetId receives).
     const findPathBetween = (startId, targetId) => {
-      if (!adjacencyMap.has(startId) || !adjacencyMap.has(targetId)) {
+      if (!outgoingMap.has(startId) || !outgoingMap.has(targetId)) {
         return null;
       }
       const queue = [startId];
@@ -271,7 +273,7 @@ export class SecurityGraphView {
           }
           return path.reverse();
         }
-        const neighbors = adjacencyMap.get(current) || new Set();
+        const neighbors = outgoingMap.get(current) || new Set();
         for (const neighbor of neighbors) {
           if (visited.has(neighbor)) continue;
           if (isBlockedInDirection(current, neighbor)) continue;
@@ -283,6 +285,7 @@ export class SecurityGraphView {
       return null;
     };
 
+    // Reverse keys are kept so a bidirectional pair (drawn as two half-lines) stays one line.
     const buildPathEdgeKeys = (pathNodes) => {
       const edges = new Set();
       for (let i = 0; i < pathNodes.length - 1; i += 1) {
@@ -319,7 +322,7 @@ export class SecurityGraphView {
         }
         const path = findPathBetween(nodeId, normalizedTargetId);
         if (!path) {
-          if (onFail) onFail("No unblocked connection found.");
+          if (onFail) onFail("No unblocked path from this OApp to the target OApp.");
           return false;
         }
 
@@ -377,6 +380,7 @@ export class SecurityGraphView {
       showPersistentTooltip,
       centerNodeId,
       updateVisibility,
+      routeState,
     );
 
     contentGroup.appendChild(edgesGroup);

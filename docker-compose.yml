@@ -49,7 +49,10 @@ services:
       - "127.0.0.1:17480:8080"
     environment:
       PORT: 8080
-      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:testing@postgres:5432/envio-dev
+      # statement_timeout bounds every query Hasura runs, i.e. every anonymous
+      # query from the public endpoint. The indexer connects to Postgres
+      # directly and is unaffected; the explorer's heaviest query takes <1s.
+      HASURA_GRAPHQL_DATABASE_URL: postgres://postgres:testing@postgres:5432/envio-dev?options=-c%20statement_timeout%3D30s
       HASURA_GRAPHQL_ENABLE_CONSOLE: "true"
       HASURA_GRAPHQL_ADMIN_SECRET: testing
       HASURA_GRAPHQL_UNAUTHORIZED_ROLE: public

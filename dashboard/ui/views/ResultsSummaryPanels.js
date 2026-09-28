@@ -136,8 +136,24 @@ function renderSecuritySummary(summary) {
 
   appendSummaryRow(list, "Routes analyzed", totalRoutes);
 
+  // "Indexed" = routes with an OAppSecurityConfig row (the OApp emitted a library,
+  // config, peer or packet event for that source EID). Counts are usesDefault* flags.
+  const materializedCount = summary.materializedCount;
+  if (materializedCount !== undefined && materializedCount !== null) {
+    appendSummaryRow(
+      list,
+      "Indexed routes on default library",
+      `${summary.materializedDefaultLibraryCount ?? 0} of ${materializedCount}`,
+    );
+    appendSummaryRow(
+      list,
+      "Indexed routes on default ULN config",
+      `${summary.materializedDefaultConfigCount ?? 0} of ${materializedCount}`,
+    );
+  }
+
   if (syntheticCount > 0) {
-    appendSummaryRow(list, "Using defaults", syntheticCount);
+    appendSummaryRow(list, "Default-only routes (no OApp events)", syntheticCount);
   }
 
   if (blockedTotal > 0) {
@@ -211,6 +227,17 @@ function renderPopularOappsSummary(summary) {
     if (ts) {
       appendSummaryRow(list, "To", ts.primary);
     }
+  }
+
+  const coverage = summary.coverage;
+  if (coverage) {
+    appendSummaryRow(
+      list,
+      "Coverage",
+      coverage.truncated
+        ? `TRUNCATED — last ${coverage.coveredLabel} of ${coverage.requestedLabel} (raise sample limit)`
+        : `Full window (${coverage.requestedLabel})`,
+    );
   }
 
   appendSummaryRow(list, "Packets Scanned", summary.sampledPackets);

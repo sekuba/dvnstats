@@ -1,5 +1,5 @@
 import { APP_CONFIG } from "../config.js";
-import { isZeroAddress, normalizeKey } from "../core.js";
+import { isZeroAddress, normalizeKey, splitOAppId } from "../core.js";
 import { AddressUtils } from "../utils/AddressUtils.js";
 import { toString } from "../utils/NumberUtils.js";
 
@@ -52,6 +52,8 @@ export function normalizeSecurityConfig({
       localEid: normalizedLocalEid,
       oapp: config.oapp ?? oappAddress ?? null,
       oappId: config.oappId ?? oappId ?? null,
+      // The indexer stores `${eid}_0x000…` for zero peers; that is not a real OApp.
+      peerOappId: isZeroPeerOappId(config.peerOappId) ? null : config.peerOappId,
       fallbackFields,
       sourceType: config.sourceType || "materialized",
       synthetic: Boolean(config.synthetic),
@@ -80,7 +82,9 @@ export function derivePeerStateHint(row, peerRecord, { isSynthetic = false } = {
 
   const peer = row?.peer ?? peerRecord?.peer ?? null;
   if (!peer) {
-    return isSynthetic ? "implicit-blocked" : "not-configured";
+    // spec §7: a route with no peer record is an implicit block, whether or not
+    // the indexer materialized an OAppSecurityConfig row for it.
+    return "implicit-blocked";
   }
 
   if (isZeroAddress(peer)) {
@@ -449,6 +453,10 @@ function dedupeAddresses(addresses) {
     result.push(normalized);
   }
   return result.sort();
+}
+
+function isZeroPeerOappId(value) {
+  return Boolean(value) && isZeroAddress(splitOAppId(value).address);
 }
 
 function orderFallbackFields(fallbackSet) {

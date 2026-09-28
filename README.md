@@ -31,10 +31,31 @@ pnpm db:indexes
 ```
 
 Envio only creates what `@index` in `schema.graphql` declares. The stats
-pipeline paginates `PacketDelivered` by `(blockTimestamp, id)`, which is not one
-of those — without the index in [scripts/indexes.sql](./scripts/indexes.sql)
-each page seq-scans 20M rows (40s vs 0.15s per page). It is idempotent, and
-needs re-running after every resync.
+refresh and the explorer's Hot OApps query both range-scan `PacketDelivered` by
+`blockTimestamp`, which is not one of those — without the index in
+[scripts/indexes.sql](./scripts/indexes.sql) each of them seq-scans 20M rows.
+It is idempotent, and needs re-running after every resync.
+
+### Stats and publishing
+
+```bash
+pnpm stats          # refresh dashboard/data/stats.json (~5s)
+pnpm stats:full     # rebuild the stats cube from scratch (~3 min), e.g. after a resync
+pnpm publish:site   # refresh stats, then force-push committed dashboard/ + stats to gh-pages
+```
+
+[scripts/precomputePacketStats.js](./scripts/precomputePacketStats.js) reads
+Postgres directly (`PG*` env vars, defaulting to the docker-compose stack). It
+folds `PacketDelivered` into a daily cube cached in `.cache/`, rescans only the
+last 7 days on each run, and bounds every query by one snapshot timestamp so
+all numbers on the page agree. `dashboard/data/` is not committed: the site on
+gh-pages is a single force-pushed commit of the committed `dashboard/` plus the
+fresh `stats.json` ([scripts/publish.sh](./scripts/publish.sh), which also
+lists the cron lines). Packets arriving more than 7 days late (a chain lagging
+that far behind) are only picked up by `pnpm stats:full`, so run that weekly.
+
+The public GraphQL endpoint is plain Hasura over this database; every query it
+runs is capped at 30s by `statement_timeout` in `docker-compose.yml`.
 
 ### Generate files from `config.yaml` or `schema.graphql`
 

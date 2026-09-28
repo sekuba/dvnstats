@@ -15,10 +15,9 @@
     "test": "pnpm build",
     "format": "biome format --write .",
     "format:check": "biome check .",
-    "stats:precompute": "node scripts/precomputePacketStats.js",
-    "stats:batch": "node scripts/precomputePacketStats.js --batch",
-    "stats:incremental": "node scripts/precomputePacketStats.js --incremental",
-    "stats:batch-incremental": "node scripts/precomputePacketStats.js --batch --incremental",
+    "stats": "node scripts/precomputePacketStats.js",
+    "stats:full": "node scripts/precomputePacketStats.js --full",
+    "publish:site": "./scripts/publish.sh",
     "indexer:status": "node scripts/indexerStatus.js",
     "registry:build": "node scripts/buildDashboardRegistry.js"
   },
@@ -28,7 +27,8 @@
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "envio": "3.10.0"
+    "envio": "3.10.0",
+    "postgres": "3.4.8"
   },
   "engines": {
     "node": ">=22.0.0"
