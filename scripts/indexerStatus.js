@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { readdirSync, readFileSync, realpathSync } from "node:fs";
+import { basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const REPO_ROOT = realpathSync(dirname(dirname(fileURLToPath(import.meta.url))));
 
 const DEFAULT_POSTGRES_CONTAINER = "dvnstats-postgres";
 const DEFAULT_HASURA_CONTAINER = "dvnstats-hasura";
@@ -139,15 +144,60 @@ function getEnvioServices(config) {
     });
 }
 
+// Same matching rules as stop-indexer.sh: exact argv, not a regex over the
+// command line. A `pgrep -f "envio.*dev"` also matched the Postgres backends
+// ("postgres: postgres envio-dev ...") and reported a dead indexer as running.
 function getIndexerProcesses() {
-  const output = execOptional("pgrep", ["-a", "-f", "envio.*(dev|start)|pnpm.*(dev|start)"]);
+  const indexers = [];
+  const supervisors = [];
 
-  return output
-    .split("\n")
-    .filter(Boolean)
-    .filter((line) => !line.includes("scripts/indexerStatus.js"))
-    .filter((line) => !line.includes("pgrep -a -f"))
-    .map((line) => line.trim());
+  for (const entry of readdirSync("/proc")) {
+    if (!/^\d+$/.test(entry)) continue;
+    const argv = readArgv(entry);
+    if (argv === null || !inRepo(entry)) continue;
+
+    const proc = { pid: Number(entry), command: argv.join(" ") };
+    if (isIndexer(argv)) indexers.push(proc);
+    else if (isSupervisor(argv)) supervisors.push(proc);
+  }
+
+  return { indexers, supervisors };
+}
+
+function readArgv(pid) {
+  try {
+    const argv = readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0");
+    argv.pop();
+    return argv.length > 0 ? argv : null;
+  } catch {
+    return null;
+  }
+}
+
+function inRepo(pid) {
+  try {
+    return realpathSync(`/proc/${pid}/cwd`) === REPO_ROOT;
+  } catch {
+    return false;
+  }
+}
+
+// `node .../envio/bin.mjs start`
+function isIndexer(argv) {
+  return (
+    basename(argv[0]).startsWith("node") &&
+    argv.some((arg) => arg.endsWith("/envio/bin.mjs")) &&
+    argv.includes("start")
+  );
+}
+
+// `bash ./run-indexer.sh`
+function isSupervisor(argv) {
+  return (
+    argv.length === 2 &&
+    ["bash", "sh"].includes(basename(argv[0])) &&
+    argv[1].endsWith("run-indexer.sh")
+  );
 }
 
 function getChainProgress(config) {
@@ -325,12 +375,20 @@ function formatServices(services) {
   return services.map((service) => `${service.name} ${service.status}`).join("; ");
 }
 
-function formatProcessStatus(processes) {
-  if (processes.length === 0) {
-    return "not running";
+function formatProcessStatus({ indexers, supervisors }) {
+  const supervisorPids = supervisors.map((p) => p.pid).join(", ");
+
+  if (indexers.length === 0) {
+    return supervisors.length === 0
+      ? "not running"
+      : `not running (supervisor pid ${supervisorPids} is waiting to restart it)`;
   }
 
-  return `running (${processes.length} matching processes)`;
+  const indexerPids = indexers.map((p) => p.pid).join(", ");
+  const supervision =
+    supervisors.length === 0 ? "unsupervised" : `supervisor pid ${supervisorPids}`;
+  const warning = indexers.length > 1 ? " — WARNING: more than one indexer" : "";
+  return `running (pid ${indexerPids}, ${supervision})${warning}`;
 }
 
 function makeTable(rows, columns) {

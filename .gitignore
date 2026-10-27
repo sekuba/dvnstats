@@ -43,3 +43,4 @@ hyperindex-complete.mdx
 # Built by pnpm stats and published by scripts/publish.sh, never committed
 dashboard/data/
 .cache/
+/run-cloudflared
